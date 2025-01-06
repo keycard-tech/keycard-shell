@@ -632,13 +632,12 @@ byte configuration */
 /** @defgroup FLASH_Programming_Delay FLASH Programming Delay
   * @{
   */
-#define FLASH_PROGRAMMING_DELAY_0   0x00000000U            /*!< programming delay set for Flash running at 70 MHz or
+#define FLASH_PROGRAMMING_DELAY_0   0x00000000U            /*!< programming delay set for Flash running at 84 MHz or
                                                                 below */
-#define FLASH_PROGRAMMING_DELAY_1   FLASH_ACR_WRHIGHFREQ_0 /*!< programming delay set for Flash running between 70 MHz
-                                                                and 185 MHz */
-#define FLASH_PROGRAMMING_DELAY_2   FLASH_ACR_WRHIGHFREQ_1 /*!< programming delay set for Flash running between 185 MHz
-                                                                and 225 MHz */
-#define FLASH_PROGRAMMING_DELAY_3   FLASH_ACR_WRHIGHFREQ   /*!< programming delay set for Flash at startup */
+#define FLASH_PROGRAMMING_DELAY_1   FLASH_ACR_WRHIGHFREQ_0 /*!< programming delay set for Flash running between 84 MHz
+                                                                and 168 MHz */
+#define FLASH_PROGRAMMING_DELAY_2   FLASH_ACR_WRHIGHFREQ_1 /*!< programming delay set for Flash running between 168 MHz
+                                                                and 250 MHz */
 /**
   * @}
   */
@@ -868,6 +867,7 @@ void              HAL_FLASHEx_OBGetConfig(FLASH_OBProgramInitTypeDef *pOBInit);
 HAL_StatusTypeDef HAL_FLASHEx_OBK_Unlock(void);
 HAL_StatusTypeDef HAL_FLASHEx_OBK_Lock(void);
 HAL_StatusTypeDef HAL_FLASHEx_OBK_Swap(uint32_t SwapOffset);
+HAL_StatusTypeDef HAL_FLASHEx_OBK_Swap_IT(uint32_t SwapOffset);
 #endif /* FLASH_SR_OBKERR */
 void              HAL_FLASHEx_GetOperation(FLASH_OperationTypeDef *pFlashOperation);
 /**

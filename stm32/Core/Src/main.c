@@ -159,6 +159,10 @@ void SystemClock_Config(void)
 
   HAL_RCCEx_CRSConfig(&RCC_CRSInitStruct);
   HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI48, RCC_MCODIV_2);
+
+  /** Configure the programming delay
+  */
+  __HAL_FLASH_SET_PROGRAM_DELAY(FLASH_PROGRAMMING_DELAY_2);
 }
 
 /**
