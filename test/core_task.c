@@ -30,9 +30,12 @@ const uint8_t TEST_AID[] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01
 #define P1_TEST_CARD_PRESENCE 0x07
 #define P1_TEST_CAMERA 0x08
 
+#define TEST_GPIO_POLL_MS 5
+#define TEST_GPIO_TIMEOUT_MS 10000
+
 app_err_t core_usb_get_app_config(apdu_t* cmd);
 
-core_evt_t ui_info_usb(const char* msg) {
+static core_evt_t ui_info_usb(const char* msg) {
   g_ui_cmd.type = UI_CMD_INFO;
   g_ui_cmd.params.info.dismissable = 1;
   g_ui_cmd.params.info.msg = msg;
@@ -42,6 +45,27 @@ core_evt_t ui_info_usb(const char* msg) {
   }
 
   return CORE_EVT_USB_CMD;
+}
+
+static void ui_info_nowait(const char* msg) {
+  g_ui_cmd.type = UI_CMD_INFO;
+  g_ui_cmd.params.info.dismissable = 1;
+  g_ui_cmd.params.info.msg = msg;
+
+  ui_signal();
+}
+
+#define core_test_wait_gpio(__APDU__, __IO__, __VAL__, __ERR__, __TIMEOUT__) \
+{ \
+  int timeout = __TIMEOUT__; \
+  while (hal_gpio_get(__IO__) == __VAL__) { \
+    vTaskDelay(pdMS_TO_TICKS(TEST_GPIO_POLL_MS)); \
+    timeout -= TEST_GPIO_POLL_MS; \
+    if (timeout <= 0) { \
+      core_usb_err_sw(__APDU__, 0x6f, __ERR__); \
+      return; \
+    } \
+  } \
 }
 
 static void core_keypad_test(apdu_t* apdu) {
@@ -55,6 +79,18 @@ static void core_keypad_test(apdu_t* apdu) {
 }
 
 static void core_button_test(apdu_t* apdu) {
+  if (hal_gpio_get(GPIO_HALT_REQ) == GPIO_RESET) {
+    core_usb_err_sw(apdu, 0x6f, 0x01);
+  }
+
+  ui_info_nowait("Press power button");
+  core_test_wait_gpio(apdu, GPIO_HALT_REQ, GPIO_SET, 0x02, TEST_GPIO_TIMEOUT_MS);
+
+  vTaskDelay(pdMS_TO_TICKS(50));
+
+  ui_info_nowait("Release power button");
+  core_test_wait_gpio(apdu, GPIO_HALT_REQ, GPIO_RESET, 0x03, TEST_GPIO_TIMEOUT_MS);
+
   core_usb_err_sw(apdu, 0x90, 0x00);
 }
 
@@ -103,31 +139,33 @@ static void core_camera_test(apdu_t* apdu) {
 }
 
 static void core_card_test(apdu_t* apdu) {
-  while (hal_gpio_get(GPIO_SMARTCARD_PRESENT) == GPIO_RESET) {
-    ui_info("Insert card and press OK", 1);
+  if (hal_gpio_get(GPIO_SMARTCARD_PRESENT) == GPIO_RESET) {
+    core_usb_err_sw(apdu, 0x6f, 0x01);
   }
+
+  ui_info_nowait("Testing card...");
 
   keycard_init(&g_core.keycard);
   smartcard_activate(&g_core.keycard.sc);
 
   if (g_core.keycard.sc.state != SC_READY) {
-    core_usb_err_sw(apdu, 0x6f, 0x01);
-    return;
-  }
-
-  if (keycard_cmd_select(&g_core.keycard, TEST_AID, TEST_AID_LEN) != ERR_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x02);
     return;
   }
 
-  if (APDU_SW(&g_core.keycard.apdu) != SW_OK) {
+  if (keycard_cmd_select(&g_core.keycard, TEST_AID, TEST_AID_LEN) != ERR_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x03);
+    return;
+  }
+
+  if (APDU_SW(&g_core.keycard.apdu) != SW_OK) {
+    core_usb_err_sw(apdu, 0x6f, 0x04);
     return;
   }
 
   app_info_t info;
   if (application_info_parse(APDU_RESP(&g_core.keycard.apdu), &info) != ERR_OK) {
-    core_usb_err_sw(apdu, 0x6f, 0x04);
+    core_usb_err_sw(apdu, 0x6f, 0x05);
     return;
   }
 
@@ -137,6 +175,12 @@ static void core_card_test(apdu_t* apdu) {
 }
 
 static void core_card_presence_test(apdu_t* apdu) {
+  ui_info_nowait("Remove card.");
+  core_test_wait_gpio(apdu, GPIO_SMARTCARD_PRESENT, GPIO_SET, 0x01, TEST_GPIO_TIMEOUT_MS);
+
+  ui_info_nowait("Insert card.");
+  core_test_wait_gpio(apdu, GPIO_SMARTCARD_PRESENT, GPIO_RESET, 0x02, TEST_GPIO_TIMEOUT_MS);
+
   core_usb_err_sw(apdu, 0x90, 0x00);
 }
 
@@ -209,8 +253,10 @@ static void core_test_process_cmd() {
 }
 
 void core_task_entry(void* pvParameters) {
+  ui_info_nowait("Unplug USB");
+
   while (usb_connected()) {
-    ui_info("Unplug USB and press OK", 1);
+    vTaskDelay(pdMS_TO_TICKS(5));
   }
 
   g_core.ready = true;

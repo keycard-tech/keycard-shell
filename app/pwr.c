@@ -26,8 +26,10 @@ void pwr_reboot() {
 }
 
 void pwr_shutdown() {
+#ifndef TEST_APP
   pwr_graceful_shutdown();
   hal_gpio_set(GPIO_PWR_KILL, GPIO_SET);
+#endif
 }
 
 void pwr_usb_plugged(bool from_isr) {
