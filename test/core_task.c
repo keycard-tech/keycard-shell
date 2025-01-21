@@ -17,9 +17,9 @@
 #define TEST_AID_LEN 9
 const uint8_t TEST_AID[] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01};
 
-#define INS_TEST_INFO 0x02
-#define INS_TEST_RUN 0x04
-#define INS_TEST_END 0x06
+#define INS_TEST_RUN 0x02
+#define INS_TEST_END 0x04
+#define INS_TEST_INFO 0x06
 
 #define P1_TEST_USB 0x01
 #define P1_TEST_KEYPAD 0x02
