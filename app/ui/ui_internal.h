@@ -41,6 +41,10 @@ enum cmd_type {
   UI_CMD_DEV_AUTH,
   UI_CMD_LCD_BRIGHTNESS,
   UI_CMD_PROGRESS,
+#ifdef TEST_APP
+  UI_CMD_KEYPAD_TEST,
+  UI_CMD_LCD_TEST,
+#endif
 };
 
 struct cmd_info {

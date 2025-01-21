@@ -159,7 +159,7 @@ app_err_t core_set_derivation_path(struct crypto_keypath* derivation_path) {
   return ERR_OK;
 }
 
-static app_err_t core_usb_get_app_config(apdu_t* cmd) {
+TEST_APP_ACCESSIBLE app_err_t core_usb_get_app_config(apdu_t* cmd) {
   uint8_t* data = APDU_RESP(cmd);
   data[0] = FW_VERSION[0];
   data[1] = FW_VERSION[1];

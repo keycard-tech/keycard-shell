@@ -129,10 +129,10 @@ void ui_task_entry(void* pvParameters) {
     case UI_CMD_QRSCAN:
       g_ui_cmd.result = qrscan_scan();
       break;
-    case UI_CMD_INPUT_STRING:
+    case UI_CMD_KEYPAD_TEST:
       g_ui_cmd.result = test_keypad();
       break;
-    case UI_CMD_LCD_BRIGHTNESS:
+    case UI_CMD_LCD_TEST:
       g_ui_cmd.result = test_colors();
       break;
     default:

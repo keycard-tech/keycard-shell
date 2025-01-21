@@ -28,6 +28,12 @@ extern const uint8_t FW_VERSION[4];
 #define APP_ALWAYS_INLINE inline __attribute__((always_inline))
 #define APP_WEAK __attribute__((weak))
 
+#ifdef TEST_APP
+#define TEST_APP_ACCESSIBLE
+#else
+#define TEST_APP_ACCESSIBLE static
+#endif
+
 #define OMG_BREAK() __asm__ volatile ("BKPT")
 
 #define APP_MAX(a,b)                    \
