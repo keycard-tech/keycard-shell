@@ -69,7 +69,7 @@ static void ui_info_nowait(const char* msg) {
 }
 
 static void core_keypad_test(apdu_t* apdu) {
-  g_ui_cmd.type = UI_CMD_INPUT_STRING;
+  g_ui_cmd.type = UI_CMD_KEYPAD_TEST;
   if (ui_signal_wait(0) != CORE_EVT_UI_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x01);
     return;
@@ -99,18 +99,19 @@ static void core_backlight_test(apdu_t* apdu) {
 
   if (ui_prompt("Brightness test", "Screen is at minimum brightness. Press is OK if readable, cancel otherwise") != CORE_EVT_UI_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x01);
-    return;
+    goto backlight_teardown;
   }
 
   hal_pwm_set_dutycycle(PWM_BACKLIGHT, 100);
   if (ui_prompt("Brightness test", "Screen is at full brightness. Press is OK if very bright, cancel otherwise") != CORE_EVT_UI_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x02);
-    return;
+    goto backlight_teardown;
   }
 
-  hal_pwm_set_dutycycle(PWM_BACKLIGHT, 75);
-
   core_usb_err_sw(apdu, 0x90, 0x00);
+
+backlight_teardown:
+  hal_pwm_set_dutycycle(PWM_BACKLIGHT, 75);
 }
 
 static void core_lcd_test(apdu_t* apdu) {
@@ -213,6 +214,7 @@ static void core_test_run(apdu_t* apdu) {
     break;
   case P1_TEST_CAMERA:
     core_camera_test(apdu);
+    break;
   default:
     core_usb_err_sw(apdu, 0x6a, 0x86);
   }
