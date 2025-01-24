@@ -107,12 +107,14 @@ void ui_task_entry(void* pvParameters) {
     vTaskSuspend(NULL);
   }
 
-  hal_pwm_set_dutycycle(PWM_BACKLIGHT, 50);
+  hal_pwm_set_dutycycle(PWM_BACKLIGHT, 75);
   screen_fill_area(&screen_fullarea, SCREEN_COLOR_BLACK);
 
   g_ui_cmd.received = 0;
 
   while(1) {
+    g_ui_ctx.battery = pwr_battery_level();
+
     if (!g_ui_cmd.received && ((ui_wait_event(portMAX_DELAY) & UI_CMD_EVT) == 0)) {
       continue;
     }

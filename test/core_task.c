@@ -33,6 +33,8 @@ const uint8_t TEST_AID[] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01
 #define TEST_GPIO_POLL_MS 5
 #define TEST_GPIO_TIMEOUT_MS 10000
 
+static uint32_t unplugged_vbat;
+
 app_err_t core_usb_get_app_config(apdu_t* cmd);
 
 static core_evt_t ui_info_usb(const char* msg) {
@@ -186,6 +188,24 @@ static void core_card_presence_test(apdu_t* apdu) {
 }
 
 static void core_usb_test(apdu_t* apdu) {
+  if ((unplugged_vbat == 0) || unplugged_vbat >= 4600) {
+    core_usb_err_sw(apdu, 0x6f, 0x01);
+    return;
+  }
+
+  uint32_t plugged_vbat;
+  hal_adc_read(ADC_VBAT, &plugged_vbat);
+
+  if (plugged_vbat < 4600) {
+    core_usb_err_sw(apdu, 0x6f, 0x02);
+    return;
+  }
+
+  if (!usb_connected()) {
+    core_usb_err_sw(apdu, 0x6f, 0x03);
+    return;
+  }
+
   core_usb_err_sw(apdu, 0x90, 0x00);
 }
 
@@ -258,11 +278,12 @@ void core_task_entry(void* pvParameters) {
   ui_info_nowait("Unplug USB");
 
   while (usb_connected()) {
-    vTaskDelay(pdMS_TO_TICKS(5));
+    vTaskDelay(pdMS_TO_TICKS(TEST_GPIO_POLL_MS));
   }
 
-  g_core.ready = true;
+  hal_adc_read(ADC_VBAT, &unplugged_vbat);
 
+  g_core.ready = true;
   ui_info_usb("Plug USB and connect testbench");
 
   while (1) {
