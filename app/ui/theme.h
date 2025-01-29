@@ -10,7 +10,7 @@
 #define TH_COLOR_FG SCREEN_COLOR_WHITE
 #define TH_COLOR_ACCENT SCREEN_RGB(0xff, 0x64, 0x00)
 #define TH_COLOR_FIELD_BG SCREEN_RGB(37, 41, 56)
-#define TH_COLOR_INACTIVE SCREEN_RGB(0xaf, 0xaf, 0xaf)
+#define TH_COLOR_INACTIVE SCREEN_RGB(0x7d, 0x7b, 0x8c)
 #define TH_COLOR_ERROR SCREEN_RGB(0xff, 0x00, 0x00)
 
 #define TH_COLOR_QR_BG TH_COLOR_BG
@@ -42,11 +42,12 @@
 #define TH_COLOR_PROGRESS_BG TH_COLOR_FIELD_BG
 #define TH_COLOR_PROGRESS_FG TH_COLOR_ACCENT
 
-#define TH_FONT_MENU &free_sans_18px
-#define TH_FONT_LABEL &free_sans_18px
-#define TH_FONT_DATA &plat_nomor_16px
-#define TH_FONT_TITLE &free_sans_18px
-#define TH_FONT_TEXT &free_sans_18px
+#define TH_FONT_MENU &inter_16px
+#define TH_FONT_LABEL &inter_16px
+#define TH_FONT_DATA &inter_16px
+#define TH_FONT_TITLE &inter_16px
+#define TH_FONT_TEXT &inter_16px
+#define TH_FONT_INFO &inter_20px
 #define TH_FONT_ICONS &icons_28px
 
 #define TH_MENU_HEIGHT 30

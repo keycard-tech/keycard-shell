@@ -21,8 +21,8 @@ typedef struct {
   uint8_t yAdvance;
 } font_t;
 
-extern const font_t free_sans_18px;
-extern const font_t plat_nomor_16px;
+extern const font_t inter_16px;
+extern const font_t inter_18px;
 extern const font_t icons_28px;
 
 typedef enum {
