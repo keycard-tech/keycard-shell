@@ -148,6 +148,7 @@ typedef enum {
 } usb_cmd_t;
 
 void usb_hid_send_rapdu();
+bool usb_send_busy();
 
 static inline bool usb_connected() {
   return hal_gpio_get(GPIO_VUSB_OK) == GPIO_RESET;

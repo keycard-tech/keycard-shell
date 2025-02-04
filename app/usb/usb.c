@@ -6,6 +6,7 @@
 
 static uint8_t _usb_packet[HAL_USB_MPS];
 static uint8_t _apdu_channel[2];
+static uint8_t _usb_send_busy = false;
 
 APP_ALIGNED(const static uint8_t kpro_hid_report_desc[27], 4) = {
   0x06, 0x00, 0xff,  // Usage Page (Vendor Defined 0xff00)
@@ -338,8 +339,13 @@ void usb_hid_send_rapdu() {
   uint8_t len = command_send(&g_core.usb_command, &packet[send_off], (HAL_USB_MPS - send_off));
 
   if (hal_usb_send(0x81, packet, HAL_USB_MPS) == HAL_SUCCESS) {
+    _usb_send_busy = true;
     command_send_ack(&g_core.usb_command, len);
   }
+}
+
+bool usb_send_busy() {
+  return _usb_send_busy;
 }
 
 void hal_usb_setup_cb(uint8_t* data) {
@@ -362,6 +368,8 @@ void hal_usb_setup_cb(uint8_t* data) {
 }
 
 void hal_usb_data_in_cb(uint8_t epaddr) {
+  _usb_send_busy = false;
+
   if (epaddr == 0) {
     hal_usb_next_recv(0, NULL, 0);
   } else {

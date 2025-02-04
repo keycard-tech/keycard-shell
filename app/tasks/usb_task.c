@@ -17,7 +17,7 @@ void usb_task_entry(void* pvParameters) {
       xTaskNotifyIndexed(APP_TASK(core), CORE_EVENT_IDX, CORE_USB_EVT, eSetBits);
     }
 
-    if (g_core.usb_command.status == COMMAND_OUTBOUND) {
+    if ((g_core.usb_command.status == COMMAND_OUTBOUND) && !usb_send_busy()) {
       usb_hid_send_rapdu();
     }
 
