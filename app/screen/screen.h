@@ -74,6 +74,7 @@ hal_err_t screen_draw_glyph(const screen_text_ctx_t* ctx, const glyph_t* glyph);
 hal_err_t screen_draw_char(const screen_text_ctx_t* ctx, uint32_t c);
 hal_err_t screen_draw_chars(screen_text_ctx_t* ctx, const char* str, int len);
 hal_err_t screen_draw_string(screen_text_ctx_t* ctx, const char* str);
+size_t screen_string_width(screen_text_ctx_t* ctx, const char* str);
 hal_err_t screen_draw_centered_string(screen_text_ctx_t* ctx, const char* str);
 size_t screen_draw_text(screen_text_ctx_t* ctx, uint16_t max_x, uint16_t max_y, const uint8_t* text, size_t len, bool dry_run, bool centered);
 hal_err_t screen_fill_area(const screen_area_t* area, uint16_t color);

@@ -114,18 +114,18 @@ void menu_render_entry(const menu_entry_t* entry, uint8_t is_selected, uint16_t 
   screen_text_ctx_t ctx;
   ctx.font = TH_FONT_MENU;
 
-  if (is_selected) {
-    ctx.bg = TH_COLOR_MENU_SELECTED_BG;
-    ctx.fg = TH_COLOR_MENU_SELECTED_FG;
-  } else {
-    ctx.bg = TH_COLOR_MENU_BG;
-    ctx.fg = TH_COLOR_MENU_FG;
-  }
-
   ctx.x = TH_MENU_LEFT_MARGIN;
   ctx.y = yOff;
 
-  dialog_line(&ctx, LSTR(entry->label_id), TH_MENU_HEIGHT);
+  if (is_selected) {
+    ctx.bg = TH_COLOR_MENU_SELECTED_BG;
+    ctx.fg = TH_COLOR_MENU_SELECTED_FG;
+    dialog_constrast_line(&ctx, LSTR(entry->label_id), TH_MENU_CONSTRAST_PADDING, TH_MENU_HEIGHT);
+  } else {
+    ctx.bg = TH_COLOR_MENU_BG;
+    ctx.fg = TH_COLOR_MENU_FG;
+    dialog_line(&ctx, LSTR(entry->label_id), TH_MENU_HEIGHT);
+  }
 
   if (g_ui_cmd.params.menu.marked == entry->label_id) {
     screen_area_t mark = {

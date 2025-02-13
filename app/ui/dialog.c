@@ -91,9 +91,24 @@ app_err_t dialog_line(screen_text_ctx_t* ctx, const char* str, uint16_t line_hei
   return err;
 }
 
-app_err_t dialog_separator(uint16_t yOff) {
-  screen_area_t fillarea = { 0, yOff, SCREEN_WIDTH, TH_SEP_HEIGHT };
-  return screen_fill_area(&fillarea, TH_COLOR_SEP) == HAL_SUCCESS? ERR_OK : ERR_HW;
+app_err_t dialog_constrast_line(screen_text_ctx_t* ctx, const char* str, uint16_t padding, uint16_t line_height) {
+  screen_area_t fillarea = { 0, ctx->y, SCREEN_WIDTH, line_height };
+  screen_fill_area(&fillarea, ctx->fg);
+
+  screen_area_t constrast = {
+      ctx->x - padding,
+      ctx->y + (padding / 2),
+      screen_string_width(ctx, str) + (padding * 2),
+      line_height - (padding / 2)
+  };
+
+  screen_fill_area(&constrast, ctx->bg);
+
+  uint16_t tmp = ctx->y;
+  ctx->y += ((line_height - ctx->font->yAdvance) / 2);
+  app_err_t err = screen_draw_string(ctx, str) == HAL_SUCCESS? ERR_OK : ERR_HW;
+  ctx->y = tmp + line_height;
+  return err;
 }
 
 app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg, uint16_t icon) {

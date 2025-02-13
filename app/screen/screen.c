@@ -275,6 +275,18 @@ hal_err_t screen_draw_string(screen_text_ctx_t* ctx, const char* str) {
   return HAL_SUCCESS;
 }
 
+size_t screen_string_width(screen_text_ctx_t* ctx, const char* str) {
+  char c;
+  size_t res = 0;
+
+  while((c = *(str++))) {
+    const glyph_t* glyph = screen_lookup_glyph(ctx->font, (uint32_t) c);
+    res += glyph->xAdvance;
+  }
+
+  return res;
+}
+
 hal_err_t screen_draw_centered_string(screen_text_ctx_t* ctx, const char* str) {
   return screen_draw_text(ctx, (SCREEN_WIDTH - ctx->x), (ctx->y + ctx->font->yAdvance), (uint8_t*) str, strlen(str), false, true) == 0 ? ERR_OK : ERR_FULL;
 }
