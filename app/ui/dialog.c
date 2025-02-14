@@ -80,34 +80,43 @@ static app_err_t dialog_wait_paged(size_t* page, size_t last_page) {
   }
 }
 
-app_err_t dialog_line(screen_text_ctx_t* ctx, const char* str, uint16_t line_height) {
+app_err_t dialog_begin_line(screen_text_ctx_t* ctx, uint16_t line_height) {
   screen_area_t fillarea = { 0, ctx->y, SCREEN_WIDTH, line_height };
-  screen_fill_area(&fillarea, ctx->bg);
-
-  uint16_t tmp = ctx->y;
+  ctx->v1 = ctx->y;
+  ctx->v2 = line_height;
   ctx->y += ((line_height - ctx->font->yAdvance) / 2);
+
+  return screen_fill_area(&fillarea, ctx->bg) == HAL_SUCCESS? ERR_OK : ERR_HW;
+}
+
+app_err_t dialog_end_line(screen_text_ctx_t* ctx) {
+  ctx->y = ctx->v1 + ctx->v2;
+  return ERR_OK;
+}
+
+app_err_t dialog_line(screen_text_ctx_t* ctx, const char* str, uint16_t line_height) {
+  dialog_begin_line(ctx, line_height);
   app_err_t err = screen_draw_string(ctx, str) == HAL_SUCCESS? ERR_OK : ERR_HW;
-  ctx->y = tmp + line_height;
+  dialog_end_line(ctx);
   return err;
 }
 
-app_err_t dialog_constrast_line(screen_text_ctx_t* ctx, const char* str, uint16_t padding, uint16_t line_height) {
-  screen_area_t fillarea = { 0, ctx->y, SCREEN_WIDTH, line_height };
-  screen_fill_area(&fillarea, ctx->fg);
-
-  screen_area_t constrast = {
+app_err_t dialog_inverted_string(screen_text_ctx_t* ctx, const char* str, uint16_t padding) {
+  screen_area_t padarea = {
       ctx->x - padding,
-      ctx->y + (padding / 2),
+      ctx->y - (padding / 2),
       screen_string_width(ctx, str) + (padding * 2),
-      line_height - (padding / 2)
+      ctx->font->yAdvance + padding
   };
 
-  screen_fill_area(&constrast, ctx->bg);
+  screen_fill_area(&padarea, ctx->fg);
 
-  uint16_t tmp = ctx->y;
-  ctx->y += ((line_height - ctx->font->yAdvance) / 2);
+  uint16_t tmp = ctx->fg;
+  ctx->fg = ctx->bg;
+  ctx->bg = tmp;
   app_err_t err = screen_draw_string(ctx, str) == HAL_SUCCESS? ERR_OK : ERR_HW;
-  ctx->y = tmp + line_height;
+  ctx->bg = ctx->fg;
+  ctx->fg = tmp;
   return err;
 }
 

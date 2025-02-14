@@ -110,33 +110,44 @@ const menu_t menu_keycard_blocked = {
 
 #define MENU_MAX_DEPTH 5
 
+typedef app_err_t (*menu_draw_func_t)(screen_text_ctx_t* ctx, const char* str);
+
+static app_err_t menu_draw_inverted(screen_text_ctx_t* ctx, const char* str) {
+  return dialog_inverted_string(ctx, str, TH_MENU_CONSTRAST_PADDING);
+}
+
 void menu_render_entry(const menu_entry_t* entry, uint8_t is_selected, uint16_t yOff) {
   screen_text_ctx_t ctx;
   ctx.font = TH_FONT_MENU;
 
   ctx.x = TH_MENU_LEFT_MARGIN;
   ctx.y = yOff;
+  menu_draw_func_t menu_draw;
 
   if (is_selected) {
     ctx.bg = TH_COLOR_MENU_SELECTED_BG;
     ctx.fg = TH_COLOR_MENU_SELECTED_FG;
-    dialog_constrast_line(&ctx, LSTR(entry->label_id), TH_MENU_CONSTRAST_PADDING, TH_MENU_HEIGHT);
+    menu_draw = menu_draw_inverted;
   } else {
     ctx.bg = TH_COLOR_MENU_BG;
     ctx.fg = TH_COLOR_MENU_FG;
-    dialog_line(&ctx, LSTR(entry->label_id), TH_MENU_HEIGHT);
+    menu_draw = (menu_draw_func_t) screen_draw_string;
   }
 
-  if (g_ui_cmd.params.menu.marked == entry->label_id) {
-    screen_area_t mark = {
-        .width = TH_MENU_MARK_WIDTH,
-        .height = TH_MENU_MARK_HEIGHT,
-        .x = SCREEN_WIDTH - TH_MENU_RIGHT_MARGIN - TH_MENU_MARK_WIDTH,
-        .y = yOff + ((TH_MENU_HEIGHT / 2) - (TH_MENU_MARK_HEIGHT / 2))
-    };
+  dialog_begin_line(&ctx, TH_MENU_HEIGHT);
+  menu_draw(&ctx, LSTR(entry->label_id));
 
-    screen_fill_area(&mark, TH_COLOR_MENU_MARK);
+  ctx.x += TH_MENU_CONSTRAST_PADDING;
+
+  if (is_selected && (entry->submenu != NULL)) {
+    FONT_ICON_AS_STRING(attr, FONT_RIGHT_CHEVRON)
+    menu_draw(&ctx, attr);
+  } else if (g_ui_cmd.params.menu.marked == entry->label_id) {
+    FONT_ICON_AS_STRING(attr, FONT_CHECKMARK)
+    menu_draw(&ctx, attr);
   }
+
+  dialog_end_line(&ctx);
 }
 
 enum menu_draw_mode {

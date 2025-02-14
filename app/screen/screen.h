@@ -20,6 +20,8 @@ typedef struct {
   uint16_t bg;
   uint16_t x;
   uint16_t y;
+  uint16_t v1;
+  uint16_t v2;
 } screen_text_ctx_t;
 
 extern const screen_area_t screen_fullarea;
