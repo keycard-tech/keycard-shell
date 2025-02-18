@@ -121,15 +121,16 @@ app_err_t dialog_inverted_string(screen_text_ctx_t* ctx, const char* str, uint16
 }
 
 app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg, uint16_t icon) {
-  screen_text_ctx_t ctx = { TH_FONT_TITLE, fg, bg, TH_TITLE_LEFT_MARGIN, 0 };
-  if (dialog_line(&ctx, title, TH_TITLE_HEIGHT) != ERR_OK) {
-    return ERR_HW;
-  }
+  screen_area_t area = { 0, 0, SCREEN_WIDTH, TH_TITLE_HEIGHT };
+  screen_fill_area(&area, bg);
+
+  screen_text_ctx_t ctx = { TH_FONT_TITLE, fg, bg, TH_TITLE_LEFT_MARGIN, TH_TITLE_TOP_MARGIN };
+  screen_draw_string(&ctx, title);
 
   ctx.font = TH_FONT_ICONS;
   ctx.fg = icon;
-  ctx.y = 0;
-  ctx.x = TH_TITLE_ICON_POSITION;
+  ctx.x = TH_TITLE_ICON_LEFT_MARGIN;
+  ctx.y = TH_TITLE_ICON_TOP_MARGIN;
 
   uint8_t i = g_ui_ctx.battery / 25;
   if (i > 5) {
@@ -182,7 +183,7 @@ app_err_t dialog_nav_hints_colors(icons_t left, icons_t right, uint16_t bg, uint
 }
 
 app_err_t dialog_pager(size_t page, size_t last_page) {
-  uint8_t page_indicator[UINT32_STRING_LEN * 2];
+  uint8_t page_indicator[(UINT32_STRING_LEN * 2) + 4];
   size_t total_len = 0;
 
   uint8_t page_str[UINT32_STRING_LEN];
