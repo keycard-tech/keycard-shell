@@ -182,9 +182,11 @@ app_err_t dialog_nav_hints_colors(icons_t left, icons_t right, uint16_t bg, uint
   return ERR_OK;
 }
 
-app_err_t dialog_pager(size_t page, size_t last_page) {
+app_err_t dialog_pager_colors(size_t page, size_t last_page, uint16_t bg, uint16_t fg) {
   uint8_t page_indicator[(UINT32_STRING_LEN * 2) + 4];
   size_t total_len = 0;
+  page_indicator[total_len++] = FONT_LEFT_CHEVRON;
+  page_indicator[total_len++] = ' ';
 
   uint8_t page_str[UINT32_STRING_LEN];
   uint8_t* p = u32toa(page + 1, page_str, UINT32_STRING_LEN);
@@ -192,20 +194,25 @@ app_err_t dialog_pager(size_t page, size_t last_page) {
   memcpy(&page_indicator[total_len], p, p_len);
   total_len += p_len;
 
-  page_indicator[total_len++] = '/';
+  if (last_page != UINT32_MAX) {
+    page_indicator[total_len++] = '/';
 
-  p = u32toa(last_page + 1, page_str, UINT32_STRING_LEN);
-  p_len = strlen((char *) p);
-  memcpy(&page_indicator[total_len], p, p_len);
-  total_len += p_len;
+    p = u32toa(last_page + 1, page_str, UINT32_STRING_LEN);
+    p_len = strlen((char *) p);
+    memcpy(&page_indicator[total_len], p, p_len);
+    total_len += p_len;
+  }
+
+  page_indicator[total_len++] = ' ';
+  page_indicator[total_len++] = FONT_RIGHT_CHEVRON;
   page_indicator[total_len] = '\0';
 
   screen_text_ctx_t ctx = {
       .x = 0,
       .y = SCREEN_HEIGHT - (TH_FONT_TITLE)->yAdvance,
       .font = TH_FONT_TITLE,
-      .bg = TH_COLOR_BG,
-      .fg = TH_COLOR_INACTIVE,
+      .bg = bg,
+      .fg = fg,
   };
 
   screen_draw_centered_string(&ctx, (char*) page_indicator);

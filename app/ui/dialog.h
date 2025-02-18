@@ -16,7 +16,7 @@ app_err_t dialog_inverted_string(screen_text_ctx_t* ctx, const char* str, uint16
 app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg, uint16_t icon);
 app_err_t dialog_footer_colors(uint16_t yOff, uint16_t bg);
 app_err_t dialog_nav_hints_colors(icons_t left, icons_t right, uint16_t bg, uint16_t fg);
-app_err_t dialog_pager(size_t page, size_t last_page);
+app_err_t dialog_pager_colors(size_t page, size_t last_page, uint16_t bg, uint16_t fg);
 app_err_t dialog_margin(uint16_t yOff, uint16_t height);
 
 app_err_t dialog_confirm_eth_tx();
@@ -40,6 +40,10 @@ static inline app_err_t dialog_footer(uint16_t yOff) {
 
 static inline app_err_t dialog_nav_hints(icons_t left, icons_t right) {
   return dialog_nav_hints_colors(left, right, TH_COLOR_BG, TH_COLOR_FG);
+}
+
+static inline app_err_t dialog_pager(size_t page, size_t last_page) {
+  return dialog_pager_colors(page, last_page, TH_COLOR_BG, TH_COLOR_FG);
 }
 
 #endif
