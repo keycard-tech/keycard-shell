@@ -209,7 +209,7 @@ app_err_t dialog_pager_colors(size_t page, size_t last_page, uint16_t bg, uint16
 
   screen_text_ctx_t ctx = {
       .x = 0,
-      .y = SCREEN_HEIGHT - (TH_FONT_TITLE)->yAdvance,
+      .y = TH_NAV_PAGER_TOP,
       .font = TH_FONT_TITLE,
       .bg = bg,
       .fg = fg,
