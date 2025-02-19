@@ -100,7 +100,7 @@ app_err_t qrout_display_ur() {
 }
 
 app_err_t qrout_display_address() {
-  qrout_prepare_canvas("");
+  qrout_prepare_canvas(g_ui_cmd.params.address.title);
 
   uint16_t qr_height = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - ((TH_FONT_DATA)->yAdvance * 2);
 

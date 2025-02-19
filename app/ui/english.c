@@ -78,6 +78,8 @@ const char *const i18n_english_strings[] = {
     "Scan with your EVM-chain wallet",
     "Scan with your Bitcoin wallet",
     "Scan with your OKX wallet",
+    "Your ETH address",
+    "Your BTC address",
 
     // PIN input
     "Insert your PIN",

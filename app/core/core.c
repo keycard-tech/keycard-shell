@@ -403,7 +403,7 @@ void core_display_public_multicoin() {
   ui_display_ur_qr(LSTR(QR_CONNECT_MULTIACCOUNT_TITLE), &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_MULTI_ACCOUNTS);
 }
 
-static void core_addresses(uint32_t purpose, uint32_t coin, core_addr_encoder_t encoder) {
+static void core_addresses(const char* title, uint32_t purpose, uint32_t coin, core_addr_encoder_t encoder) {
   uint32_t index = 0;
 
   purpose = rev32(purpose);
@@ -424,7 +424,7 @@ static void core_addresses(uint32_t purpose, uint32_t coin, core_addr_encoder_t 
     }
 
     encoder(g_core.data.key.pub, (char*) g_mem_heap);
-    ui_display_address_qr((char*) g_mem_heap, &index);
+    ui_display_address_qr(title, (char*) g_mem_heap, &index);
   } while(index != UINT32_MAX);
 }
 
@@ -441,11 +441,11 @@ static void core_btc_addr_encoder(const uint8_t* key, char* addr) {
 }
 
 void core_addresses_ethereum() {
-  core_addresses(ETH_PURPOSE, ETH_COIN, core_eth_addr_encoder);
+  core_addresses(LSTR(QR_ADDRESS_ETH_TITLE), ETH_PURPOSE, ETH_COIN, core_eth_addr_encoder);
 }
 
 void core_addresses_bitcoin() {
-  core_addresses(BTC_NATIVE_SEGWIT_PURPOSE, BTC_MAINNET_COIN, core_btc_addr_encoder);
+  core_addresses(LSTR(QR_ADDRESS_BTC_TITLE), BTC_NATIVE_SEGWIT_PURPOSE, BTC_MAINNET_COIN, core_btc_addr_encoder);
 }
 
 core_evt_t core_wait_event(uint32_t timeout, uint8_t accept_usb) {

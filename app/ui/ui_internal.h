@@ -91,6 +91,7 @@ struct cmd_qrout {
 };
 
 struct cmd_address_qr {
+  const char* title;
   const char* address;
   uint32_t* index;
 };
