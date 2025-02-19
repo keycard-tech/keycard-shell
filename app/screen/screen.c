@@ -360,7 +360,7 @@ size_t screen_draw_text(screen_text_ctx_t* ctx, uint16_t max_x, uint16_t max_y, 
 
     if (!dry_run) {
       if (centered) {
-        ctx->x = (SCREEN_WIDTH - line_end_x) / 2;
+        ctx->x = (SCREEN_WIDTH - (line_end_x - start_x)) / 2;
       }
 
       if (screen_draw_glyphs(ctx, line, line_len) != HAL_SUCCESS) {
