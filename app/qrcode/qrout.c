@@ -50,7 +50,7 @@ static app_err_t qrout_display_single_ur(ur_out_t* ur) {
     return ERR_DATA;
   }
 
-  if (qrout_display(urstr, (SCREEN_HEIGHT - TH_QRCODE_VERTICAL_MARGIN)) != ERR_OK) {
+  if (qrout_display(urstr, (SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT)) != ERR_OK) {
     return ERR_DATA;
   }
 
@@ -73,7 +73,7 @@ static app_err_t qrout_display_animated_ur(ur_out_t* ur) {
       return ERR_DATA;
     }
 
-    if (qrout_display(urstr, (SCREEN_HEIGHT - TH_QRCODE_VERTICAL_MARGIN)) != ERR_OK) {
+    if (qrout_display(urstr, (SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT)) != ERR_OK) {
       return ERR_DATA;
     }
 
@@ -102,19 +102,21 @@ app_err_t qrout_display_ur() {
 app_err_t qrout_display_address() {
   qrout_prepare_canvas("");
 
+  uint16_t qr_height = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - ((TH_FONT_DATA)->yAdvance * 2);
+
   screen_text_ctx_t ctx = {
       .bg = SCREEN_COLOR_WHITE,
       .fg = SCREEN_COLOR_BLACK,
       .font = TH_FONT_DATA,
       .x = TH_QRCODE_ADDR_MARGIN,
-      .y = (SCREEN_HEIGHT - TH_QRCODE_VERTICAL_MARGIN - (TH_DATA_HEIGHT * 2) - TH_TEXT_VERTICAL_MARGIN)
+      .y = qr_height + TH_QRCODE_VERTICAL_MARGIN
   };
 
-  if (qrout_display(g_ui_cmd.params.address.address, ctx.y) != ERR_OK) {
+  if (qrout_display(g_ui_cmd.params.address.address, qr_height) != ERR_OK) {
     return ERR_DATA;
   }
 
-  screen_draw_centered_string(&ctx, g_ui_cmd.params.address.address);
+  screen_draw_text(&ctx, (SCREEN_WIDTH - TH_QRCODE_ADDR_MARGIN), SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT, (uint8_t*) g_ui_cmd.params.address.address, strlen(g_ui_cmd.params.address.address), false, true);
 
   dialog_pager_colors(*g_ui_cmd.params.address.index, UINT32_MAX, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
 
