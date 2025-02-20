@@ -60,7 +60,9 @@ bool address_check_prefix(const uint8_t *addr, uint32_t address_type) {
 void address_format(addr_type_t addr_type, const uint8_t data[RIPEMD160_DIGEST_LENGTH], char out[MAX_ADDR_LEN]) {
   switch(addr_type) {
   case ADDR_ETH:
-    ethereum_address_checksum(data, out);
+    out[0] = '0';
+    out[1] = 'x';
+    ethereum_address_checksum(data, &out[2]);
     return;
   case ADDR_BTC_LEGACY:
     bitcoin_legacy_address(data, BTC_P2PKH_ADDR_PREFIX, out);

@@ -1732,6 +1732,10 @@ size_t bn_format(const bignum256 *amount, const char *prefix, const char *suffix
   for (int i = suffix_length - 1; i >= 0; --i)
     BN_FORMAT_ADD_OUTPUT_CHAR(suffix[i])
 
+  if (suffix_length) {
+    BN_FORMAT_ADD_OUTPUT_CHAR(' ');
+  }
+
   // amount //= 10**exponent
   for (; exponent < 0; ++exponent) {
     // if temp == 0, there is no need to divide it by 10 anymore
