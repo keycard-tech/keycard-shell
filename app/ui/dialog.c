@@ -224,45 +224,54 @@ app_err_t dialog_margin(uint16_t yOff, uint16_t height) {
   return screen_fill_area(&area, TH_COLOR_BG);
 }
 
-static inline void dialog_label(screen_text_ctx_t *ctx, const char* label) {
+static inline void dialog_label_ctx(screen_text_ctx_t *ctx) {
   ctx->font = TH_FONT_LABEL;
   ctx->fg = TH_COLOR_LABEL_FG;
   ctx->bg = TH_COLOR_LABEL_BG;
-  ctx->x = TH_LABEL_LEFT_MARGIN;
-  dialog_line(ctx, label, TH_LABEL_HEIGHT);
+  ctx->x = TH_TEXT_HORIZONTAL_MARGIN;
+}
+
+static inline void dialog_label(screen_text_ctx_t *ctx, const char* label) {
+  dialog_label_ctx(ctx);
+  dialog_begin_line(ctx, TH_LABEL_HEIGHT);
+  screen_draw_string(ctx, label);
+}
+
+static inline void dialog_label_only(screen_text_ctx_t *ctx, const char* label) {
+  dialog_label(ctx, label);
+  dialog_end_line(ctx);
+}
+
+static inline void dialog_data_ctx(screen_text_ctx_t *ctx) {
+  ctx->font = TH_FONT_DATA;
+  ctx->fg = TH_COLOR_DATA_FG;
+  ctx->bg = TH_COLOR_DATA_BG;
+  ctx->x = TH_LABEL_WIDTH;
 }
 
 static inline void dialog_data(screen_text_ctx_t *ctx, const char* data) {
-  ctx->font = TH_FONT_DATA;
-  ctx->fg = TH_COLOR_DATA_FG;
-  ctx->bg = TH_COLOR_DATA_BG;
-  ctx->x = TH_DATA_LEFT_MARGIN;
-  dialog_line(ctx, data, TH_DATA_HEIGHT);
-}
-
-static inline void dialog_inline_data(screen_text_ctx_t *ctx, const char* data) {
-  ctx->font = TH_FONT_DATA;
-  ctx->fg = TH_COLOR_DATA_FG;
-  ctx->bg = TH_COLOR_DATA_BG;
-  ctx->x = TH_INLINE_DATA_LEFT_MARGIN;
-
-  uint16_t tmp = ctx->y;
-  ctx->y = ctx->y - TH_LABEL_HEIGHT + ((TH_LABEL_HEIGHT - ctx->font->yAdvance) / 2);
+  dialog_data_ctx(ctx);
   screen_draw_string(ctx, data);
-  ctx->y = tmp;
+  dialog_end_line(ctx);
 }
 
 static void dialog_chain(screen_text_ctx_t *ctx, const char* name) {
   dialog_label(ctx, LSTR(TX_CHAIN));
-  dialog_inline_data(ctx, name);
+  dialog_data(ctx, name);
 }
 
 static void dialog_address(screen_text_ctx_t *ctx, i18n_str_id_t label, addr_type_t addr_type, const uint8_t* addr) {
   char str[MAX_ADDR_LEN];
   address_format(addr_type, addr, str);
 
-  dialog_label(ctx, LSTR(label));
-  dialog_data(ctx, str);
+  dialog_label_ctx(ctx);
+  dialog_begin_line(ctx, TH_LABEL_HEIGHT * 2);
+  ctx->y = ctx->v1;
+  screen_draw_string(ctx, LSTR(label));
+
+  dialog_data_ctx(ctx);
+  screen_draw_text(ctx, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y +(TH_LABEL_HEIGHT * 2), (uint8_t*) str, strlen(str), false, false);
+  dialog_end_line(ctx);
 }
 
 static void dialog_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, const bignum256* amount, int decimals, const char* ticker) {
@@ -270,7 +279,7 @@ static void dialog_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, const bi
   bn_format(amount, NULL, ticker, decimals, 0, 0, ',', tmp, sizeof(tmp));
 
   dialog_label(ctx, LSTR(prompt));
-  dialog_inline_data(ctx, tmp);
+  dialog_data(ctx, tmp);
 }
 
 static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint64_t amount) {
@@ -279,7 +288,7 @@ static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint
   uint8_t* p = u64toa(amount, tmp, UINT64_STRING_LEN);
 
   dialog_label(ctx, LSTR(prompt));
-  dialog_inline_data(ctx, (char*) p);
+  dialog_data(ctx, (char*) p);
 }
 
 static void dialog_indexed_string(char* dst, const char* label, size_t index) {
@@ -355,7 +364,7 @@ static app_err_t dialog_confirm_eth_transfer(eth_data_type_t data_type) {
       size_t offset = pages[page];
 
       if (page == 1) {
-        dialog_label(&ctx, LSTR(TX_DATA));
+        dialog_label_only(&ctx, LSTR(TX_DATA));
         ctx.font = TH_FONT_TEXT;
         ctx.fg = TH_COLOR_TEXT_FG;
         ctx.bg = TH_COLOR_TEXT_BG;
@@ -463,7 +472,7 @@ void dialog_confirm_btc_summary(const btc_tx_ctx_t* tx) {
 
 
   if (has_sighash_none) {
-    ctx.x = TH_DATA_LEFT_MARGIN;
+    ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
     screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (const uint8_t*) LSTR(TX_SIGHASH_WARNING), strlen(LSTR(TX_SIGHASH_WARNING)), false, false);
   } else {
     char buf[BIGNUM_STRING_LEN];
@@ -518,7 +527,7 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
 
   while((i < tx->input_count) && (displayed < BTC_DIALOG_PAGE_ITEMS)) {
     dialog_indexed_string(buf, LSTR(TX_INPUT), i);
-    dialog_label(&ctx, buf);
+    dialog_label_only(&ctx, buf);
 
     dialog_label(&ctx, LSTR(TX_ADDRESS));
     script_output_to_address(tx->input_data[i].script_pubkey, tx->input_data[i].script_pubkey_len, buf);
@@ -530,10 +539,10 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
 
     dialog_label(&ctx, LSTR(TX_SIGN_SCHEME));
     dialog_btc_sign_scheme_format(buf, tx->input_data[i].sighash_flag);
-    dialog_inline_data(&ctx, buf);
+    dialog_data(&ctx, buf);
 
     dialog_label(&ctx, LSTR(TX_SIGNED));
-    dialog_inline_data(&ctx, tx->input_data[i].can_sign ? LSTR(TX_YES) : LSTR(TX_NO));
+    dialog_data(&ctx, tx->input_data[i].can_sign ? LSTR(TX_YES) : LSTR(TX_NO));
 
     i++;
     displayed++;
@@ -543,7 +552,7 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
 
   while ((i < tx->output_count) && (displayed < BTC_DIALOG_PAGE_ITEMS)) {
     dialog_indexed_string(buf, LSTR(TX_OUTPUT), i);
-    dialog_label(&ctx, buf);
+    dialog_label_only(&ctx, buf);
 
     dialog_label(&ctx, LSTR(TX_ADDRESS));
     script_output_to_address(tx->outputs[i].script, tx->outputs[i].script_len, buf);
@@ -554,7 +563,7 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
     dialog_btc_amount(&ctx, TX_AMOUNT, t);
 
     dialog_label(&ctx, LSTR(TX_CHANGE));
-    dialog_inline_data(&ctx, tx->output_is_change[i] ? LSTR(TX_YES) : LSTR(TX_NO));
+    dialog_data(&ctx, tx->output_is_change[i] ? LSTR(TX_YES) : LSTR(TX_NO));
 
     i++;
     displayed++;
@@ -698,7 +707,7 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
         dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, &eip712->address[EIP712_ADDR_OFF]);
       } else {
         dialog_address(&ctx, TX_SIGNER, g_ui_cmd.params.msg.addr_type, g_ui_cmd.params.msg.addr);
-        dialog_label(&ctx, LSTR(MSG_LABEL));
+        dialog_label_only(&ctx, LSTR(MSG_LABEL));
       }
 
       ctx.font = TH_FONT_TEXT;
