@@ -94,13 +94,6 @@ app_err_t dialog_end_line(screen_text_ctx_t* ctx) {
   return ERR_OK;
 }
 
-app_err_t dialog_line(screen_text_ctx_t* ctx, const char* str, uint16_t line_height) {
-  dialog_begin_line(ctx, line_height);
-  app_err_t err = screen_draw_string(ctx, str) == HAL_SUCCESS? ERR_OK : ERR_HW;
-  dialog_end_line(ctx);
-  return err;
-}
-
 app_err_t dialog_inverted_string(screen_text_ctx_t* ctx, const char* str, uint16_t padding) {
   screen_area_t padarea = {
       ctx->x - padding,

@@ -10,7 +10,6 @@
 app_err_t dialog_begin_line(screen_text_ctx_t* ctx, uint16_t line_height);
 app_err_t dialog_end_line(screen_text_ctx_t* ctx);
 
-app_err_t dialog_line(screen_text_ctx_t* ctx, const char* str, uint16_t line_height);
 app_err_t dialog_inverted_string(screen_text_ctx_t* ctx, const char* str, uint16_t padding);
 
 app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg, uint16_t icon);
