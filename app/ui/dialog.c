@@ -382,20 +382,30 @@ static app_err_t dialog_confirm_approval(const eth_approve_info* info, const uin
   screen_text_ctx_t ctx;
 
   dialog_title(LSTR(TX_CONFIRM_APPROVAL));
-  ctx.y = TH_TITLE_HEIGHT;
 
-  dialog_address(&ctx, TX_SIGNER, ADDR_ETH, signer);
-  dialog_address(&ctx, TX_SPENDER, ADDR_ETH, info->spender);
-  dialog_chain(&ctx, info->chain.name);
-  dialog_amount(&ctx, TX_AMOUNT, &info->value, info->token.decimals, info->token.ticker);
+  size_t page = 0;
+  app_err_t ret = ERR_NEED_MORE_DATA;
+  while(ret == ERR_NEED_MORE_DATA) {
+    ctx.y = TH_TITLE_HEIGHT;
 
-  if (has_fees) {
-    dialog_amount(&ctx, TX_FEE, &info->fees, 18, info->chain.ticker);
+    if (page == 0) {
+      dialog_address(&ctx, TX_SIGNER, ADDR_ETH, signer);
+      dialog_address(&ctx, TX_SPENDER, ADDR_ETH, info->spender);
+      dialog_chain(&ctx, info->chain.name);
+      dialog_amount(&ctx, TX_AMOUNT, &info->value, info->token.decimals, info->token.ticker);
+
+      if (has_fees) {
+        dialog_amount(&ctx, TX_FEE, &info->fees, 18, info->chain.ticker);
+      }
+    } else {
+      dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, info->token.addr);
+    }
+
+    dialog_footer(ctx.y);
+    ret = dialog_wait_paged(&page, 1);
   }
 
-  dialog_footer(ctx.y);
-
-  return dialog_wait_dismiss_cancellable();
+  return ret;
 }
 
 app_err_t dialog_confirm_eth_tx() {
