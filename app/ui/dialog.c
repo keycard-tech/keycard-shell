@@ -284,21 +284,6 @@ static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint
   dialog_data(ctx, (char*) p);
 }
 
-static void dialog_indexed_string(char* dst, const char* label, size_t index) {
-  size_t seg_len = strlen(label);
-  memcpy(dst, label, seg_len);
-  dst += seg_len;
-  *(dst++) = ' ';
-  *(dst++) = '#';
-
-  uint8_t tmp[11];
-  uint8_t* digits = u32toa(index, tmp, 11);
-  seg_len = strlen((char* ) digits);
-  memcpy(dst, digits, seg_len);
-  dst += seg_len;
-  *dst = '\0';
-}
-
 static app_err_t dialog_confirm_eth_transfer(eth_data_type_t data_type) {
   eth_transfer_info tx_info;
 
@@ -529,8 +514,9 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
   char buf[BIGNUM_STRING_LEN];
 
   while((i < tx->input_count) && (displayed < BTC_DIALOG_PAGE_ITEMS)) {
-    dialog_indexed_string(buf, LSTR(TX_INPUT), i);
-    dialog_label_only(&ctx, buf);
+    dialog_label(&ctx, LSTR(TX_INPUT));
+    char* idx = (char *) u32toa(i, (uint8_t *) buf, BIGNUM_STRING_LEN);
+    dialog_data(&ctx, idx);
 
     dialog_label(&ctx, LSTR(TX_ADDRESS));
     script_output_to_address(tx->input_data[i].script_pubkey, tx->input_data[i].script_pubkey_len, buf);
@@ -554,8 +540,9 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
   i -= tx->input_count;
 
   while ((i < tx->output_count) && (displayed < BTC_DIALOG_PAGE_ITEMS)) {
-    dialog_indexed_string(buf, LSTR(TX_OUTPUT), i);
-    dialog_label_only(&ctx, buf);
+    dialog_label(&ctx, LSTR(TX_OUTPUT));
+    char* idx = (char *) u32toa(i, (uint8_t *) buf, BIGNUM_STRING_LEN);
+    dialog_data(&ctx, idx);
 
     dialog_label(&ctx, LSTR(TX_ADDRESS));
     script_output_to_address(tx->outputs[i].script, tx->outputs[i].script_len, buf);
