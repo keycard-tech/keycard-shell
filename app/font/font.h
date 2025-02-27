@@ -24,6 +24,7 @@ typedef struct {
 extern const font_t inter_16px;
 extern const font_t inter_18px;
 extern const font_t icons_28px;
+extern const font_t navigation_24px;
 
 typedef enum {
   ICON_BATTERY_LOW = 0x80,
@@ -35,6 +36,16 @@ typedef enum {
   ICON_CIRCLE_FULL = 0x86,
   ICON_CIRCLE_EMPTY_LARGE = 0x87,
 } icons_t;
+
+typedef enum {
+  NAV_CIRCLE_FULL = 0x01,
+  NAV_CIRCLE_EMPTY = 0x02,
+  NAV_CIRCLE_FULL_SMALL = 0x03,
+  NAV_BACKSPACE_FULL = 0x04,
+  NAV_BACKSPACE_EMPTY = 0x05,
+  NAV_CANCEL_GLYPH = 0x06,
+  NAV_QR_GLYPH = 0x07
+} nav_icons_t;
 
 #define ICON_NAV_NEXT ICON_CIRCLE_FULL
 #define ICON_NAV_CONFIRM ICON_CIRCLE_EMPTY

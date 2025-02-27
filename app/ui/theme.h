@@ -47,6 +47,7 @@
 #define TH_FONT_TEXT &inter_16px
 #define TH_FONT_INFO &inter_20px
 #define TH_FONT_ICONS &icons_28px
+#define TH_NAV_ICONS &navigation_24px
 
 #define TH_MENU_HEIGHT 28
 #define TH_MENU_VERTICAL_MARGIN 4
@@ -73,6 +74,7 @@
 #define TH_QRCODE_ADDR_MARGIN 52
 
 #define TH_PIN_FIELD_VERTICAL_MARGIN 16
+#define TH_PIN_DIGIT_MARGIN 6
 #define TH_PUK_FIELD_VERTICAL_MARGIN 4
 
 #define TH_KEYBOARD_KEY_SIZE 32

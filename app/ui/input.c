@@ -45,29 +45,34 @@ const char KEYBOARD_MAP[] = {
 };
 
 static app_err_t input_render_secret(uint16_t yOff, int len, int pos) {
-  char secret[len + 1];
-
-  for (int i = 0; i < len; i++) {
-    if (i < pos) {
-      secret[i] = ICON_CIRCLE_FULL;
-    } else if (i == pos) {
-      secret[i] = ICON_CIRCLE_EMPTY_LARGE;
-    } else {
-      secret[i] = ICON_CIRCLE_EMPTY;
-    }
-  }
-
-  secret[len] = '\0';
+  uint16_t start_x = (SCREEN_WIDTH - ((len * (TH_NAV_ICONS)->yAdvance) + (TH_PIN_DIGIT_MARGIN * (len - 1)))) / 2;
 
   screen_text_ctx_t ctx = {
-      .bg = TH_COLOR_TEXT_BG,
-      .fg = TH_COLOR_TEXT_FG,
-      .font = TH_FONT_ICONS,
-      .x = 0,
+      .bg = TH_COLOR_BG,
+      .font = TH_NAV_ICONS,
+      .x = start_x,
       .y = yOff
   };
 
-  return screen_draw_centered_string(&ctx, secret);
+  char c;
+
+  for (int i = 0; i < len; i++) {
+    if (i < pos) {
+      c = NAV_CIRCLE_FULL;
+      ctx.fg = TH_COLOR_FG;
+    } else if (i == pos) {
+      c = NAV_CIRCLE_EMPTY;
+      ctx.fg = TH_COLOR_FG;
+    } else {
+      c = NAV_CIRCLE_FULL_SMALL;
+      ctx.fg = TH_COLOR_INACTIVE;
+    }
+
+    screen_draw_char(&ctx, c);
+    ctx.x += (TH_NAV_ICONS)->yAdvance + TH_PIN_DIGIT_MARGIN;
+  }
+
+  return ERR_OK;
 }
 
 static app_err_t input_pin_entry(const char* title, char* out, char* compare, bool dismissable) {
@@ -77,7 +82,7 @@ static app_err_t input_pin_entry(const char* title, char* out, char* compare, bo
   uint8_t position = 0;
   bool comparison_failed = false;
   bool prev_comparison = comparison_failed;
-  uint16_t start_y = (SCREEN_HEIGHT - ((TH_FONT_TEXT)->yAdvance + TH_PIN_FIELD_VERTICAL_MARGIN + (TH_FONT_ICONS)->yAdvance)) / 2;
+  uint16_t start_y = (SCREEN_HEIGHT - ((TH_FONT_TEXT)->yAdvance + TH_PIN_FIELD_VERTICAL_MARGIN + (TH_NAV_ICONS)->yAdvance)) / 2;
 
   screen_text_ctx_t ctx = {
       .bg = TH_COLOR_TEXT_BG,
@@ -172,9 +177,8 @@ app_err_t input_puk() {
   uint8_t position = 0;
 
   while(1) {
-    input_render_secret(ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN, 4, position);
-    input_render_secret((ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN) + ((TH_FONT_ICONS)->yAdvance + TH_PUK_FIELD_VERTICAL_MARGIN) , 4, position - 4);
-    input_render_secret((ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN) + (((TH_FONT_ICONS)->yAdvance + TH_PUK_FIELD_VERTICAL_MARGIN) * 2), 4, position - 8);
+    input_render_secret(ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN, 6, position);
+    input_render_secret((ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN) + ((TH_NAV_ICONS)->yAdvance + TH_PUK_FIELD_VERTICAL_MARGIN), 6, position - 6);
 
     keypad_key_t key = ui_wait_keypress(portMAX_DELAY);
     if (key == KEYPAD_KEY_BACK) {
