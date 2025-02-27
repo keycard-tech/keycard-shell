@@ -40,7 +40,7 @@ app_err_t qrout_display(const char* str, uint16_t max_y) {
 static void qrout_prepare_canvas(const char* title) {
   dialog_title_colors(title, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK, SCREEN_COLOR_BLACK);
   dialog_footer_colors(TH_TITLE_HEIGHT, SCREEN_COLOR_WHITE);
-  dialog_nav_hints_colors(0, ICON_NAV_NEXT, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
+  dialog_nav_hints_colors(ICON_NAV_NONE, ICON_NAV_NEXT, SCREEN_COLOR_WHITE);
 }
 
 static app_err_t qrout_display_single_ur(ur_out_t* ur) {

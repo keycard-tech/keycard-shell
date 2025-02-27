@@ -21,7 +21,7 @@
 #define BTC_DIALOG_PAGE_ITEMS 1
 
 static app_err_t dialog_wait_dismiss() {
-  dialog_nav_hints(0, ICON_NAV_NEXT);
+  dialog_nav_hints(ICON_NAV_NONE, ICON_NAV_NEXT);
 
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
@@ -140,11 +140,9 @@ app_err_t dialog_footer_colors(uint16_t yOff, uint16_t bg) {
   return screen_fill_area(&area, bg);
 }
 
-app_err_t dialog_nav_hints_colors(icons_t left, icons_t right, uint16_t bg, uint16_t fg) {
+app_err_t dialog_nav_hints_colors(nav_icon_t left, nav_icon_t right, uint16_t bg) {
   screen_text_ctx_t ctx = {
       .bg = bg,
-      .fg = fg,
-      .font = TH_FONT_ICONS,
       .x = TH_NAV_HINT_LEFT_X,
       .y = TH_NAV_HINT_TOP
   };
@@ -158,18 +156,18 @@ app_err_t dialog_nav_hints_colors(icons_t left, icons_t right, uint16_t bg, uint
 
   screen_fill_area(&hint_area, bg);
 
-  if (left != 0) {
-    screen_draw_char(&ctx, left);
+  if (left != ICON_NAV_NONE) {
+    icon_draw_nav(&ctx, left);
   }
 
-  ctx.fg = TH_COLOR_ACCENT;
+  ctx.bg = bg;
   ctx.x = TH_NAV_HINT_RIGHT_X;
   hint_area.x = SCREEN_WIDTH - TH_NAV_HINT_WIDTH;
 
   screen_fill_area(&hint_area, bg);
 
-  if (right != 0) {
-    screen_draw_char(&ctx, right);
+  if (right != ICON_NAV_NONE) {
+    icon_draw_nav(&ctx, right);
   }
 
   return ERR_OK;
@@ -178,7 +176,7 @@ app_err_t dialog_nav_hints_colors(icons_t left, icons_t right, uint16_t bg, uint
 app_err_t dialog_pager_colors(size_t page, size_t last_page, uint16_t bg, uint16_t fg) {
   uint8_t page_indicator[(UINT32_STRING_LEN * 2) + 4];
   size_t total_len = 0;
-  page_indicator[total_len++] = FONT_LEFT_CHEVRON;
+  page_indicator[total_len++] = SYM_LEFT_CHEVRON;
   page_indicator[total_len++] = ' ';
 
   uint8_t page_str[UINT32_STRING_LEN];
@@ -197,7 +195,7 @@ app_err_t dialog_pager_colors(size_t page, size_t last_page, uint16_t bg, uint16
   }
 
   page_indicator[total_len++] = ' ';
-  page_indicator[total_len++] = FONT_RIGHT_CHEVRON;
+  page_indicator[total_len++] = SYM_RIGHT_CHEVRON;
   page_indicator[total_len] = '\0';
 
   screen_text_ctx_t ctx = {

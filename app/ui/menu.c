@@ -109,6 +109,7 @@ const menu_t menu_keycard_blocked = {
 };
 
 #define MENU_MAX_DEPTH 5
+#define GLYPH_AS_STRING(__NAME__, __CODE__) char __NAME__[2] = { __CODE__, 0x00 }
 
 typedef app_err_t (*menu_draw_func_t)(screen_text_ctx_t* ctx, const char* str);
 
@@ -140,10 +141,10 @@ void menu_render_entry(const menu_entry_t* entry, uint8_t is_selected, uint16_t 
   ctx.x += TH_MENU_CONSTRAST_PADDING;
 
   if (is_selected && (entry->submenu != NULL)) {
-    FONT_ICON_AS_STRING(attr, FONT_RIGHT_CHEVRON)
+    GLYPH_AS_STRING(attr, SYM_RIGHT_CHEVRON);
     menu_draw(&ctx, attr);
   } else if (g_ui_cmd.params.menu.marked == entry->label_id) {
-    FONT_ICON_AS_STRING(attr, FONT_CHECKMARK)
+    GLYPH_AS_STRING(attr, SYM_CHECKMARK);
     menu_draw(&ctx, attr);
   }
 
