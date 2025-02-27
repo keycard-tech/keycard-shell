@@ -168,7 +168,7 @@ app_err_t input_puk() {
       .fg = TH_COLOR_TEXT_FG,
       .font = TH_FONT_TEXT,
       .x = 0,
-      .y = (SCREEN_HEIGHT - ((TH_FONT_TEXT)->yAdvance + TH_PIN_FIELD_VERTICAL_MARGIN + ((TH_FONT_ICONS)->yAdvance) * 3) + (TH_PUK_FIELD_VERTICAL_MARGIN * 2)) / 2
+      .y = (SCREEN_HEIGHT - ((TH_FONT_TEXT)->yAdvance + TH_PIN_FIELD_VERTICAL_MARGIN + ((TH_NAV_ICONS)->yAdvance) * 2) + (TH_PUK_FIELD_VERTICAL_MARGIN * 2)) / 2
   };
 
   screen_draw_centered_string(&ctx, (g_ui_cmd.params.input_pin.retries == PUK_NEW_CODE) ? LSTR(PUK_CREATE_TITLE) : LSTR(PUK_INPUT_TITLE));
