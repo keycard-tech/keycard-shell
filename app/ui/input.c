@@ -54,6 +54,13 @@ static app_err_t input_render_secret(uint16_t yOff, int len, int pos) {
       .y = yOff
   };
 
+  screen_area_t area = {
+      .x = start_x,
+      .y = yOff,
+      .width = (TH_NAV_ICONS)->yAdvance,
+      .height = (TH_NAV_ICONS)->yAdvance
+  };
+
   char c;
 
   for (int i = 0; i < len; i++) {
@@ -68,8 +75,10 @@ static app_err_t input_render_secret(uint16_t yOff, int len, int pos) {
       ctx.fg = TH_COLOR_INACTIVE;
     }
 
+    screen_fill_area(&area, TH_COLOR_BG);
     screen_draw_char(&ctx, c);
     ctx.x += (TH_NAV_ICONS)->yAdvance + TH_PIN_DIGIT_MARGIN;
+    area.x = ctx.x;
   }
 
   return ERR_OK;
@@ -356,11 +365,11 @@ static void input_render_editable_text_field(const char* str, int len, int sugge
       .y = field_area.y + field_area.height + TH_TEXT_FIELD_HINT_MARGIN
   };
 
-  screen_draw_string(&ctx, action_hint);
   field_area.y = ctx.y;
-  field_area.x = ctx.x;
-  field_area.width = SCREEN_WIDTH - ctx.x;
+  field_area.x = 0;
+  field_area.width = SCREEN_WIDTH;
   screen_fill_area(&field_area, ctx.bg);
+  screen_draw_string(&ctx, action_hint);
 }
 
 static void input_mnemonic_render(const char* word, int len, uint16_t idx) {

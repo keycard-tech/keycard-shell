@@ -16,7 +16,7 @@
 #define BIGNUM_STRING_LEN 84
 #define MAX_PAGE_COUNT 50
 #define MESSAGE_MAX_X (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN)
-#define MESSAGE_MAX_Y (SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT)
+#define MESSAGE_MAX_Y (SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - 16)
 
 #define BTC_DIALOG_PAGE_ITEMS 1
 
@@ -141,12 +141,6 @@ app_err_t dialog_footer_colors(uint16_t yOff, uint16_t bg) {
 }
 
 app_err_t dialog_nav_hints_colors(nav_icon_t left, nav_icon_t right, uint16_t bg) {
-  screen_text_ctx_t ctx = {
-      .bg = bg,
-      .x = TH_NAV_HINT_LEFT_X,
-      .y = TH_NAV_HINT_TOP
-  };
-
   screen_area_t hint_area = {
       .x = 0,
       .y = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT,
@@ -156,17 +150,23 @@ app_err_t dialog_nav_hints_colors(nav_icon_t left, nav_icon_t right, uint16_t bg
 
   screen_fill_area(&hint_area, bg);
 
+  screen_text_ctx_t ctx = {
+      .bg = bg,
+      .x = TH_NAV_HINT_LEFT_X,
+      .y = TH_NAV_HINT_TOP
+  };
+
   if (left != ICON_NAV_NONE) {
     icon_draw_nav(&ctx, left);
   }
 
-  ctx.bg = bg;
-  ctx.x = TH_NAV_HINT_RIGHT_X;
   hint_area.x = SCREEN_WIDTH - TH_NAV_HINT_WIDTH;
-
   screen_fill_area(&hint_area, bg);
 
   if (right != ICON_NAV_NONE) {
+    ctx.bg = bg;
+    ctx.x = TH_NAV_HINT_RIGHT_X;
+    ctx.y = TH_NAV_HINT_TOP,
     icon_draw_nav(&ctx, right);
   }
 

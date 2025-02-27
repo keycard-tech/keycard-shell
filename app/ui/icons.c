@@ -1,4 +1,5 @@
 #include "icons.h"
+#include <string.h>
 
 typedef struct {
   char base;
@@ -25,14 +26,22 @@ app_err_t icon_draw_nav(screen_text_ctx_t* ctx, nav_icon_t icon) {
     ctx->bg = ctx->fg;
   }
 
-  //TODO: redo this
-  ctx->x += 4;
-  ctx->y += 1;
   ctx->fg = NAV_ICONS[icon].top_color;
   if (NAV_ICONS[icon].top >= SYM_HASHTAG) {
     ctx->font = TH_FONT_TEXT;
-    screen_draw_char(ctx, NAV_ICONS[icon].top);
   }
+
+  const glyph_t *top_original = screen_lookup_glyph(ctx->font, NAV_ICONS[icon].top);
+  glyph_t top;
+  memcpy(&top, top_original, sizeof(glyph_t));
+
+  top.xOffset = 0;
+  top.yOffset = -ctx->font->baseline;
+  top.xAdvance = top.width;
+  ctx->x += ((TH_NAV_ICONS)->yAdvance - top.width) / 2;
+  ctx->y += ((TH_NAV_ICONS)->yAdvance - top.height) / 2;
+
+  screen_draw_glyph(ctx, &top);
 
   return ERR_OK;
 }

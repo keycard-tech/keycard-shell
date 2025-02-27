@@ -171,35 +171,20 @@ static inline hal_err_t _screen_char_flush(uint16_t* to_write, uint16_t threshol
 }
 
 hal_err_t screen_draw_glyph(const screen_text_ctx_t* ctx, const glyph_t* glyph) {
-  screen_area_t area = { ctx->x, ctx->y, glyph->xAdvance, ctx->font->yAdvance};
-  if (screen_set_drawing_window(&area) != HAL_SUCCESS) {
-    return HAL_FAIL;
-  }
-
-  int y = 0;
   uint16_t to_write = 0;
-  uint16_t ystart = ctx->font->baseline + glyph->yOffset;
-  uint16_t yend = ystart + glyph->height;
   uint16_t xend = glyph->xOffset + glyph->width;
   uint16_t used_buf = (SCREEN_WIDTH / glyph->xAdvance) * glyph->xAdvance;
 
-  while(y < ystart) {
-    for(int x = 0; x < area.width; x++) {
-      g_screen_fb[to_write++] = ctx->bg;
-    }
-
-    if (_screen_char_flush(&to_write, used_buf) != HAL_SUCCESS) {
-      return HAL_FAIL;
-    }
-
-    y++;
+  screen_area_t area = { ctx->x, (ctx->y + ctx->font->baseline + glyph->yOffset), glyph->xAdvance, ctx->font->yAdvance};
+  if (screen_set_drawing_window(&area) != HAL_SUCCESS) {
+    return HAL_FAIL;
   }
 
   const uint8_t* bitmap = &ctx->font->bitmap[glyph->bitmapOffset];
   uint8_t pixel = *(bitmap++);
   uint8_t pixcount = 0;
 
-  while(y < yend) {
+  for(int y = 0; y < glyph->height; y++) {
     int x = 0;
 
     for(; x < glyph->xOffset; x++) {
@@ -222,20 +207,6 @@ hal_err_t screen_draw_glyph(const screen_text_ctx_t* ctx, const glyph_t* glyph) 
     if (_screen_char_flush(&to_write, used_buf) != HAL_SUCCESS) {
       return HAL_FAIL;
     }
-
-    y++;
-  }
-
-  while(y < area.height) {
-    for(int x = 0; x < area.width; x++) {
-      g_screen_fb[to_write++] = ctx->bg;
-    }
-
-    if (_screen_char_flush(&to_write, used_buf) != HAL_SUCCESS) {
-      return HAL_FAIL;
-    }
-
-    y++;
   }
 
   return _screen_char_flush(&to_write, 1);
