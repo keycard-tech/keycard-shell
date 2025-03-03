@@ -10,12 +10,11 @@
 #include "ur/ur.h"
 #include "ur/ur_decode.h"
 
-#define QR_INDICATOR_WIDTH ((SCREEN_WIDTH - CAM_OUT_WIDTH) / 2)
+#define QR_INDICATOR_WIDTH (SCREEN_WIDTH - CAM_OUT_WIDTH)
 #define QR_INDICATOR_HEIGHT 40
 #define QR_PROGRESS_PX 2
 
-const static screen_area_t indicator_area_left = { .x = 0, .y = SCREEN_HEIGHT - QR_INDICATOR_HEIGHT, .width = QR_INDICATOR_WIDTH, .height = QR_INDICATOR_HEIGHT };
-const static screen_area_t indicator_area_right = { .x = QR_INDICATOR_WIDTH + CAM_OUT_WIDTH, .y = SCREEN_HEIGHT - QR_INDICATOR_HEIGHT, .width = QR_INDICATOR_WIDTH, .height = QR_INDICATOR_HEIGHT };
+const static screen_area_t indicator_area = { .x = 0, .y = SCREEN_HEIGHT - QR_INDICATOR_HEIGHT, .width = QR_INDICATOR_WIDTH, .height = QR_INDICATOR_HEIGHT };
 
 #define QR_SCORE_RED 1
 #define QR_SCORE_YELLOW 3
@@ -100,11 +99,9 @@ app_err_t qrscan_scan() {
   uint16_t score = QR_SCORE_RED;
   uint16_t prev_color = 0;
   uint8_t prev_percent_done = 0;
-  screen_area_t progress_indicator_area_left;
-  screen_area_t progress_indicator_area_right;
+  screen_area_t progress_indicator_area;
 
-  memcpy(&progress_indicator_area_left, &indicator_area_left, sizeof(screen_area_t));
-  memcpy(&progress_indicator_area_right, &indicator_area_right, sizeof(screen_area_t));
+  memcpy(&progress_indicator_area, &indicator_area, sizeof(screen_area_t));
 
   while (1) {
     if (camera_next_frame(&fb) != HAL_SUCCESS) {
@@ -135,10 +132,8 @@ app_err_t qrscan_scan() {
         prev_color = 0;
         prev_percent_done = 0;
 
-        progress_indicator_area_left.height = indicator_area_left.height;
-        progress_indicator_area_left.y = indicator_area_right.y;
-        progress_indicator_area_right.height = indicator_area_right.height;
-        progress_indicator_area_right.y = indicator_area_right.y;
+        progress_indicator_area.height = indicator_area.height;
+        progress_indicator_area.y = indicator_area.y;
       }
     } else if (qrerr == ERR_DECODE && score < QR_SCORE_YELLOW) {
       score = QR_SCORE_YELLOW;
@@ -146,10 +141,8 @@ app_err_t qrscan_scan() {
       score = QR_SCORE_GREEN;
 
       if (prev_percent_done != ur.percent_done) {
-        progress_indicator_area_left.height = QR_INDICATOR_HEIGHT + (ur.percent_done * QR_PROGRESS_PX);
-        progress_indicator_area_left.y = SCREEN_HEIGHT - progress_indicator_area_left.height;
-        progress_indicator_area_right.height = progress_indicator_area_left.height;
-        progress_indicator_area_right.y = progress_indicator_area_left.y;
+        progress_indicator_area.height = QR_INDICATOR_HEIGHT + (ur.percent_done * QR_PROGRESS_PX);
+        progress_indicator_area.y = SCREEN_HEIGHT - progress_indicator_area.height;
 
         prev_color = 0;
         prev_percent_done = ur.percent_done;
@@ -175,8 +168,7 @@ app_err_t qrscan_scan() {
     }
 
     if (prev_color != indicator_color) {
-      screen_fill_area(&progress_indicator_area_left, indicator_color);
-      screen_fill_area(&progress_indicator_area_right, indicator_color);
+      screen_fill_area(&progress_indicator_area, indicator_color);
       prev_color = indicator_color;
     }
 
