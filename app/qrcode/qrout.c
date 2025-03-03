@@ -50,7 +50,7 @@ static app_err_t qrout_display_single_ur(ur_out_t* ur) {
     return ERR_DATA;
   }
 
-  if (qrout_display(urstr, (SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT)) != ERR_OK) {
+  if (qrout_display(urstr, (SCREEN_HEIGHT - TH_SCREEN_MARGIN)) != ERR_OK) {
     return ERR_DATA;
   }
 
@@ -73,7 +73,7 @@ static app_err_t qrout_display_animated_ur(ur_out_t* ur) {
       return ERR_DATA;
     }
 
-    if (qrout_display(urstr, (SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT)) != ERR_OK) {
+    if (qrout_display(urstr, (SCREEN_HEIGHT - TH_SCREEN_MARGIN)) != ERR_OK) {
       return ERR_DATA;
     }
 
