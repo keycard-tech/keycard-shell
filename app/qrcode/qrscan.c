@@ -7,18 +7,22 @@
 #include "screen/screen.h"
 #include "ui/theme.h"
 #include "ui/ui_internal.h"
+#include "ui/dialog.h"
 #include "ur/ur.h"
 #include "ur/ur_decode.h"
-
-#define QR_INDICATOR_WIDTH (SCREEN_WIDTH - CAM_OUT_WIDTH)
-#define QR_INDICATOR_HEIGHT 40
-#define QR_PROGRESS_PX 2
-
-const static screen_area_t indicator_area = { .x = 0, .y = SCREEN_HEIGHT - QR_INDICATOR_HEIGHT, .width = QR_INDICATOR_WIDTH, .height = QR_INDICATOR_HEIGHT };
 
 #define QR_SCORE_RED 1
 #define QR_SCORE_YELLOW 3
 #define QR_SCORE_GREEN 5
+
+#define QR_TICK_COUNT 20
+#define QR_TICK_PERCENT 5
+
+typedef struct {
+  uint16_t prev_color;
+  uint8_t prev_percent_done;
+  uint8_t score;
+} qrscan_indicator_t;
 
 app_err_t qrscan_decode(struct quirc *qrctx, ur_t* ur) {
   struct quirc_code qrcode;
@@ -79,16 +83,63 @@ app_err_t qrscan_deserialize(ur_t* ur) {
   return err;
 }
 
+static inline void qrscan_reset_and_draw_indicator(qrscan_indicator_t* indicator) {
+  indicator->score = QR_SCORE_RED;
+  indicator->prev_color = 0;
+  indicator->prev_percent_done = 0;
+
+  screen_area_t tick = { .x = TH_QRSCAN_INDICATOR_MARGIN, .y = TH_QRSCAN_TICK_BOTTOM, .width = TH_QRSCAN_TICK_WIDTH, .height = TH_QRSCAN_TICK_HEIGHT };
+
+  for (int i = 0; i < QR_TICK_COUNT; i++) {
+    screen_fill_area(&tick, TH_COLOR_QR_EMPTY_TICK);
+    tick.y -= (TH_QRSCAN_TICK_HEIGHT + TH_QRSCAN_TICK_SPACING);
+  }
+}
+
+static inline void qrscan_draw_indicator(qrscan_indicator_t* indicator, uint8_t percent_done) {
+  uint16_t indicator_color;
+
+  if (indicator->score > QR_SCORE_YELLOW) {
+    indicator_color = TH_COLOR_QR_OK;
+  } else if (indicator->score > QR_SCORE_RED) {
+    indicator_color = TH_COLOR_QR_NOT_DECODED;
+  } else {
+    indicator_color = TH_COLOR_QR_NOT_FOUND;
+    indicator->score = QR_SCORE_RED;
+  }
+
+  uint8_t start_tick;
+
+  if (indicator->prev_color != indicator_color) {
+    indicator->prev_color = indicator_color;
+    start_tick = 0;
+  } else {
+    start_tick = indicator->prev_percent_done / QR_TICK_PERCENT;
+  }
+
+  uint8_t end_tick = percent_done / QR_TICK_PERCENT;
+  indicator->prev_percent_done = percent_done;
+
+  screen_area_t tick = {
+      .x = TH_QRSCAN_INDICATOR_MARGIN,
+      .y = TH_QRSCAN_TICK_BOTTOM - (start_tick * (TH_QRSCAN_TICK_HEIGHT + TH_QRSCAN_TICK_SPACING)),
+      .width = TH_QRSCAN_TICK_WIDTH,
+      .height = TH_QRSCAN_TICK_HEIGHT
+  };
+
+  for (int i = start_tick; i < end_tick; i++) {
+    screen_fill_area(&tick, indicator_color);
+    tick.y -= (TH_QRSCAN_TICK_HEIGHT + TH_QRSCAN_TICK_SPACING);
+  }
+}
+
 app_err_t qrscan_scan() {
   struct quirc qrctx;
   app_err_t res = ERR_OK;
-  ur_t ur;
-  ur.data_max_len = MEM_HEAP_SIZE;
-  ur.data = g_mem_heap;
-  ur.percent_done = 0;
-  ur.crc = 0;
+  ur_t ur = { .data_max_len = MEM_HEAP_SIZE, .data = g_mem_heap, .percent_done = 0, .crc = 0};
 
   screen_fill_area(&screen_fullarea, TH_COLOR_QR_BG);
+  dialog_nav_hints(ICON_NAV_BACK, ICON_NAV_NONE);
 
   if (camera_start() != HAL_SUCCESS) {
     res = ERR_HW;
@@ -96,12 +147,9 @@ app_err_t qrscan_scan() {
   }
 
   uint8_t* fb;
-  uint16_t score = QR_SCORE_RED;
-  uint16_t prev_color = 0;
-  uint8_t prev_percent_done = 0;
-  screen_area_t progress_indicator_area;
 
-  memcpy(&progress_indicator_area, &indicator_area, sizeof(screen_area_t));
+  qrscan_indicator_t indicator;
+  qrscan_reset_and_draw_indicator(&indicator);
 
   while (1) {
     if (camera_next_frame(&fb) != HAL_SUCCESS) {
@@ -118,10 +166,10 @@ app_err_t qrscan_scan() {
     quirc_end(&qrctx);
 
     app_err_t qrerr = qrscan_decode(&qrctx, &ur);
-    score--;
+    indicator.score--;
 
     if (qrerr == ERR_OK) {
-      score = QR_SCORE_GREEN;
+      indicator.score = QR_SCORE_GREEN;
       hal_inactivity_timer_reset();
       if (qrscan_deserialize(&ur) == ERR_OK) {
         screen_wait();
@@ -129,48 +177,25 @@ app_err_t qrscan_scan() {
       } else {
         ur.crc = 0;
         ur.percent_done = 0;
-        prev_color = 0;
-        prev_percent_done = 0;
-
-        progress_indicator_area.height = indicator_area.height;
-        progress_indicator_area.y = indicator_area.y;
+        screen_wait();
+        qrscan_reset_and_draw_indicator(&indicator);
+        goto next_scan;
       }
-    } else if (qrerr == ERR_DECODE && score < QR_SCORE_YELLOW) {
-      score = QR_SCORE_YELLOW;
+    } else if (qrerr == ERR_DECODE && indicator.score < QR_SCORE_YELLOW) {
+      indicator.score = QR_SCORE_YELLOW;
     } else if (qrerr != ERR_SCAN) {
-      score = QR_SCORE_GREEN;
-
-      if (prev_percent_done != ur.percent_done) {
-        progress_indicator_area.height = QR_INDICATOR_HEIGHT + (ur.percent_done * QR_PROGRESS_PX);
-        progress_indicator_area.y = SCREEN_HEIGHT - progress_indicator_area.height;
-
-        prev_color = 0;
-        prev_percent_done = ur.percent_done;
-      }
+      indicator.score = QR_SCORE_GREEN;
     }
 
     screen_wait();
 
+next_scan:
     if (camera_submit(fb) != HAL_SUCCESS) {
       res = ERR_HW;
       goto end;
     }
 
-    uint16_t indicator_color;
-
-    if (score > QR_SCORE_YELLOW) {
-      indicator_color = TH_COLOR_QR_OK;
-    } else if (score > QR_SCORE_RED) {
-      indicator_color = TH_COLOR_QR_NOT_DECODED;
-    } else {
-      indicator_color = TH_COLOR_QR_NOT_FOUND;
-      score = QR_SCORE_RED;
-    }
-
-    if (prev_color != indicator_color) {
-      screen_fill_area(&progress_indicator_area, indicator_color);
-      prev_color = indicator_color;
-    }
+    qrscan_draw_indicator(&indicator, ur.percent_done);
 
     keypad_key_t k = ui_wait_keypress(0);
 
