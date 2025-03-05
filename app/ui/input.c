@@ -21,8 +21,6 @@
 
 #define WORD_MAX_LEN 8
 
-#define KEYBOARD_TOP_Y (SCREEN_HEIGHT - (TH_KEYBOARD_KEY_SIZE * 3))
-
 #define KEYBOARD_ROW0_LEN 10
 #define KEYBOARD_ROW1_LEN 10
 #define KEYBOARD_ROW2_LEN 9
@@ -211,11 +209,20 @@ app_err_t input_puk() {
 
 static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, bool selected) {
   screen_area_t key_area = { .x = x, .y = y, .width = TH_KEYBOARD_KEY_SIZE, .height = TH_KEYBOARD_KEY_SIZE };
-  screen_text_ctx_t ctx = { .font = TH_FONT_TEXT, .fg = TH_COLOR_TEXT_FG, .y = y };
+  screen_text_ctx_t ctx = { .font = TH_FONT_TEXT };
 
   const glyph_t* glyph = screen_lookup_glyph(ctx.font, (uint32_t) c);
-  ctx.bg = selected ? TH_KEYBOARD_KEY_SELECTED_BG : TH_KEYBOARD_KEY_BG;
+
+  if (selected) {
+    ctx.bg = TH_KEYBOARD_KEY_SELECTED_BG;
+    ctx.fg = TH_KEYBOARD_KEY_SELECTED_FG;
+  } else {
+    ctx.bg = TH_KEYBOARD_KEY_BG;
+    ctx.fg = TH_KEYBOARD_KEY_FG;
+  }
+
   ctx.x = x + ((TH_KEYBOARD_KEY_SIZE - glyph->width) / 2);
+  ctx.y = y + ((TH_KEYBOARD_KEY_SIZE - ctx.font->yAdvance) / 2);
 
   screen_fill_area(&key_area, ctx.bg);
   screen_draw_glyph(&ctx, glyph);
@@ -224,18 +231,30 @@ static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, boo
 static inline void input_keyboard_render(int idx, bool extended) {
   int i = KEYBOARD_ROW0_LIMIT;
 
+  uint16_t x = (SCREEN_WIDTH - ((KEYBOARD_ROW1_LEN * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)) / 2;
+  uint16_t y = TH_KEYBOARD_TOP;
+
   while (i < KEYBOARD_ROW1_LIMIT) {
-    input_keyboard_render_key(KEYBOARD_MAP[i], ((i - KEYBOARD_ROW0_LIMIT) * TH_KEYBOARD_KEY_SIZE), KEYBOARD_TOP_Y, idx == i);
+    input_keyboard_render_key(KEYBOARD_MAP[i], x, y, idx == i);
+    x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
     i++;
   }
+
+  x = (SCREEN_WIDTH - ((KEYBOARD_ROW2_LEN * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)) / 2;
+  y += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
 
   while (i < KEYBOARD_ROW2_LIMIT) {
-    input_keyboard_render_key(KEYBOARD_MAP[i], ((i - KEYBOARD_ROW1_LIMIT) * TH_KEYBOARD_KEY_SIZE) + (TH_KEYBOARD_KEY_SIZE / 2), (KEYBOARD_TOP_Y + TH_KEYBOARD_KEY_SIZE), idx == i);
+    input_keyboard_render_key(KEYBOARD_MAP[i], x, y, idx == i);
+    x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
     i++;
   }
 
+  x = (SCREEN_WIDTH - ((KEYBOARD_ROW3_LEN * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)) / 2;
+  y += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
+
   while (i < KEYBOARD_ROW3_LIMIT) {
-    input_keyboard_render_key(KEYBOARD_MAP[i], ((i - KEYBOARD_ROW2_LIMIT)* TH_KEYBOARD_KEY_SIZE) + TH_KEYBOARD_KEY_SIZE, (KEYBOARD_TOP_Y + (TH_KEYBOARD_KEY_SIZE * 2)), idx == i);
+    input_keyboard_render_key(KEYBOARD_MAP[i], x, y, idx == i);
+    x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
     i++;
   }
 }
@@ -355,21 +374,6 @@ static void input_render_editable_text_field(const char* str, int len, int sugge
   };
 
   input_render_text_field(str, &field_area, len, suggestion_len);
-  const char* action_hint = (suggestion_len == 0) && (len == 0) ? LSTR(HINT_CANCEL) : LSTR(HINT_CONFIRM);
-
-  screen_text_ctx_t ctx = {
-      .font = TH_FONT_TEXT,
-      .fg = TH_COLOR_INACTIVE,
-      .bg = TH_COLOR_BG,
-      .x = field_area.x,
-      .y = field_area.y + field_area.height + TH_TEXT_FIELD_HINT_MARGIN
-  };
-
-  field_area.y = ctx.y;
-  field_area.x = 0;
-  field_area.width = SCREEN_WIDTH;
-  screen_fill_area(&field_area, ctx.bg);
-  screen_draw_string(&ctx, action_hint);
 }
 
 static void input_mnemonic_render(const char* word, int len, uint16_t idx) {
@@ -538,7 +542,7 @@ app_err_t input_string() {
   dialog_footer(TH_TITLE_HEIGHT);
 
   int len = 0;
-  int key_idx = KEYBOARD_EXT_FIRST_KEY;
+  int key_idx = KEYBOARD_FIRST_KEY;
 
   while(1) {
     input_render_editable_text_field(g_ui_cmd.params.input_string.out, len, 0);

@@ -7,7 +7,7 @@ void card_change_name() {
   char name[KEYCARD_NAME_MAX_LEN + 1];
   uint8_t len = KEYCARD_NAME_MAX_LEN;
 
-  if (ui_read_string(LSTR(CARD_NAME_TITLE), name, &len) != CORE_EVT_UI_OK) {
+  if (ui_read_string(LSTR(MENU_CARD_NAME), name, &len) != CORE_EVT_UI_OK) {
     return;
   }
 

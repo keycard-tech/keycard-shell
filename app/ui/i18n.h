@@ -110,7 +110,6 @@ typedef enum {
   PAIRING_CHANGE_TITLE,
 
   // Name input
-  CARD_NAME_TITLE,
   CARD_NAME_CHANGE_SUCCESS,
 
   // Factory reset
@@ -184,10 +183,6 @@ typedef enum {
   DEVICE_INFO_SN,
   DEVICE_INFO_NEW_FW,
   DEVICE_INFO_NEW_DB,
-
-  // Hints
-  HINT_CANCEL,
-  HINT_CONFIRM,
 
   INVALID_STR = 0xffff
 } i18n_str_id_t;

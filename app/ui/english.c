@@ -104,7 +104,6 @@ const char *const i18n_english_strings[] = {
     "Change pairing password",
 
     // Name input
-    "Set the Keycard name",
     "Card name changed successfully",
 
     // Factory reset
@@ -178,8 +177,4 @@ const char *const i18n_english_strings[] = {
     "S/N: ",
     "New firmware version: ",
     "New database version: ",
-
-    // Hints
-    "Long press C to cancel",
-    "Long press OK to confirm",
 };
