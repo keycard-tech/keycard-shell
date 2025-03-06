@@ -7,11 +7,13 @@
 #include <string.h>
 
 #define SCREEN_TIMEOUT 100
+#define SCREEN_CAMERA_X 48
+#define SCREEN_CAMERA_Y 0
 
 #define MAX_GLYPHS_PER_LINE 50
 
 const screen_area_t screen_fullarea = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
-const screen_area_t screen_camarea = { (SCREEN_WIDTH - CAM_OUT_WIDTH), (SCREEN_HEIGHT - CAM_OUT_HEIGHT)/2, CAM_OUT_WIDTH, CAM_OUT_HEIGHT };
+const screen_area_t screen_camarea = { SCREEN_CAMERA_X, SCREEN_CAMERA_Y, CAM_OUT_WIDTH, CAM_OUT_HEIGHT };
 
 struct screen_render_ctx {
   const uint8_t* data;

@@ -173,14 +173,14 @@ app_err_t dialog_nav_hints_colors(nav_icon_t left, nav_icon_t right, uint16_t bg
   return ERR_OK;
 }
 
-app_err_t dialog_pager_colors(size_t page, size_t last_page, uint16_t bg, uint16_t fg) {
+app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, uint16_t bg, uint16_t fg) {
   uint8_t page_indicator[(UINT32_STRING_LEN * 2) + 4];
   size_t total_len = 0;
   page_indicator[total_len++] = SYM_LEFT_CHEVRON;
   page_indicator[total_len++] = ' ';
 
   uint8_t page_str[UINT32_STRING_LEN];
-  uint8_t* p = u32toa(page + 1, page_str, UINT32_STRING_LEN);
+  uint8_t* p = u32toa(page + base_page, page_str, UINT32_STRING_LEN);
   uint8_t p_len = strlen((char *) p);
   memcpy(&page_indicator[total_len], p, p_len);
   total_len += p_len;
@@ -188,7 +188,7 @@ app_err_t dialog_pager_colors(size_t page, size_t last_page, uint16_t bg, uint16
   if (last_page != UINT32_MAX) {
     page_indicator[total_len++] = '/';
 
-    p = u32toa(last_page + 1, page_str, UINT32_STRING_LEN);
+    p = u32toa(last_page + base_page, page_str, UINT32_STRING_LEN);
     p_len = strlen((char *) p);
     memcpy(&page_indicator[total_len], p, p_len);
     total_len += p_len;

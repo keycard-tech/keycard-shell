@@ -9,10 +9,10 @@ const char *const i18n_english_strings[] = {
     "Help",
 
     // Connect menu
-    "Ethereum wallet",
-    "Bitcoin wallet",
-    "Sparrow Testnet wallet",
-    "Backpack/OKX Wallet",
+    "Ethereum",
+    "Bitcoin",
+    "Sparrow Testnet",
+    "Cross-chain",
 
     // Addresses menu
     "Ethereum",
@@ -82,7 +82,7 @@ const char *const i18n_english_strings[] = {
     "Your BTC address",
 
     // PIN input
-    "Insert your PIN",
+    "Keycard PIN",
     "Wrong PIN. Please try again.",
     "Choose a new PIN",
     "Remaining attempts: ",
@@ -91,7 +91,7 @@ const char *const i18n_english_strings[] = {
     "PIN changed successfully",
 
     // PUK input
-    "Insert your PUK",
+    "Keycard PUK",
     "Wrong PUK. Please try again.",
     "Choose a new PUK",
     "PUK changed successfully",
