@@ -22,17 +22,12 @@
 #define WORD_MAX_LEN 8
 
 #define KEYBOARD_ROW0_LEN 10
-#define KEYBOARD_ROW1_LEN 10
-#define KEYBOARD_ROW2_LEN 9
-#define KEYBOARD_ROW3_LEN 7
+#define KEYBOARD_ROW1_LEN 9
+#define KEYBOARD_ROW2_LEN 7
 
 #define KEYBOARD_ROW0_LIMIT KEYBOARD_ROW0_LEN
 #define KEYBOARD_ROW1_LIMIT (KEYBOARD_ROW0_LIMIT + KEYBOARD_ROW1_LEN)
 #define KEYBOARD_ROW2_LIMIT (KEYBOARD_ROW1_LIMIT + KEYBOARD_ROW2_LEN)
-#define KEYBOARD_ROW3_LIMIT (KEYBOARD_ROW2_LIMIT + KEYBOARD_ROW3_LEN)
-
-#define KEYBOARD_EXT_FIRST_KEY 0
-#define KEYBOARD_FIRST_KEY KEYBOARD_ROW0_LIMIT
 
 typedef enum {
   KEYBOARD_MNEMONIC,
@@ -48,7 +43,6 @@ typedef struct {
 
 const char KEYPAD_TO_DIGIT[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', DIG_INV, '0', DIG_INV, DIG_INV, DIG_INV};
 const char KEYBOARD_MAP[] = {
-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
     'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
     'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
     'z', 'x', 'c', 'v', 'b', 'n', 'm'
@@ -241,10 +235,19 @@ static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, boo
 }
 
 static inline void input_keyboard_render(uint8_t idx) {
-  uint8_t i = KEYBOARD_ROW0_LIMIT;
+  uint8_t i = 0;
 
-  uint16_t x = (SCREEN_WIDTH - ((KEYBOARD_ROW1_LEN * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)) / 2;
+  uint16_t x = (SCREEN_WIDTH - ((KEYBOARD_ROW0_LEN * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)) / 2;
   uint16_t y = TH_KEYBOARD_TOP;
+
+  while (i < KEYBOARD_ROW0_LIMIT) {
+    input_keyboard_render_key(KEYBOARD_MAP[i], x, y, idx == i);
+    x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
+    i++;
+  }
+
+  x = (SCREEN_WIDTH - ((KEYBOARD_ROW1_LEN * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)) / 2;
+  y += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
 
   while (i < KEYBOARD_ROW1_LIMIT) {
     input_keyboard_render_key(KEYBOARD_MAP[i], x, y, idx == i);
@@ -260,15 +263,6 @@ static inline void input_keyboard_render(uint8_t idx) {
     x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
     i++;
   }
-
-  x = (SCREEN_WIDTH - ((KEYBOARD_ROW3_LEN * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)) / 2;
-  y += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
-
-  while (i < KEYBOARD_ROW3_LIMIT) {
-    input_keyboard_render_key(KEYBOARD_MAP[i], x, y, idx == i);
-    x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
-    i++;
-  }
 }
 
 static char input_keyboard(keyboard_state_t* keyboard) {
@@ -277,19 +271,16 @@ static char input_keyboard(keyboard_state_t* keyboard) {
 
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_UP:
-      if (keyboard->idx >= KEYBOARD_ROW2_LIMIT) {
-        keyboard->idx -= KEYBOARD_ROW2_LEN;
-      } else if (keyboard->idx >= KEYBOARD_ROW1_LIMIT) {
+      if (keyboard->idx >= KEYBOARD_ROW1_LIMIT) {
         keyboard->idx -= KEYBOARD_ROW1_LEN;
       } else if (keyboard->idx >= KEYBOARD_ROW0_LIMIT) {
         keyboard->idx -= KEYBOARD_ROW0_LEN;
       } else {
-        keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW2_LIMIT, (KEYBOARD_ROW3_LIMIT - 1));
+        keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW1_LIMIT, (KEYBOARD_ROW2_LIMIT - 1));
       }
       break;
     case KEYPAD_KEY_LEFT:
-      if ((keyboard->idx > KEYBOARD_ROW2_LIMIT) ||
-          ((keyboard->idx > KEYBOARD_ROW1_LIMIT) && (keyboard->idx < KEYBOARD_ROW2_LIMIT)) ||
+      if ((keyboard->idx > KEYBOARD_ROW1_LIMIT) ||
           ((keyboard->idx > KEYBOARD_ROW0_LIMIT) && (keyboard->idx < KEYBOARD_ROW1_LIMIT)) ||
           ((keyboard->idx > 0) && (keyboard->idx < KEYBOARD_ROW0_LIMIT))) {
         keyboard->idx--;
@@ -299,15 +290,14 @@ static char input_keyboard(keyboard_state_t* keyboard) {
         } else if (keyboard->idx == KEYBOARD_ROW1_LIMIT) {
           keyboard->idx = KEYBOARD_ROW2_LIMIT - 1;
         } else {
-          keyboard->idx = KEYBOARD_ROW3_LIMIT - 1;
+          keyboard->idx = KEYBOARD_ROW0_LIMIT - 1;
         }
       }
       break;
     case KEYPAD_KEY_RIGHT:
       if ((keyboard->idx < (KEYBOARD_ROW0_LIMIT - 1)) ||
           ((keyboard->idx < (KEYBOARD_ROW1_LIMIT - 1)) && (keyboard->idx >= KEYBOARD_ROW0_LIMIT)) ||
-          ((keyboard->idx < (KEYBOARD_ROW2_LIMIT - 1)) && (keyboard->idx >= KEYBOARD_ROW1_LIMIT)) ||
-          ((keyboard->idx < (KEYBOARD_ROW3_LIMIT - 1)) && (keyboard->idx >= KEYBOARD_ROW2_LIMIT))) {
+          ((keyboard->idx < (KEYBOARD_ROW2_LIMIT - 1)) && (keyboard->idx >= KEYBOARD_ROW1_LIMIT))) {
         keyboard->idx++;
       }  else {
         if (keyboard->idx == KEYBOARD_ROW1_LIMIT - 1) {
@@ -315,7 +305,7 @@ static char input_keyboard(keyboard_state_t* keyboard) {
         } else if (keyboard->idx == KEYBOARD_ROW2_LIMIT - 1) {
           keyboard->idx = KEYBOARD_ROW1_LIMIT;
         } else {
-          keyboard->idx = KEYBOARD_ROW2_LIMIT;
+          keyboard->idx = 0;
         }
       }
       break;
@@ -324,10 +314,8 @@ static char input_keyboard(keyboard_state_t* keyboard) {
         keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW0_LEN, (KEYBOARD_ROW1_LIMIT - 1));
       } else if (keyboard->idx < KEYBOARD_ROW1_LIMIT) {
         keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW1_LEN, (KEYBOARD_ROW2_LIMIT - 1));
-      } else if (keyboard->idx < KEYBOARD_ROW2_LIMIT) {
-        keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW2_LEN, (KEYBOARD_ROW3_LIMIT - 1));
       } else {
-        keyboard->idx -= KEYBOARD_ROW2_LIMIT;
+        keyboard->idx -= KEYBOARD_ROW1_LIMIT;
       }
       break;
     case KEYPAD_KEY_BACK:
@@ -428,7 +416,7 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
   char word[WORD_MAX_LEN];
   int len = 0;
   keyboard_state_t keyboard;
-  keyboard.idx = KEYBOARD_FIRST_KEY;
+  keyboard.idx = 0;
   keyboard.layout = KEYBOARD_MNEMONIC;
 
   while(1) {
@@ -557,7 +545,7 @@ app_err_t input_string() {
 
   int len = 0;
   keyboard_state_t keyboard;
-  keyboard.idx = KEYBOARD_FIRST_KEY;
+  keyboard.idx = 0;
   keyboard.layout = KEYBOARD_LOWERCASE;
 
   while(1) {
