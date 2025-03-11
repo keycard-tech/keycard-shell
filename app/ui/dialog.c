@@ -265,6 +265,20 @@ static void dialog_address(screen_text_ctx_t *ctx, i18n_str_id_t label, addr_typ
   dialog_end_line(ctx);
 }
 
+static void dialog_address_block(screen_text_ctx_t *ctx, i18n_str_id_t label, addr_type_t addr_type, const uint8_t* addr) {
+  char str[MAX_ADDR_LEN];
+  address_format(addr_type, addr, str);
+  dialog_label_only(ctx, LSTR(label));
+
+  dialog_begin_line(ctx, (TH_DATA_HEIGHT * 2));
+  dialog_data_ctx(ctx);
+  ctx->y = ctx->v1;
+  ctx->x = TH_TEXT_HORIZONTAL_MARGIN;
+
+  screen_draw_text(ctx, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y + (TH_DATA_HEIGHT * 2), (uint8_t*) str, strlen(str), false, false);
+  dialog_end_line(ctx);
+}
+
 static void dialog_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, const bignum256* amount, int decimals, const char* ticker) {
   char tmp[BIGNUM_STRING_LEN+strlen(ticker)+2];
   bn_format(amount, NULL, ticker, decimals, 0, 0, ',', tmp, sizeof(tmp));
@@ -697,7 +711,7 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
         dialog_footer(ctx.y);
         ctx.y = SCREEN_HEIGHT;
       } else {
-        dialog_address(&ctx, TX_SIGNER, g_ui_cmd.params.msg.addr_type, g_ui_cmd.params.msg.addr);
+        dialog_address_block(&ctx, TX_SIGNER, g_ui_cmd.params.msg.addr_type, g_ui_cmd.params.msg.addr);
         dialog_label_only(&ctx, LSTR(MSG_LABEL));
       }
 
