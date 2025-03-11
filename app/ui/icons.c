@@ -11,9 +11,9 @@ typedef struct {
 const static composite_icon_desc_t NAV_ICONS[] = {
     {.base = NAV_CIRCLE_FULL, .top = SYM_RIGHT_CHEVRON, .base_color = TH_COLOR_ACCENT, .top_color = TH_COLOR_FG},
     {.base = NAV_CIRCLE_EMPTY, .top = SYM_RIGHT_CHEVRON, .base_color = TH_COLOR_ACCENT, .top_color = TH_COLOR_ACCENT},
-    {.base = NAV_CIRCLE_EMPTY, .top = NAV_CANCEL_GLYPH, .base_color = TH_COLOR_FG, .top_color = TH_COLOR_FG},
+    {.base = NAV_CIRCLE_EMPTY, .top = SYM_CANCEL, .base_color = TH_COLOR_FG, .top_color = TH_COLOR_FG},
     {.base = NAV_CIRCLE_FULL, .top = SYM_RIGHT_CHEVRON, .base_color = TH_COLOR_FG, .top_color = TH_COLOR_BG},
-    {.base = NAV_BACKSPACE_EMPTY, .top = NAV_CANCEL_GLYPH, .base_color = TH_COLOR_FG, .top_color = TH_COLOR_FG},
+    {.base = NAV_BACKSPACE_EMPTY, .top = SYM_CANCEL, .base_color = TH_COLOR_FG, .top_color = TH_COLOR_FG},
 };
 
 app_err_t icon_draw_nav(screen_text_ctx_t* ctx, nav_icon_t icon) {

@@ -21,8 +21,7 @@ typedef enum {
   NAV_CIRCLE_FULL_SMALL = 0x03,
   NAV_BACKSPACE_FULL = 0x04,
   NAV_BACKSPACE_EMPTY = 0x05,
-  NAV_CANCEL_GLYPH = 0x06,
-  NAV_QR_GLYPH = 0x07
+  NAV_CRICLE_INNER = 0x06,
 } nav_glyph_t;
 
 typedef enum {
@@ -32,7 +31,8 @@ typedef enum {
  SYM_CHECKMARK = 0x82,
  SYM_LEFT_CHEVRON = 0x83,
  SYM_RIGHT_CHEVRON = 0x84,
- SYM_DOWN_CHEVRON = 0x85,
+ SYM_CANCEL = 0x85,
+ SYM_CROSS = 0x86,
 } symbol_glyph_t;
 
 typedef enum {
