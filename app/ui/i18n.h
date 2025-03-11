@@ -137,6 +137,7 @@ typedef enum {
 
   // FW Upgrade
   FW_UPGRADE_TITLE,
+  FW_UPGRADE_WARNING,
   FW_UPGRADE_INVALID,
   FW_UPGRADE_CONFIRM,
 

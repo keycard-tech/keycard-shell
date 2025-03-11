@@ -121,7 +121,7 @@ const char *const i18n_english_strings[] = {
     "Keycard blocked",
 
     // DB Update
-    "Updating database...",
+    "Downloading database",
     "The database update was successful.",
     "The new database data seems to be invalid.\n Check that you are using the correct site and try again.",
     "Internal error while writing the new data, please try again.",
@@ -130,7 +130,8 @@ const char *const i18n_english_strings[] = {
     "Proceed updating the database?\n\n",
 
     // FW Upgrade
-    "Upgrading firmware...",
+    "Downloading firmware",
+    "Do not disconnect your device",
     "The uploaded firmware's signature does not match. Please make sure you are using the official website or app.",
     "Do you want to upgrade your firmware?\n\n",
 

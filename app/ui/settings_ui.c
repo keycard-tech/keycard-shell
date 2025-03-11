@@ -105,6 +105,16 @@ app_err_t settings_ui_update_progress() {
       .height = TH_PROGRESS_HEIGHT
   };
 
+  screen_text_ctx_t ctx = {
+      .font = TH_FONT_TEXT,
+      .fg = TH_COLOR_TEXT_FG,
+      .bg = TH_COLOR_TEXT_BG,
+      .x = 0,
+      .y = TH_TITLE_HEIGHT + TH_PROGRESS_WARN_VERTICAL_MARGIN,
+  };
+
+  screen_draw_centered_string(&ctx, LSTR(FW_UPGRADE_WARNING));
+
   do {
     ui_progressbar_render(&progress_area, g_ui_cmd.params.progress.value);
   } while(updating_progress());
