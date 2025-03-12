@@ -47,6 +47,15 @@ typedef enum {
  ICON_NONE = 255
 } icon_t;
 
+typedef enum {
+  ICON_INFO_BASE = 0x01,
+  ICON_INFO_SUCCESS = 0x02,
+  ICON_INFO_ERROR = 0x03,
+  ICON_INFO_UPLOAD = 0x04,
+  ICON_INFO_WARN = 0x05,
+} info_icon_t;
+
 app_err_t icon_draw(const screen_text_ctx_t* ctx, icon_t icon);
+app_err_t icon_draw_info(const screen_text_ctx_t* ctx, info_icon_t icon);
 
 #endif

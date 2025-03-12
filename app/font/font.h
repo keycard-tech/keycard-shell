@@ -25,5 +25,6 @@ extern const font_t inter_16px;
 extern const font_t inter_18px;
 extern const font_t icons_28px;
 extern const font_t navigation_24px;
+extern const font_t msg_40px;
 
 #endif

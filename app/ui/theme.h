@@ -50,6 +50,7 @@
 #define TH_FONT_INFO &inter_20px
 #define TH_FONT_ICONS &icons_28px
 #define TH_NAV_ICONS &navigation_24px
+#define TH_INFO_ICONS &msg_40px
 
 #define TH_MENU_HEIGHT 28
 #define TH_MENU_VERTICAL_MARGIN 4

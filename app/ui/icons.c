@@ -31,6 +31,8 @@ const static composite_icon_desc_t NAV_ICONS[] = {
     {.base = NAV_CIRCLE_FULL_SMALL, .top = 0, .attr = ICON_ATTR_NOTOP, .base_color = TH_COLOR_INACTIVE},
 };
 
+const static uint16_t INFO_ICONS[] = { TH_COLOR_SUCCESS, TH_COLOR_ERROR, TH_COLOR_FG, TH_COLOR_ERROR };
+
 app_err_t icon_draw(const screen_text_ctx_t* ctx, icon_t icon) {
   screen_text_ctx_t c_ctx;
   memcpy(&c_ctx, ctx, sizeof(screen_text_ctx_t));
@@ -66,6 +68,19 @@ app_err_t icon_draw(const screen_text_ctx_t* ctx, icon_t icon) {
   c_ctx.y += (((TH_NAV_ICONS)->yAdvance - top.height) / 2) + ((NAV_ICONS[icon].attr & ICON_ATTR_Y_MASK) >> 2);
 
   screen_draw_glyph(&c_ctx, &top);
+
+  return ERR_OK;
+}
+
+app_err_t icon_draw_info(const screen_text_ctx_t* ctx, info_icon_t icon) {
+  screen_text_ctx_t c_ctx;
+  memcpy(&c_ctx, ctx, sizeof(screen_text_ctx_t));
+
+  c_ctx.fg = INFO_ICONS[icon - 2];
+  c_ctx.font = TH_INFO_ICONS;
+  screen_draw_char(&c_ctx, ICON_INFO_BASE);
+  c_ctx.x += 12;
+  screen_draw_char(&c_ctx, icon);
 
   return ERR_OK;
 }
