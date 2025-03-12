@@ -21,7 +21,6 @@ typedef enum {
   NAV_CIRCLE_FULL_SMALL = 0x03,
   NAV_BACKSPACE_FULL = 0x04,
   NAV_BACKSPACE_EMPTY = 0x05,
-  NAV_CRICLE_INNER = 0x06,
 } nav_glyph_t;
 
 typedef enum {
@@ -37,13 +36,13 @@ typedef enum {
 
 typedef enum {
  ICON_NAV_NEXT = 0,
- ICON_NAV_CONFIRM,
- ICON_NAV_BACK,
+ ICON_NAV_NEXT_HOLD,
  ICON_NAV_CANCEL,
  ICON_NAV_BACKSPACE,
+ ICON_NAV_CONFIRM,
  ICON_NAV_NONE = 255
-} nav_icon_t;
+} icon_t;
 
-app_err_t icon_draw_nav(screen_text_ctx_t* ctx, nav_icon_t icon);
+app_err_t icon_draw(screen_text_ctx_t* ctx, icon_t icon);
 
 #endif

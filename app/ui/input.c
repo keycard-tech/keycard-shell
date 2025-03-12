@@ -154,11 +154,11 @@ static app_err_t input_pin_entry(const char* title, char* out, char* compare, bo
     }
 
     if (position == PIN_LEN) {
-      dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NAV_NEXT);
+      dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NAV_CONFIRM);
     } else if (position > 0) {
       dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NAV_NONE);
     } else {
-      dialog_nav_hints(dismissable ? ICON_NAV_BACK : ICON_NAV_NONE, ICON_NAV_NONE);
+      dialog_nav_hints(dismissable ? ICON_NAV_CANCEL : ICON_NAV_NONE, ICON_NAV_NONE);
     }
   }
 }
@@ -699,7 +699,7 @@ app_err_t input_display_mnemonic() {
       field_area.y += TH_TEXT_FIELD_HEIGHT + TH_MNEMONIC_TOP_MARGIN;
     }
 
-    dialog_nav_hints(ICON_NAV_BACK, page == last_page ? ICON_NAV_NEXT : ICON_NAV_NONE);
+    dialog_nav_hints(ICON_NAV_CANCEL, page == last_page ? ICON_NAV_NEXT : ICON_NAV_NONE);
 
     if (last_page > 0) {
       dialog_pager(page, last_page);

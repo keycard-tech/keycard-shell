@@ -21,7 +21,7 @@
 #define BTC_DIALOG_PAGE_ITEMS 1
 
 static app_err_t dialog_wait_dismiss() {
-  dialog_nav_hints(ICON_NAV_NONE, ICON_NAV_NEXT);
+  dialog_nav_hints(ICON_NAV_NONE, ICON_NAV_CONFIRM);
 
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
@@ -35,7 +35,7 @@ static app_err_t dialog_wait_dismiss() {
 }
 
 static app_err_t dialog_wait_dismiss_cancellable() {
-  dialog_nav_hints(ICON_NAV_BACK, ICON_NAV_NEXT);
+  dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_CONFIRM);
 
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
@@ -51,7 +51,7 @@ static app_err_t dialog_wait_dismiss_cancellable() {
 }
 
 static app_err_t dialog_wait_paged(size_t* page, size_t last_page) {
-  dialog_nav_hints(ICON_NAV_BACK, ICON_NAV_NEXT);
+  dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_CONFIRM);
   dialog_pager(*page, last_page);
 
   switch(ui_wait_keypress(pdMS_TO_TICKS(TX_CONFIRM_TIMEOUT))) {
@@ -140,7 +140,7 @@ app_err_t dialog_footer_colors(uint16_t yOff, uint16_t bg) {
   return screen_fill_area(&area, bg);
 }
 
-app_err_t dialog_nav_hints_colors(nav_icon_t left, nav_icon_t right, uint16_t bg) {
+app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg) {
   screen_area_t hint_area = {
       .x = 0,
       .y = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT,
@@ -157,7 +157,7 @@ app_err_t dialog_nav_hints_colors(nav_icon_t left, nav_icon_t right, uint16_t bg
   };
 
   if (left != ICON_NAV_NONE) {
-    icon_draw_nav(&ctx, left);
+    icon_draw(&ctx, left);
   }
 
   hint_area.x = SCREEN_WIDTH - TH_NAV_HINT_WIDTH;
@@ -167,7 +167,7 @@ app_err_t dialog_nav_hints_colors(nav_icon_t left, nav_icon_t right, uint16_t bg
     ctx.bg = bg;
     ctx.x = TH_NAV_HINT_RIGHT_X;
     ctx.y = TH_NAV_HINT_TOP,
-    icon_draw_nav(&ctx, right);
+    icon_draw(&ctx, right);
   }
 
   return ERR_OK;
