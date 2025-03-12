@@ -19,8 +19,7 @@ typedef enum {
   NAV_CIRCLE_FULL = 0x01,
   NAV_CIRCLE_EMPTY = 0x02,
   NAV_CIRCLE_FULL_SMALL = 0x03,
-  NAV_BACKSPACE_FULL = 0x04,
-  NAV_BACKSPACE_EMPTY = 0x05,
+  NAV_BACKSPACE_EMPTY = 0x04,
 } nav_glyph_t;
 
 typedef enum {

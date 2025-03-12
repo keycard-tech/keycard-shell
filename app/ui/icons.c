@@ -1,11 +1,15 @@
 #include "icons.h"
 #include <string.h>
 
+#define ICON_ATTR_X_MASK 0x03
+#define ICON_ATTR_Y_MASK 0x0C
+
 typedef enum {
-  ICON_ATTR_STROKED = 0x01,
-  ICON_ATTR_INHERIT_FG = 0x02,
-  ICON_ATTR_NOTOP = 0x04
+  ICON_ATTR_STROKED = 0x10,
+  ICON_ATTR_INHERIT_FG = 0x20,
+  ICON_ATTR_NOTOP = 0x40
 } icon_attr_t;
+
 
 typedef struct {
   char base;
@@ -15,12 +19,12 @@ typedef struct {
 } composite_icon_desc_t;
 
 const static composite_icon_desc_t NAV_ICONS[] = {
-    {.base = NAV_CIRCLE_FULL, .top = SYM_RIGHT_CHEVRON, .attr = 0, .base_color = TH_COLOR_ACCENT},
-    {.base = NAV_CIRCLE_EMPTY, .top = SYM_RIGHT_CHEVRON, .attr = ICON_ATTR_STROKED, .base_color = TH_COLOR_ACCENT},
+    {.base = NAV_CIRCLE_FULL, .top = SYM_RIGHT_CHEVRON, .attr = 1, .base_color = TH_COLOR_ACCENT},
+    {.base = NAV_CIRCLE_EMPTY, .top = SYM_RIGHT_CHEVRON, .attr = (ICON_ATTR_STROKED | 1), .base_color = TH_COLOR_ACCENT},
     {.base = NAV_CIRCLE_EMPTY, .top = SYM_CANCEL, .attr = (ICON_ATTR_STROKED | ICON_ATTR_INHERIT_FG), .base_color = 0},
-    {.base = NAV_BACKSPACE_EMPTY, .top = SYM_CANCEL, .attr = (ICON_ATTR_STROKED | ICON_ATTR_INHERIT_FG), .base_color = 0},
-    {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .attr = 0, .base_color = TH_COLOR_ACCENT},
-    {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .attr = 0, .base_color = TH_COLOR_SUCCESS},
+    {.base = NAV_BACKSPACE_EMPTY, .top = SYM_CANCEL, .attr = (ICON_ATTR_STROKED | ICON_ATTR_INHERIT_FG | 2) , .base_color = 0},
+    {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .attr = (1 << 2), .base_color = TH_COLOR_ACCENT},
+    {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .attr = (1 << 2), .base_color = TH_COLOR_SUCCESS},
     {.base = NAV_CIRCLE_FULL, .top = SYM_CROSS, .attr = 0, .base_color = TH_COLOR_ERROR},
     {.base = NAV_CIRCLE_EMPTY, .top = 0, .attr = (ICON_ATTR_STROKED | ICON_ATTR_INHERIT_FG | ICON_ATTR_NOTOP), .base_color = 0},
     {.base = NAV_CIRCLE_FULL, .top = 0, .attr = (ICON_ATTR_INHERIT_FG | ICON_ATTR_NOTOP), .base_color = 0},
@@ -58,8 +62,8 @@ app_err_t icon_draw(const screen_text_ctx_t* ctx, icon_t icon) {
   top.yOffset = -c_ctx.font->baseline;
   top.xAdvance = top.width;
 
-  c_ctx.x += ((TH_NAV_ICONS)->yAdvance - top.width) / 2;
-  c_ctx.y += ((TH_NAV_ICONS)->yAdvance - top.height) / 2;
+  c_ctx.x += (((TH_NAV_ICONS)->yAdvance - top.width) / 2) + (NAV_ICONS[icon].attr & ICON_ATTR_X_MASK);
+  c_ctx.y += (((TH_NAV_ICONS)->yAdvance - top.height) / 2) + ((NAV_ICONS[icon].attr & ICON_ATTR_Y_MASK) >> 2);
 
   screen_draw_glyph(&c_ctx, &top);
 
