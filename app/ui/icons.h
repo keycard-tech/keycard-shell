@@ -40,6 +40,8 @@ typedef enum {
  ICON_NAV_CANCEL,
  ICON_NAV_BACKSPACE,
  ICON_NAV_CONFIRM,
+ ICON_OK,
+ ICON_FAIL,
  ICON_NONE = 255
 } icon_t;
 

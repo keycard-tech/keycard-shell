@@ -14,6 +14,8 @@ const static composite_icon_desc_t NAV_ICONS[] = {
     {.base = NAV_CIRCLE_EMPTY, .top = SYM_CANCEL, .stroked = true, .base_color = TH_COLOR_FG},
     {.base = NAV_BACKSPACE_EMPTY, .top = SYM_CANCEL, .stroked = true, .base_color = TH_COLOR_FG},
     {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .stroked = false, .base_color = TH_COLOR_ACCENT},
+    {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .stroked = false, .base_color = TH_COLOR_SUCCESS},
+    {.base = NAV_CIRCLE_FULL, .top = SYM_CROSS, .stroked = false, .base_color = TH_COLOR_ERROR},
 };
 
 app_err_t icon_draw(screen_text_ctx_t* ctx, icon_t icon) {
