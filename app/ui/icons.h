@@ -40,7 +40,7 @@ typedef enum {
  ICON_NAV_CANCEL,
  ICON_NAV_BACKSPACE,
  ICON_NAV_CONFIRM,
- ICON_NAV_NONE = 255
+ ICON_NONE = 255
 } icon_t;
 
 app_err_t icon_draw(screen_text_ctx_t* ctx, icon_t icon);

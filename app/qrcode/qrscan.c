@@ -139,7 +139,7 @@ app_err_t qrscan_scan() {
   ur_t ur = { .data_max_len = MEM_HEAP_SIZE, .data = g_mem_heap, .percent_done = 0, .crc = 0};
 
   screen_fill_area(&screen_fullarea, TH_COLOR_QR_BG);
-  dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_NONE);
+  dialog_nav_hints(ICON_NAV_CANCEL, ICON_NONE);
 
   if (camera_start() != HAL_SUCCESS) {
     res = ERR_HW;

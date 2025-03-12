@@ -21,7 +21,7 @@
 #define BTC_DIALOG_PAGE_ITEMS 1
 
 static app_err_t dialog_wait_dismiss() {
-  dialog_nav_hints(ICON_NAV_NONE, ICON_NAV_CONFIRM);
+  dialog_nav_hints(ICON_NONE, ICON_NAV_CONFIRM);
 
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
@@ -156,14 +156,14 @@ app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg) {
       .y = TH_NAV_HINT_TOP
   };
 
-  if (left != ICON_NAV_NONE) {
+  if (left != ICON_NONE) {
     icon_draw(&ctx, left);
   }
 
   hint_area.x = SCREEN_WIDTH - TH_NAV_HINT_WIDTH;
   screen_fill_area(&hint_area, bg);
 
-  if (right != ICON_NAV_NONE) {
+  if (right != ICON_NONE) {
     ctx.bg = bg;
     ctx.x = TH_NAV_HINT_RIGHT_X;
     ctx.y = TH_NAV_HINT_TOP,
