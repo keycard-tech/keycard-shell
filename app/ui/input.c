@@ -62,6 +62,7 @@ static app_err_t input_render_secret(uint16_t yOff, int len, int pos) {
 
   screen_text_ctx_t ctx = {
       .bg = TH_COLOR_BG,
+      .fg = TH_COLOR_FG,
       .font = TH_NAV_ICONS,
       .x = start_x,
       .y = yOff
@@ -74,22 +75,19 @@ static app_err_t input_render_secret(uint16_t yOff, int len, int pos) {
       .height = (TH_NAV_ICONS)->yAdvance
   };
 
-  char c;
+  icon_t icon;
 
   for (int i = 0; i < len; i++) {
     if (i < pos) {
-      c = NAV_CIRCLE_FULL;
-      ctx.fg = TH_COLOR_FG;
+      icon = ICON_PIN_FULL;
     } else if (i == pos) {
-      c = NAV_CIRCLE_EMPTY;
-      ctx.fg = TH_COLOR_FG;
+      icon = ICON_PIN_CURRENT;
     } else {
-      c = NAV_CIRCLE_FULL_SMALL;
-      ctx.fg = TH_COLOR_INACTIVE;
+      icon = ICON_PIN_EMPTY;
     }
 
     screen_fill_area(&area, TH_COLOR_BG);
-    screen_draw_char(&ctx, c);
+    icon_draw(&ctx, icon);
     ctx.x += (TH_NAV_ICONS)->yAdvance + TH_PIN_DIGIT_MARGIN;
     area.x = ctx.x;
   }

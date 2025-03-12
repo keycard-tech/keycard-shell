@@ -4,6 +4,7 @@
 typedef enum {
   ICON_ATTR_STROKED = 0x01,
   ICON_ATTR_INHERIT_FG = 0x02,
+  ICON_ATTR_NOTOP = 0x04
 } icon_attr_t;
 
 typedef struct {
@@ -21,6 +22,9 @@ const static composite_icon_desc_t NAV_ICONS[] = {
     {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .attr = 0, .base_color = TH_COLOR_ACCENT},
     {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .attr = 0, .base_color = TH_COLOR_SUCCESS},
     {.base = NAV_CIRCLE_FULL, .top = SYM_CROSS, .attr = 0, .base_color = TH_COLOR_ERROR},
+    {.base = NAV_CIRCLE_EMPTY, .top = 0, .attr = (ICON_ATTR_STROKED | ICON_ATTR_INHERIT_FG | ICON_ATTR_NOTOP), .base_color = 0},
+    {.base = NAV_CIRCLE_FULL, .top = 0, .attr = (ICON_ATTR_INHERIT_FG | ICON_ATTR_NOTOP), .base_color = 0},
+    {.base = NAV_CIRCLE_FULL_SMALL, .top = 0, .attr = ICON_ATTR_NOTOP, .base_color = TH_COLOR_INACTIVE},
 };
 
 app_err_t icon_draw(const screen_text_ctx_t* ctx, icon_t icon) {
@@ -34,6 +38,10 @@ app_err_t icon_draw(const screen_text_ctx_t* ctx, icon_t icon) {
   }
 
   screen_draw_char(&c_ctx, NAV_ICONS[icon].base);
+
+  if (NAV_ICONS[icon].attr & ICON_ATTR_NOTOP) {
+    return ERR_OK;
+  }
 
   if (!(NAV_ICONS[icon].attr & ICON_ATTR_STROKED)) {
     c_ctx.bg = c_ctx.fg;
