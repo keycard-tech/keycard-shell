@@ -45,6 +45,6 @@ typedef enum {
  ICON_NONE = 255
 } icon_t;
 
-app_err_t icon_draw(screen_text_ctx_t* ctx, icon_t icon);
+app_err_t icon_draw(const screen_text_ctx_t* ctx, icon_t icon);
 
 #endif

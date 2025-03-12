@@ -140,7 +140,7 @@ app_err_t dialog_footer_colors(uint16_t yOff, uint16_t bg) {
   return screen_fill_area(&area, bg);
 }
 
-app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg) {
+app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg, uint16_t fg) {
   screen_area_t hint_area = {
       .x = 0,
       .y = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT,
@@ -152,6 +152,7 @@ app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg) {
 
   screen_text_ctx_t ctx = {
       .bg = bg,
+      .fg = fg,
       .x = TH_NAV_HINT_LEFT_X,
       .y = TH_NAV_HINT_TOP
   };
@@ -165,6 +166,7 @@ app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg) {
 
   if (right != ICON_NONE) {
     ctx.bg = bg;
+    ctx.fg = fg;
     ctx.x = TH_NAV_HINT_RIGHT_X;
     ctx.y = TH_NAV_HINT_TOP,
     icon_draw(&ctx, right);
