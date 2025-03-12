@@ -220,7 +220,7 @@ app_err_t input_puk() {
   }
 }
 
-static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, bool selected) {
+static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, bool selected, bool fn) {
   screen_area_t key_area = { .x = x, .y = y, .width = TH_KEYBOARD_KEY_SIZE, .height = TH_KEYBOARD_KEY_SIZE };
   screen_text_ctx_t ctx = { .font = TH_FONT_TEXT };
 
@@ -231,7 +231,7 @@ static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, boo
     ctx.fg = TH_KEYBOARD_KEY_SELECTED_FG;
   } else {
     ctx.bg = TH_KEYBOARD_KEY_BG;
-    ctx.fg = c < SYM_HASHTAG ? TH_KEYBOARD_KEY_FG : TH_COLOR_TEXT_FG;
+    ctx.fg = fn ? TH_COLOR_TEXT_FG : TH_KEYBOARD_KEY_FG;
   }
 
   ctx.x = x + ((TH_KEYBOARD_KEY_SIZE - glyph->width) / 2);
@@ -280,7 +280,7 @@ static inline void input_keyboard_render_spacebar(uint16_t x, uint16_t y, bool s
   x = (SCREEN_WIDTH - ((__LEN__ * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)) / 2; \
 \
   while (i < __LIMIT__) { \
-    input_keyboard_render_key(__GLYPH__, x, y, keyboard->idx == i); \
+    input_keyboard_render_key(__GLYPH__, x, y, keyboard->idx == i, false); \
     x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN; \
     i++; \
   } \
@@ -299,11 +299,11 @@ static void input_keyboard_render_alpha(keyboard_state_t* keyboard) {
 
   if (keyboard->layout != KEYBOARD_MNEMONIC) {
     x = (SCREEN_WIDTH - ((2 * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN + TH_KEYBOARD_SPACEBAR_WIDTH)) / 2;
-    input_keyboard_render_key((keyboard->layout == KEYBOARD_LOWERCASE) ? SYM_UP_ARROW : SYM_DOWN_ARROW, x, y, keyboard->idx == i++);
+    input_keyboard_render_key((keyboard->layout == KEYBOARD_LOWERCASE) ? SYM_UP_ARROW : SYM_DOWN_ARROW, x, y, keyboard->idx == i++, true);
     x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
     input_keyboard_render_spacebar(x, y, keyboard->idx == i++);
     x += TH_KEYBOARD_SPACEBAR_WIDTH + TH_KEYBOARD_KEY_MARGIN;
-    input_keyboard_render_key(SYM_HASHTAG, x, y, keyboard->idx == i++);
+    input_keyboard_render_key(SYM_HASHTAG, x, y, keyboard->idx == i++, true);
   }
 }
 
@@ -320,7 +320,7 @@ static void input_keyboard_render_numeric(keyboard_state_t* keyboard) {
 
   input_keyboard_render_spacebar(x, y, keyboard->idx == i++);
   x += TH_KEYBOARD_SPACEBAR_WIDTH + TH_KEYBOARD_KEY_MARGIN;
-  input_keyboard_render_key('a', x, y, keyboard->idx == i++);
+  input_keyboard_render_key('a', x, y, keyboard->idx == i++, true);
 }
 
 #undef _INPUT_KEYBOARD_RENDER_LINE
