@@ -56,29 +56,17 @@ static char* append_db_version(char* dst, const char* label, uint32_t version) {
   return dst;
 }
 
-static char* append_sn(char* dst, const char* label, uint8_t uid[HAL_DEVICE_UID_LEN]) {
+static char* append_sn(char* dst, const char* label, const uint8_t uid[HAL_DEVICE_UID_LEN]) {
   size_t seg_len = strlen(label);
   memcpy(dst, label, seg_len);
   dst += seg_len;
 
-  base16_encode(uid, dst, 4);
-  dst += 8;
-  *(dst++) = '-';
+  memcpy(dst, &uid[6], 6);
+  dst += 6;
 
-  base16_encode(&uid[4], dst, 2);
-  dst += 4;
-  *(dst++) = '-';
-
-  base16_encode(&uid[6], dst, 2);
-  dst += 4;
-  *(dst++) = '-';
-
-  base16_encode(&uid[8], dst, 2);
-  dst += 4;
-  *(dst++) = '-';
-
-  base16_encode(&uid[10], dst, 6);
-  dst += 12;
+  uint32_t wafer = uid[0] | (uid[2] << 8) | (uid[4] << 16);
+  base16_encode((uint8_t*) &wafer, dst, 3);
+  dst += 6;
 
   *(dst++) = '\n';
   *dst = '\0';
