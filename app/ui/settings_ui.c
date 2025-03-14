@@ -37,19 +37,18 @@ void ui_progressbar_render(const screen_area_t* area, uint8_t val) {
   screen_fill_area(&empty_area, TH_COLOR_PROGRESS_BG);
 }
 
-static void ui_brightness_render(uint8_t brightness, uint8_t old_bright) {
+static void ui_brightness_render(uint8_t brightness) {
   screen_area_t segment = { .x = LCD_BRIGHTNESS_BAR_X, .y = LCD_BRIGHTNESS_BAR_Y, .width = TH_BRIGHTNESS_SEGMENT_WIDTH, .height = TH_BRIGHTNESS_SEGMENT_HEIGHT };
-  uint16_t active_color = brightness == old_bright ? TH_BRIGHTNESS_ACTIVE_ORIGINAL : TH_BRIGHTNESS_ACTIVE_CHANGED;
   int i = 0;
   int active_count = brightness / LCD_BRIGHTNESS_STEP;
 
   for(i = 0; i < LCD_BRIGHTNESS_STEPS; i++) {
-    screen_fill_area(&segment, i < active_count ? active_color : TH_BRIGHTNESS_INACTIVE);
+    screen_fill_area(&segment, i < active_count ? TH_BRIGHTNESS_ACTIVE : TH_BRIGHTNESS_INACTIVE);
     segment.x += TH_BRIGHTNESS_SEGMENT_WIDTH + TH_BRIGHTNESS_SEGMENT_SPACING;
   }
 }
 
-static void handle_lcd_change(uint8_t old_bright, bool increase) {
+static void handle_lcd_change(bool increase) {
   do {
     if (increase) {
       if (*g_ui_cmd.params.lcd.brightness < LCD_MAX_BRIGHTNESS) {
@@ -62,7 +61,7 @@ static void handle_lcd_change(uint8_t old_bright, bool increase) {
     }
 
     hal_pwm_set_dutycycle(PWM_BACKLIGHT, *g_ui_cmd.params.lcd.brightness);
-    ui_brightness_render(*g_ui_cmd.params.lcd.brightness, old_bright);
+    ui_brightness_render(*g_ui_cmd.params.lcd.brightness);
     vTaskDelay(pdMS_TO_TICKS(50));
   } while(g_ui_ctx.keypad.last_key_long && !g_ui_ctx.keypad.last_key_released);
 }
@@ -86,8 +85,7 @@ app_err_t settings_ui_lcd_brightness() {
   ctx.x = LCD_BRIGHTNESS_BAR_X + LCD_BRIGHTNESS_BAR_WIDTH + TH_BRIGHTNESS_CHEVRON_MARGIN;
   screen_draw_char(&ctx, SYM_RIGHT_CHEVRON);
 
-  uint8_t old_bright = *g_ui_cmd.params.lcd.brightness;
-  ui_brightness_render(*g_ui_cmd.params.lcd.brightness, old_bright);
+  ui_brightness_render(*g_ui_cmd.params.lcd.brightness);
 
   dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_CONFIRM);
 
@@ -100,10 +98,10 @@ app_err_t settings_ui_lcd_brightness() {
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
     case KEYPAD_KEY_LEFT:
-      handle_lcd_change(old_bright, false);
+      handle_lcd_change(false);
       break;
     case KEYPAD_KEY_RIGHT:
-      handle_lcd_change(old_bright, true);
+      handle_lcd_change(true);
       break;
     default:
       break;
