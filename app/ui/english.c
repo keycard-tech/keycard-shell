@@ -85,7 +85,7 @@ const char *const i18n_english_strings[] = {
     "Keycard PIN",
     "Wrong PIN",
     "Choose a new PIN",
-    "Remaining attempts: ",
+    " remaining attempt(s)",
     "Repeat the PIN",
     "PINs don't match",
     "New PIN saved",
@@ -111,8 +111,8 @@ const char *const i18n_english_strings[] = {
     "Factory reset will permanently erase all keys on your card.\nEnsure you back up your seed phrase. The device will restart after resetting.",
 
     // Info messages
-    "Card lost",
-    "Please remove it and insert again",
+    "Keycard disconnected",
+    "Please remove and reinsert it",
     "The inserted card does not appear to be a Keycard. Please replace it with a Keycard",
     "Failed to verify genuineness of this card. Do not press OK unless you loaded a custom Keycard applet on this card yourself",
     "This Keycard has an old version of the applet installed. Please replace it with a newer one",

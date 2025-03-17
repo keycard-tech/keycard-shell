@@ -98,9 +98,8 @@ core_evt_t ui_prompt(const char* title, const char* msg) {
 core_evt_t ui_wrong_auth(const char* msg, uint8_t retries) {
   size_t label_len = strlen(LSTR(PIN_LABEL_REMAINING_ATTEMPTS));
   char remaining_attempts[label_len + 2];
-  memcpy(remaining_attempts, LSTR(PIN_LABEL_REMAINING_ATTEMPTS), label_len);
-  remaining_attempts[label_len] = retries + '0';
-  remaining_attempts[label_len + 1] = '\0';
+  remaining_attempts[0] = retries + '0';
+  memcpy(&remaining_attempts[1], LSTR(PIN_LABEL_REMAINING_ATTEMPTS), label_len + 1);
 
   g_ui_cmd.type = UI_CMD_INFO;
   g_ui_cmd.params.info.icon = ICON_INFO_ERROR;
@@ -118,7 +117,7 @@ void ui_card_removed() {
 }
 
 void ui_card_transport_error() {
-  ui_info(ICON_INFO_ERROR, LSTR(INFO_CARD_ERROR_MSG), LSTR(INFO_CARD_ERROR_SUB), UI_INFO_UNDISMISSABLE);
+  ui_info(ICON_INFO_WARN, LSTR(INFO_CARD_ERROR_MSG), LSTR(INFO_CARD_ERROR_SUB), UI_INFO_UNDISMISSABLE);
 }
 
 void ui_card_accepted() {

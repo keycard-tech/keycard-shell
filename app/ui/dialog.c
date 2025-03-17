@@ -782,7 +782,7 @@ app_err_t dialog_info() {
     ctx.y += TH_INFO_SUBTEXT_MARGIN;
     ctx.fg = TH_COLOR_INACTIVE;
     ctx.font = TH_FONT_TEXT;
-    screen_draw_text(&ctx, (SCREEN_WIDTH - TH_SCREEN_MARGIN), MESSAGE_MAX_Y, (uint8_t*) g_ui_cmd.params.info.subtext, strlen(g_ui_cmd.params.info.subtext), false, true);
+    screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (uint8_t*) g_ui_cmd.params.info.subtext, strlen(g_ui_cmd.params.info.subtext), false, true);
   }
 
   if (g_ui_cmd.params.info.options & UI_INFO_UNDISMISSABLE) {
@@ -801,13 +801,13 @@ app_err_t dialog_prompt() {
       .fg = TH_COLOR_TEXT_FG,
       .bg = TH_COLOR_TEXT_BG,
       .x = TH_TEXT_HORIZONTAL_MARGIN,
-      .y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN
+      .y = TH_TITLE_HEIGHT + TH_PROMPT_VERTICAL_MARGIN
   };
 
   size_t len = strlen(g_ui_cmd.params.prompt.msg);
   screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (uint8_t*) g_ui_cmd.params.prompt.msg, len, false, false);
 
-  return dialog_wait_dismiss(UI_INFO_CANCELLABLE);
+  return dialog_wait_dismiss(UI_INFO_CANCELLABLE | UI_INFO_NEXT);
 }
 
 app_err_t dialog_dev_auth() {
