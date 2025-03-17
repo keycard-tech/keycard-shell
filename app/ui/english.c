@@ -77,7 +77,7 @@ const char *const i18n_english_strings[] = {
     "Scan to verify",
     "Scan with your EVM-chain wallet",
     "Scan with your Bitcoin wallet",
-    "Scan with your OKX wallet",
+    "Scan with your wallet",
     "Your ETH address",
     "Your BTC address",
 

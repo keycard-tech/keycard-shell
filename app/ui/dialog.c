@@ -770,9 +770,8 @@ app_err_t dialog_confirm_eip712() {
 app_err_t dialog_info() {
   dialog_draw_message(g_ui_cmd.params.info.msg);
 
-  if (!g_ui_cmd.params.info.dismissable) {
+  if (g_ui_cmd.params.info.options & UI_INFO_UNDISMISSABLE) {
     vTaskSuspend(NULL);
-    return ERR_CANCEL;
   }
 
   return dialog_wait_dismiss();

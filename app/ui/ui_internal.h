@@ -5,6 +5,7 @@
 #include "task.h"
 
 #include "menu.h"
+#include "dialog.h"
 #include "keypad/keypad.h"
 #include "bitcoin/bitcoin.h"
 #include "core/core.h"
@@ -49,7 +50,9 @@ enum cmd_type {
 
 struct cmd_info {
   const char* msg;
-  uint8_t dismissable;
+  const char* subtext;
+  info_icon_t icon;
+  ui_info_opt_t options;
 };
 
 struct cmd_prompt {

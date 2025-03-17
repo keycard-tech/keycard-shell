@@ -420,7 +420,7 @@ static void core_addresses(const char* title, uint32_t purpose, uint32_t coin, c
     memcpy(&g_core.bip44_path[16], &tmp, 4);
 
     if (core_export_public(g_core.data.key.pub, NULL, NULL, NULL) != ERR_OK) {
-      ui_info(LSTR(INFO_CARD_ERROR_MSG), 0);
+      ui_info(ICON_INFO_ERROR, LSTR(INFO_CARD_ERROR_MSG), NULL, UI_INFO_UNDISMISSABLE);
     }
 
     encoder(g_core.data.key.pub, (char*) g_mem_heap);

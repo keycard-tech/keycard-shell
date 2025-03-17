@@ -79,10 +79,12 @@ core_evt_t ui_display_address_qr(const char* title, const char* address, uint32_
   return ui_signal_wait(0);
 }
 
-core_evt_t ui_info(const char* msg, uint8_t dismissable) {
+core_evt_t ui_info(info_icon_t icon, const char* msg, const char* subtext, ui_info_opt_t opts) {
   g_ui_cmd.type = UI_CMD_INFO;
-  g_ui_cmd.params.info.dismissable = dismissable;
+  g_ui_cmd.params.info.icon = icon;
   g_ui_cmd.params.info.msg = msg;
+  g_ui_cmd.params.info.subtext = subtext;
+  g_ui_cmd.params.info.options = opts;
   return ui_signal_wait(0);
 }
 
@@ -108,18 +110,18 @@ void ui_card_removed() {
 }
 
 void ui_card_transport_error() {
-  ui_info(LSTR(INFO_CARD_ERROR_MSG), 0);
+  ui_info(ICON_INFO_ERROR, LSTR(INFO_CARD_ERROR_MSG), NULL, UI_INFO_UNDISMISSABLE);
 }
 
 void ui_card_accepted() {
 }
 
 void ui_keycard_wrong_card() {
-  ui_info(LSTR(INFO_NOT_KEYCARD), 0);
+  ui_info(ICON_INFO_ERROR, LSTR(INFO_NOT_KEYCARD), NULL, UI_INFO_UNDISMISSABLE);
 }
 
 void ui_keycard_old_card() {
-  ui_info(LSTR(INFO_OLD_KEYCARD), 0);
+  ui_info(ICON_INFO_ERROR, LSTR(INFO_OLD_KEYCARD), NULL, UI_INFO_UNDISMISSABLE);
 }
 
 void ui_keycard_not_initialized() {
@@ -162,7 +164,7 @@ void ui_keycard_wrong_pin(uint8_t retries) {
   if (retries > 0) {
     ui_wrong_auth(LSTR(PIN_WRONG_WARNING), retries);
   } else {
-    ui_info(LSTR(INFO_KEYCARD_BLOCKED), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_KEYCARD_BLOCKED), NULL, 0);
   }
 }
 
@@ -188,7 +190,7 @@ core_evt_t ui_confirm_factory_reset() {
 }
 
 core_evt_t ui_keycard_no_pairing_slots() {
-  return ui_info(LSTR(INFO_NO_PAIRING_SLOTS), 1);
+  return ui_info(ICON_INFO_ERROR, LSTR(INFO_NO_PAIRING_SLOTS), NULL, 0);
 }
 
 core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
@@ -347,7 +349,7 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
 
       if (selected != indexes[pos - 1]) {
         if (--retries == 0) {
-          ui_info(LSTR(MNEMO_MISMATCH_LIMIT), 1);
+          ui_info(ICON_INFO_ERROR, LSTR(MNEMO_MISMATCH_LIMIT), NULL, 0);
           return ERR_CANCEL;
         } else {
           ui_wrong_auth(LSTR(MNEMO_MISMATCH), retries);
@@ -362,7 +364,7 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
 }
 
 core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len) {
-  ui_info(LSTR(MNEMO_BACKUP_PROMPT), 1);
+  ui_info(ICON_INFO_ERROR, LSTR(MNEMO_BACKUP_PROMPT), NULL, 0);
 
   do {
     if (ui_display_mnemonic(indexes, len) == CORE_EVT_UI_CANCELLED) {

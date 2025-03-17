@@ -128,7 +128,7 @@ static app_err_t updater_database_update(uint8_t* data, size_t len) {
   if ((len < MIN_DB_LEN) ||
       (updater_verify_db(data, len) != ERR_OK) ||
       (eth_db_extract_version(data, &version) != ERR_OK)) {
-    ui_info(LSTR(DB_UPDATE_INVALID), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_INVALID), NULL, 0);
     return ERR_DATA;
   }
 
@@ -137,10 +137,10 @@ static app_err_t updater_database_update(uint8_t* data, size_t len) {
   }
 
   if (eth_db_update(data, len - SIG_LEN) != ERR_OK) {
-    ui_info(LSTR(DB_UPDATE_ERROR), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERROR), NULL, 0);
     return ERR_DATA;
   } else {
-    ui_info(LSTR(DB_UPDATE_OK), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_OK), NULL, 0);
   }
 
   return ERR_OK;
@@ -149,7 +149,7 @@ static app_err_t updater_database_update(uint8_t* data, size_t len) {
 static app_err_t updater_prompt_version() {
   uint32_t db_ver;
   if (eth_db_lookup_version(&db_ver) != ERR_OK) {
-    ui_info(LSTR(DB_UPDATE_NO_DB), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_NO_DB), NULL, 0);
     return ERR_CANCEL;
   }
 
@@ -273,7 +273,7 @@ app_err_t updater_usb_fw_upgrade(command_t *cmd, apdu_t* apdu) {
     if (updater_verify_firmware() != ERR_OK) {
       updater_clear_flash_area();
       core_usb_err_sw(apdu, 0x6a, 0x80);
-      ui_info(LSTR(FW_UPGRADE_INVALID), 1);
+      ui_info(ICON_INFO_ERROR, LSTR(FW_UPGRADE_INVALID), NULL, 0);
       return ERR_DATA;
     }
 

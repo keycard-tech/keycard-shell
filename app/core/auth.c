@@ -28,7 +28,7 @@ void device_auth_run() {
       auth.dev_auth_auth_time_present ||
       auth.dev_auth_auth_count_present ||
       auth.dev_auth_auth_sig_present) {
-    ui_info(LSTR(DEV_AUTH_INVALID_CHALLENGE), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(DEV_AUTH_INVALID_CHALLENGE), NULL, 0);
     return;
   }
 
@@ -82,7 +82,7 @@ void device_auth_run() {
       !auth.dev_auth_auth_count_present ||
       !auth.dev_auth_auth_sig_present
       ) {
-    ui_info(LSTR(DEV_AUTH_INVALID_CHALLENGE), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(DEV_AUTH_INVALID_CHALLENGE), NULL, 0);
     return;
   }
 
@@ -96,6 +96,6 @@ void device_auth_run() {
   if (!ecdsa_verify(&secp256k1, key, auth.dev_auth_auth_sig.dev_auth_auth_sig.value, digest)) {
     ui_device_auth(auth.dev_auth_first_auth.dev_auth_first_auth, auth.dev_auth_auth_time.dev_auth_auth_time, auth.dev_auth_auth_count.dev_auth_auth_count);
   } else {
-    ui_info(LSTR(DEV_AUTH_INVALID_AUTH), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(DEV_AUTH_INVALID_AUTH), NULL, 0);
   }
 }

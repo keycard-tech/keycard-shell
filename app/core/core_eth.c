@@ -407,7 +407,7 @@ static app_err_t core_eth_eip4527_init_sign(struct eth_sign_request *qr_request)
 
 void core_eth_eip4527_run(struct eth_sign_request* qr_request) {
   if (core_eth_eip4527_init_sign(qr_request) != ERR_OK) {
-    ui_info(LSTR(INFO_WRONG_CARD), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_CARD), NULL, 0);
     return;
   }
 
@@ -439,7 +439,7 @@ void core_eth_eip4527_run(struct eth_sign_request* qr_request) {
   case ERR_CANCEL:
     return;
   default:
-    ui_info(LSTR(INFO_MALFORMED_DATA), 1);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA), NULL, 0);
     return;
   }
 
