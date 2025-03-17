@@ -118,6 +118,7 @@ typedef enum {
 
   // Info messages
   INFO_CARD_ERROR_MSG,
+  INFO_CARD_ERROR_SUB,
   INFO_NOT_KEYCARD,
   INFO_NOT_GENUINE,
   INFO_OLD_KEYCARD,

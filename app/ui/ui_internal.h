@@ -35,7 +35,6 @@ enum cmd_type {
   UI_CMD_QRSCAN,
   UI_CMD_INPUT_PIN,
   UI_CMD_INPUT_PUK,
-  UI_CMD_WRONG_AUTH,
   UI_CMD_INPUT_STRING,
   UI_CMD_INPUT_MNEMO,
   UI_CMD_DISPLAY_MNEMO,
@@ -58,11 +57,6 @@ struct cmd_info {
 struct cmd_prompt {
   const char* title;
   const char* msg;
-};
-
-struct cmd_wrong_auth {
-  const char* msg;
-  uint8_t retries;
 };
 
 struct cmd_eth_txn {
@@ -146,7 +140,6 @@ struct cmd_progress {
 union cmd_params {
   struct cmd_info info;
   struct cmd_prompt prompt;
-  struct cmd_wrong_auth wrong_auth;
   struct cmd_eth_txn eth_tx;
   struct cmd_btc_txn btc_tx;
   struct cmd_msg msg;

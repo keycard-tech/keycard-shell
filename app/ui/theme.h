@@ -50,7 +50,7 @@
 #define TH_FONT_DATA &shell_16px
 #define TH_FONT_TITLE &shell_16px
 #define TH_FONT_TEXT &shell_16px
-#define TH_FONT_INFO &shell_16px
+#define TH_FONT_INFO &inter_20px
 #define TH_FONT_ICONS &icons_28px
 #define TH_NAV_ICONS &navigation_24px
 #define TH_INFO_ICONS &msg_40px
@@ -129,5 +129,9 @@
 #define TH_NAV_HINT_HEIGHT 44
 
 #define TH_NAV_PAGER_TOP TH_NAV_HINT_TOP
+
+#define TH_INFO_ICON_TOP_MARGIN 22
+#define TH_INFO_ICON_BOTTOM_MARGIN 16
+#define TH_INFO_SUBTEXT_MARGIN 4
 
 #endif

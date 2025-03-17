@@ -610,7 +610,7 @@ static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint
     ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA), NULL, 0);
     return ERR_DATA;
   default:
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_CARD_ERROR_MSG), NULL, 0);
+    ui_card_transport_error();
     return ERR_CRYPTO;
   }
 
@@ -638,7 +638,7 @@ static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint
     ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA), NULL, 0);
     return ERR_DATA;
   default:
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_CARD_ERROR_MSG), NULL, UI_INFO_UNDISMISSABLE);
+    ui_card_transport_error();
     return ERR_CRYPTO;
   }
 
@@ -674,7 +674,7 @@ app_err_t core_btc_sign_msg_run(const uint8_t* msg, size_t msg_len, uint32_t exp
   app_err_t err = core_export_public(pubkey, NULL, &mfp, NULL);
 
   if (err != ERR_OK) {
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_CARD_ERROR_MSG), NULL, UI_INFO_UNDISMISSABLE);
+    ui_card_transport_error();
     return err;
   }
 
@@ -702,7 +702,7 @@ app_err_t core_btc_sign_msg_run(const uint8_t* msg, size_t msg_len, uint32_t exp
   keycard_t *kc = &g_core.keycard;
 
   if ((keycard_cmd_sign(kc, g_core.bip44_path, g_core.bip44_path_len, digest, 1) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_CARD_ERROR_MSG), NULL, UI_INFO_UNDISMISSABLE);
+    ui_card_transport_error();
     return ERR_CRYPTO;
   }
 

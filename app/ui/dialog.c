@@ -20,28 +20,21 @@
 
 #define BTC_DIALOG_PAGE_ITEMS 1
 
-static app_err_t dialog_wait_dismiss() {
-  dialog_nav_hints(ICON_NONE, ICON_NAV_CONFIRM);
+static app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
+  icon_t left = opts & UI_INFO_CANCELLABLE ? ICON_NAV_CANCEL : ICON_NONE;
+  icon_t right = opts & UI_INFO_NEXT ? ICON_NAV_NEXT : ICON_NAV_CONFIRM;
+
+  dialog_nav_hints(left, right);
 
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:
-    case KEYPAD_KEY_CONFIRM:
-      return ERR_OK;
-    default:
-      break;
-    }
-  }
-}
-
-static app_err_t dialog_wait_dismiss_cancellable() {
-  dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_CONFIRM);
-
-  while(1) {
-    switch(ui_wait_keypress(portMAX_DELAY)) {
-    case KEYPAD_KEY_CANCEL:
+      return opts & UI_INFO_CANCELLABLE ? ERR_CANCEL : ERR_OK;
     case KEYPAD_KEY_BACK:
-      return ERR_CANCEL;
+      if (opts & UI_INFO_CANCELLABLE) {
+        return ERR_CANCEL;
+      }
+      break;
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
     default:
@@ -768,13 +761,35 @@ app_err_t dialog_confirm_eip712() {
 }
 
 app_err_t dialog_info() {
-  dialog_draw_message(g_ui_cmd.params.info.msg);
+  dialog_title("");
+  dialog_footer(TH_TITLE_HEIGHT);
+
+  screen_text_ctx_t ctx = {
+      .font = TH_FONT_INFO,
+      .fg = TH_COLOR_TEXT_FG,
+      .bg = TH_COLOR_TEXT_BG,
+      .x = (SCREEN_WIDTH - (TH_INFO_ICONS)->yAdvance) / 2,
+      .y = TH_TITLE_HEIGHT + TH_INFO_ICON_TOP_MARGIN
+  };
+
+  icon_draw_info(&ctx, g_ui_cmd.params.info.icon);
+  ctx.x = TH_SCREEN_MARGIN;
+  ctx.y +=  (TH_INFO_ICONS)->yAdvance + TH_INFO_ICON_BOTTOM_MARGIN;
+  screen_draw_centered_string(&ctx,  g_ui_cmd.params.info.msg);
+
+  if (g_ui_cmd.params.info.subtext) {
+    ctx.x = TH_SCREEN_MARGIN;
+    ctx.y += TH_INFO_SUBTEXT_MARGIN;
+    ctx.fg = TH_COLOR_INACTIVE;
+    ctx.font = TH_FONT_TEXT;
+    screen_draw_text(&ctx, (SCREEN_WIDTH - TH_SCREEN_MARGIN), MESSAGE_MAX_Y, (uint8_t*) g_ui_cmd.params.info.subtext, strlen(g_ui_cmd.params.info.subtext), false, true);
+  }
 
   if (g_ui_cmd.params.info.options & UI_INFO_UNDISMISSABLE) {
     vTaskSuspend(NULL);
   }
 
-  return dialog_wait_dismiss();
+  return dialog_wait_dismiss(g_ui_cmd.params.info.options);
 }
 
 app_err_t dialog_prompt() {
@@ -792,7 +807,7 @@ app_err_t dialog_prompt() {
   size_t len = strlen(g_ui_cmd.params.prompt.msg);
   screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (uint8_t*) g_ui_cmd.params.prompt.msg, len, false, false);
 
-  return dialog_wait_dismiss_cancellable();
+  return dialog_wait_dismiss(UI_INFO_CANCELLABLE);
 }
 
 app_err_t dialog_dev_auth() {
@@ -802,34 +817,5 @@ app_err_t dialog_dev_auth() {
     dialog_draw_message(LSTR(DEV_AUTH_INFO_SUCCESS));
   }
 
-  return dialog_wait_dismiss();
-}
-
-app_err_t dialog_wrong_auth() {
-  dialog_title("");
-  dialog_footer(TH_TITLE_HEIGHT);
-
-  screen_text_ctx_t ctx = {
-      .font = TH_FONT_TEXT,
-      .fg = TH_COLOR_TEXT_FG,
-      .bg = TH_COLOR_TEXT_BG,
-      .x = 0,
-      .y = (SCREEN_HEIGHT - ((TH_FONT_TEXT)->yAdvance + TH_TEXT_VERTICAL_MARGIN + (TH_FONT_TEXT)->yAdvance)) / 2
-  };
-
-  screen_draw_centered_string(&ctx, g_ui_cmd.params.wrong_auth.msg);
-
-  ctx.x = 0;
-  ctx.y += TH_TEXT_VERTICAL_MARGIN;
-  ctx.fg = TH_COLOR_ERROR;
-
-  size_t label_len = strlen(LSTR(PIN_LABEL_REMAINING_ATTEMPTS));
-  char remaining_attempts[label_len + 2];
-  memcpy(remaining_attempts, LSTR(PIN_LABEL_REMAINING_ATTEMPTS), label_len);
-  remaining_attempts[label_len] = g_ui_cmd.params.wrong_auth.retries + '0';
-  remaining_attempts[label_len + 1] = '\0';
-
-  screen_draw_centered_string(&ctx, remaining_attempts);
-
-  return dialog_wait_dismiss();
+  return dialog_wait_dismiss(0);
 }
