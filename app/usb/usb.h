@@ -12,7 +12,7 @@
 #define USB_SN_IDX 3
 
 #define USB_MANUFACTURER_STR "Status Research & Development"
-#define USB_PRODUCT_STR "Keycard Pro"
+#define USB_PRODUCT_STR "Keycard Shell"
 
 #define USB_NOTIFICATION_IDX 0
 
