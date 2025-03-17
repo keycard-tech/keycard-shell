@@ -180,7 +180,7 @@ void ui_keycard_wrong_puk(uint8_t retries) {
 }
 
 core_evt_t ui_keycard_not_genuine() {
-  return ui_prompt("", LSTR(INFO_NOT_GENUINE));
+  return ui_info(ICON_INFO_WARN, LSTR(INFO_NOT_GENUINE_MSG), LSTR(INFO_NOT_GENUINE_SUB), UI_INFO_CANCELLABLE | UI_INFO_NEXT);
 }
 
 core_evt_t ui_prompt_try_puk() {
