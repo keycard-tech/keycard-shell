@@ -45,12 +45,12 @@
 #define TH_BRIGHTNESS_ACTIVE TH_COLOR_ACCENT
 #define TH_BRIGHTNESS_INACTIVE TH_COLOR_INACTIVE
 
-#define TH_FONT_MENU &inter_16px
-#define TH_FONT_LABEL &inter_16px
-#define TH_FONT_DATA &inter_16px
-#define TH_FONT_TITLE &inter_16px
-#define TH_FONT_TEXT &inter_16px
-#define TH_FONT_INFO &inter_20px
+#define TH_FONT_MENU &shell_16px
+#define TH_FONT_LABEL &shell_16px
+#define TH_FONT_DATA &shell_16px
+#define TH_FONT_TITLE &shell_16px
+#define TH_FONT_TEXT &shell_16px
+#define TH_FONT_INFO &shell_16px
 #define TH_FONT_ICONS &icons_28px
 #define TH_NAV_ICONS &navigation_24px
 #define TH_INFO_ICONS &msg_40px
