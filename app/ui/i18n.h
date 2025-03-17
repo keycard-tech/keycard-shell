@@ -183,8 +183,6 @@ typedef enum {
   DEVICE_INFO_FW,
   DEVICE_INFO_DB,
   DEVICE_INFO_SN,
-  DEVICE_INFO_NEW_FW,
-  DEVICE_INFO_NEW_DB,
 
   INVALID_STR = 0xffff
 } i18n_str_id_t;

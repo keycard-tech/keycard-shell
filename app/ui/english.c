@@ -128,13 +128,13 @@ const char *const i18n_english_strings[] = {
     "Internal error while writing the new data, please try again.",
     "Enter the version number below on the update website to generate the update QR, then press OK to scan.\n\n",
     "No database found. Please use the USB cable to perform its installation.",
-    "Proceed updating the database?\n\n",
+    "Update database",
 
     // FW Upgrade
     "Downloading firmware",
     "Do not disconnect your device",
     "The uploaded firmware's signature does not match. Please make sure you are using the official website or app.",
-    "Do you want to upgrade your firmware?\n\n",
+    "Update firmware",
 
     // Mnemonic input
     "Add key pair",
@@ -177,6 +177,4 @@ const char *const i18n_english_strings[] = {
     "Firmware version: ",
     "Database version: ",
     "S/N: ",
-    "New firmware version: ",
-    "New database version: ",
 };

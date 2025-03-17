@@ -19,48 +19,43 @@
 
 #define MAX_INFO_SIZE 1024
 
-static char* append_fw_version(char* dst, const char* label, const uint8_t* version) {
-  size_t seg_len = strlen(label);
-  memcpy(dst, label, seg_len);
-  dst += seg_len;
+static char* append_label(char* dst, const char* label) {
+  size_t label_len = strlen(label);
+  memcpy(dst, label, label_len);
+  dst += label_len;
+  *dst = '\0';
+  return dst;
+}
+
+static char* append_fw_version(char* dst, const uint8_t* version) {
   uint8_t tmp[4];
   uint8_t* digits;
 
   for (int i = 0; i < 3; i++) {
     digits = u32toa(version[i], tmp, 4);
-    seg_len = strlen((char *) digits);
+    size_t seg_len = strlen((char *) digits);
     memcpy(dst, digits, seg_len);
     dst += seg_len;
     *(dst++) = '.';
   }
 
-  *(dst - 1) = '\n';
-  *dst = '\0';
+  *(--dst) = '\0';
 
   return dst;
 }
 
-static char* append_db_version(char* dst, const char* label, uint32_t version) {
-  size_t seg_len = strlen(label);
-  memcpy(dst, label, seg_len);
-  dst += seg_len;
-
+static char* append_db_version(char* dst, uint32_t version) {
   uint8_t tmp[11];
   uint8_t* digits = u32toa(version, tmp, 11);
-  seg_len = strlen((char* ) digits);
+  size_t seg_len = strlen((char* ) digits);
   memcpy(dst, digits, seg_len);
   dst += seg_len;
-  *(dst++) = '\n';
   *dst = '\0';
 
   return dst;
 }
 
-static char* append_sn(char* dst, const char* label, const uint8_t uid[HAL_DEVICE_UID_LEN]) {
-  size_t seg_len = strlen(label);
-  memcpy(dst, label, seg_len);
-  dst += seg_len;
-
+static char* append_sn(char* dst, const uint8_t uid[HAL_DEVICE_UID_LEN]) {
   memcpy(dst, &uid[6], 6);
   dst += 6;
 
@@ -68,7 +63,6 @@ static char* append_sn(char* dst, const char* label, const uint8_t uid[HAL_DEVIC
   base16_encode((uint8_t*) &wafer, dst, 3);
   dst += 6;
 
-  *(dst++) = '\n';
   *dst = '\0';
 
   return dst;
@@ -76,17 +70,22 @@ static char* append_sn(char* dst, const char* label, const uint8_t uid[HAL_DEVIC
 
 void device_info() {
   char info[MAX_INFO_SIZE];
-  char* p = append_fw_version(info, LSTR(DEVICE_INFO_FW), FW_VERSION);
+  char* p = append_label(info, LSTR(DEVICE_INFO_FW));
+  p = append_fw_version(p, FW_VERSION);
+  *(p++) = '\n';
 
   uint32_t db_ver;
   if (eth_db_lookup_version(&db_ver) == ERR_OK) {
-    p = append_db_version(p, LSTR(DEVICE_INFO_DB), db_ver);
+    p = append_label(p, LSTR(DEVICE_INFO_DB));
+    p = append_db_version(p, db_ver);
+    *(p++) = '\n';
   }
 
   uint8_t device_uid[HAL_DEVICE_UID_LEN];
   hal_device_uid(device_uid);
 
-  append_sn(p, LSTR(DEVICE_INFO_SN), device_uid);
+  p = append_label(p, LSTR(DEVICE_INFO_SN));
+  append_sn(p, device_uid);
 
   ui_prompt(LSTR(MENU_INFO), info);
 }
@@ -107,15 +106,10 @@ static app_err_t updater_verify_db(uint8_t* data, size_t data_len) {
 }
 
 static app_err_t updater_confirm_database_update(uint32_t db_ver) {
-  const char* prompt = LSTR(DB_UPDATE_CONFIRM);
-  size_t len = strlen(prompt);
-
   char info[MAX_INFO_SIZE];
-  memcpy(info, prompt, len);
+  append_db_version(info, db_ver);
 
-  append_db_version(&info[len], LSTR(DEVICE_INFO_NEW_DB), db_ver);
-
-  if (ui_prompt(LSTR(DB_UPDATE_TITLE), info) != CORE_EVT_UI_OK) {
+  if (ui_info(ICON_INFO_UPLOAD, LSTR(DB_UPDATE_CONFIRM), info, UI_INFO_CANCELLABLE | UI_INFO_NEXT) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
   }
 
@@ -153,13 +147,11 @@ static app_err_t updater_prompt_version() {
     return ERR_CANCEL;
   }
 
-  const char* prompt = LSTR(DB_UPDATE_PROMPT);
-  size_t len = strlen(prompt);
-
   char info[MAX_INFO_SIZE];
-  memcpy(info, prompt, len);
 
-  append_db_version(&info[len], LSTR(DEVICE_INFO_DB), db_ver);
+  char *p = append_label(info, LSTR(DB_UPDATE_PROMPT));
+  p = append_label(p, LSTR(DEVICE_INFO_DB));
+  append_db_version(p, db_ver);
 
   if (ui_prompt(LSTR(DB_UPDATE_TITLE), info) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
@@ -229,9 +221,9 @@ static app_err_t updater_confirm_fw_upgrade() {
   memcpy(info, prompt, len);
 
   uint32_t ver_off = ((uint32_t ) FW_VERSION) - HAL_FLASH_FW_START_ADDR;
-  append_fw_version(&info[len], LSTR(DEVICE_INFO_NEW_FW), (uint8_t*)(HAL_FLASH_FW_UPGRADE_AREA + ver_off));
+  append_fw_version(info, (uint8_t*)(HAL_FLASH_FW_UPGRADE_AREA + ver_off));
 
-  if (ui_prompt(LSTR(FW_UPGRADE_TITLE), info) != CORE_EVT_UI_OK) {
+  if (ui_info(ICON_INFO_UPLOAD, LSTR(FW_UPGRADE_CONFIRM), info, UI_INFO_CANCELLABLE | UI_INFO_NEXT) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
   }
 
