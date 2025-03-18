@@ -57,7 +57,7 @@ const char KEYBOARD_MAP[] = {
     'z', 'x', 'c', 'v', 'b', 'n', 'm', SYM_UP_ARROW, ' ', SYM_HASHTAG
 };
 
-static app_err_t input_render_secret(uint16_t yOff, int len, int pos) {
+static app_err_t input_render_secret(uint16_t yOff, int len, int pos, icon_t full, icon_t current) {
   uint16_t start_x = (SCREEN_WIDTH - ((len * (TH_NAV_ICONS)->yAdvance) + (TH_PIN_DIGIT_MARGIN * (len - 1)))) / 2;
 
   screen_text_ctx_t ctx = {
@@ -79,9 +79,9 @@ static app_err_t input_render_secret(uint16_t yOff, int len, int pos) {
 
   for (int i = 0; i < len; i++) {
     if (i < pos) {
-      icon = ICON_PIN_FULL;
+      icon = full;
     } else if (i == pos) {
-      icon = ICON_PIN_CURRENT;
+      icon = current;
     } else {
       icon = ICON_PIN_EMPTY;
     }
@@ -101,33 +101,32 @@ static app_err_t input_pin_entry(const char* title, char* out, char* compare, bo
 
   uint8_t position = 0;
   bool comparison_failed = false;
-  bool prev_comparison = comparison_failed;
   uint16_t start_y = (SCREEN_HEIGHT - ((TH_FONT_TEXT)->yAdvance + TH_PIN_FIELD_VERTICAL_MARGIN + (TH_NAV_ICONS)->yAdvance)) / 2;
+  icon_t full_icon = compare ? ICON_OK : ICON_PIN_FULL;
 
   screen_text_ctx_t ctx = {
       .bg = TH_COLOR_TEXT_BG,
+      .fg = TH_COLOR_TEXT_FG,
       .font = TH_FONT_TEXT,
+      .y = start_y
   };
 
-  screen_area_t label_area = { .width = SCREEN_WIDTH, .height = (TH_FONT_TEXT)->yAdvance, .x = 0, .y = start_y};
+  screen_draw_centered_string(&ctx, title);
+  start_y = ctx.y;
 
   while(1) {
     ctx.x = 0;
     ctx.y = start_y;
 
-    if (prev_comparison != comparison_failed) {
-      screen_fill_area(&label_area, ctx.bg);
-    }
-
-    if (comparison_failed) {
-      ctx.fg = TH_COLOR_ERROR;
-      screen_draw_centered_string(&ctx, LSTR(PIN_LABEL_MISMATCH));
+    if (position == PIN_LEN) {
+      dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NAV_CONFIRM);
+    } else if (position > 0) {
+      dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NONE);
     } else {
-      ctx.fg = TH_COLOR_TEXT_FG;
-      screen_draw_centered_string(&ctx, title);
+      dialog_nav_hints(dismissable ? ICON_NAV_CANCEL : ICON_NONE, ICON_NONE);
     }
 
-    input_render_secret(ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN, PIN_LEN, position);
+    input_render_secret(ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN, PIN_LEN, (position - comparison_failed), full_icon, comparison_failed ? ICON_FAIL : ICON_PIN_CURRENT);
     keypad_key_t key = ui_wait_keypress(portMAX_DELAY);
     if (key == KEYPAD_KEY_BACK) {
       if (position > 0) {
@@ -139,7 +138,7 @@ static app_err_t input_pin_entry(const char* title, char* out, char* compare, bo
       if ((position == PIN_LEN) && !comparison_failed) {
         return ERR_OK;
       }
-    } else if (position < PIN_LEN) {
+    } else if ((position < PIN_LEN) && !comparison_failed) {
       char digit = KEYPAD_TO_DIGIT[key];
       if (digit != DIG_INV) {
         out[position++] = digit;
@@ -147,16 +146,7 @@ static app_err_t input_pin_entry(const char* title, char* out, char* compare, bo
     }
 
     if (compare) {
-      prev_comparison = comparison_failed;
       comparison_failed = strncmp(out, compare, position) != 0;
-    }
-
-    if (position == PIN_LEN) {
-      dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NAV_CONFIRM);
-    } else if (position > 0) {
-      dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NONE);
-    } else {
-      dialog_nav_hints(dismissable ? ICON_NAV_CANCEL : ICON_NONE, ICON_NONE);
     }
   }
 }
@@ -197,8 +187,8 @@ app_err_t input_puk() {
   uint8_t position = 0;
 
   while(1) {
-    input_render_secret(ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN, 6, position);
-    input_render_secret((ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN) + ((TH_NAV_ICONS)->yAdvance + TH_PUK_FIELD_VERTICAL_MARGIN), 6, position - 6);
+    input_render_secret(ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN, 6, position, ICON_PIN_FULL, ICON_PIN_CURRENT);
+    input_render_secret((ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN) + ((TH_NAV_ICONS)->yAdvance + TH_PUK_FIELD_VERTICAL_MARGIN), 6, position - 6, ICON_PIN_FULL, ICON_PIN_CURRENT);
 
     keypad_key_t key = ui_wait_keypress(portMAX_DELAY);
     if (key == KEYPAD_KEY_BACK) {
