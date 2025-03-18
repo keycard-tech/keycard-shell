@@ -38,7 +38,6 @@ enum cmd_type {
   UI_CMD_INPUT_STRING,
   UI_CMD_INPUT_MNEMO,
   UI_CMD_DISPLAY_MNEMO,
-  UI_CMD_DEV_AUTH,
   UI_CMD_LCD_BRIGHTNESS,
   UI_CMD_PROGRESS,
 #ifdef TEST_APP
@@ -122,12 +121,6 @@ struct cmd_mnemo {
   uint32_t len;
 };
 
-struct cmd_auth {
-  uint32_t first_auth;
-  uint32_t auth_time;
-  uint32_t auth_count;
-};
-
 struct cmd_brightness {
   uint8_t* brightness;
 };
@@ -151,7 +144,6 @@ union cmd_params {
   struct cmd_input_pin input_pin;
   struct cmd_input_string input_string;
   struct cmd_mnemo mnemo;
-  struct cmd_auth auth;
   struct cmd_brightness lcd;
   struct cmd_progress progress;
 };

@@ -613,25 +613,6 @@ app_err_t dialog_confirm_btc_tx() {
   return ret;
 }
 
-static void dialog_draw_message(const char* txt) {
-  dialog_title("");
-  dialog_footer(TH_TITLE_HEIGHT);
-
-  screen_text_ctx_t ctx = {
-      .font = TH_FONT_TEXT,
-      .fg = TH_COLOR_TEXT_FG,
-      .bg = TH_COLOR_TEXT_BG,
-      .x = TH_TEXT_HORIZONTAL_MARGIN,
-      .y = 0
-  };
-
-  size_t len = strlen(txt);
-  screen_draw_text(&ctx, MESSAGE_MAX_X, SCREEN_HEIGHT, (uint8_t*) txt, len, true, true);
-  ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
-  ctx.y = (SCREEN_HEIGHT - ctx.y) / 2;
-  screen_draw_text(&ctx, MESSAGE_MAX_X, SCREEN_HEIGHT, (uint8_t*) txt, len, false, true);
-}
-
 app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_domain_t* eip712) {
   size_t pages[MAX_PAGE_COUNT];
   size_t last_page = 0;
@@ -799,14 +780,4 @@ app_err_t dialog_prompt() {
   screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (uint8_t*) g_ui_cmd.params.prompt.msg, len, false, false);
 
   return dialog_wait_dismiss(UI_INFO_CANCELLABLE | UI_INFO_NEXT);
-}
-
-app_err_t dialog_dev_auth() {
-  if (g_ui_cmd.params.auth.auth_count > 1) {
-    dialog_draw_message(LSTR(DEV_AUTH_INFO_WARNING));
-  } else {
-    dialog_draw_message(LSTR(DEV_AUTH_INFO_SUCCESS));
-  }
-
-  return dialog_wait_dismiss(0);
 }

@@ -395,12 +395,18 @@ core_evt_t ui_confirm_eth_address(const char* address) {
 }
 
 core_evt_t ui_device_auth(uint32_t first_auth, uint32_t auth_time, uint32_t auth_count) {
-  g_ui_cmd.type = UI_CMD_DEV_AUTH;
-  g_ui_cmd.params.auth.first_auth = first_auth;
-  g_ui_cmd.params.auth.auth_time = auth_time;
-  g_ui_cmd.params.auth.auth_count = auth_count;
+  i18n_str_id_t msg;
+  i18n_str_id_t sub;
 
-  return ui_signal_wait(0);
+  if (auth_count > 1) {
+    msg = DEV_AUTH_INFO_WARNING_MSG;
+    sub = DEV_AUTH_INFO_WARNING_SUB;
+  } else {
+    msg = DEV_AUTH_INFO_SUCCESS_MSG;
+    sub = DEV_AUTH_INFO_SUCCESS_SUB;
+  }
+
+  return ui_info(ICON_INFO_SUCCESS, LSTR(msg), LSTR(sub), 0);
 }
 
 core_evt_t ui_settings_brightness(uint8_t* brightness) {

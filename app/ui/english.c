@@ -154,10 +154,13 @@ const char *const i18n_english_strings[] = {
     "Ensure your recovery phrase is written down and stored securely. You will need to complete a quiz to confirm the integrity of your backup.",
 
     // Device verification
-    "Invalid verification QR. Please check the website you are on and try again.",
-    "The response from the server is invalid. Ignore the verification results, make sure you go on the correct site and try again.",
-    "The verification was successful and this was the first time this unit has been verified. You can safely use the device.",
-    "The verification succeeded, however this wasn't the first time the unit has been verified. If you remember already verifying this device before, then there is nothing to worry about. Otherwise please contact us.",
+    "Wrong QR",
+    "This is not a device verification QR code.",
+    "This QR code does not contain a valid device verification.",
+    "Device and site authentic",
+    "You can safely use your device.",
+    "Authentic, but...",
+    "this is not the first time this device has been authenticated. Was it you?",
 
     // LCD settings
     "LCD brightness",
