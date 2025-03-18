@@ -95,7 +95,7 @@ const char *const i18n_english_strings[] = {
     // Pairing input
     "Insert your pairing password",
     "Input new pairing password",
-    "Pairing password changed successfully",
+    "New pairing password saved",
     "If you change the pairing pass from the default, you will have to manually enter it on pairing requests between your current Keycard and any other wallet and app.",
     "Change pairing password",
 
@@ -109,12 +109,17 @@ const char *const i18n_english_strings[] = {
     // Info messages
     "Keycard disconnected",
     "Please remove and reinsert it",
-    "The inserted card does not appear to be a Keycard. Please replace it with a Keycard",
+    "Not a Keycard",
+    "Please replace with a Keycard",
     "Keycard may be fake",
     "Do not press OK unless you loaded a custom Keycard",
-    "This Keycard has an old version of the applet installed. Please replace it with a newer one",
-    "You can't connect this Keycard to new devices because all pairing slots are full.\nPlease use it with a device with which you used it previously or factory reset the card.",
-    "This transaction is not for this key pair.\nTry again using a different Keycard.",
+    "Old applet detected",
+    "This Keycard is too old. Please replace with a newer one.",
+    "No free pairing slots on card.",
+    "Use Keycard with a previous device or factory reset",
+    "Wrong key pair",
+    "This QR can’t be used with this key pair. Try a different Keycard.",
+    "Invalid QR",
     "Malformed data or unsupported format.",
     "Keycard blocked",
 

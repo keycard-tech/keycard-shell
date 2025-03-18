@@ -124,11 +124,11 @@ void ui_card_accepted() {
 }
 
 void ui_keycard_wrong_card() {
-  ui_info(ICON_INFO_ERROR, LSTR(INFO_NOT_KEYCARD), NULL, UI_INFO_UNDISMISSABLE);
+  ui_info(ICON_INFO_ERROR, LSTR(INFO_NOT_KEYCARD_MSG), LSTR(INFO_NOT_KEYCARD_SUB), UI_INFO_UNDISMISSABLE);
 }
 
 void ui_keycard_old_card() {
-  ui_info(ICON_INFO_ERROR, LSTR(INFO_OLD_KEYCARD), NULL, UI_INFO_UNDISMISSABLE);
+  ui_info(ICON_INFO_ERROR, LSTR(INFO_OLD_KEYCARD_MSG), LSTR(INFO_OLD_KEYCARD_SUB), UI_INFO_UNDISMISSABLE);
 }
 
 void ui_keycard_not_initialized() {
@@ -197,7 +197,7 @@ core_evt_t ui_confirm_factory_reset() {
 }
 
 core_evt_t ui_keycard_no_pairing_slots() {
-  return ui_info(ICON_INFO_ERROR, LSTR(INFO_NO_PAIRING_SLOTS), NULL, 0);
+  return ui_info(ICON_INFO_ERROR, LSTR(INFO_NO_PAIRING_SLOTS_MSG), LSTR(INFO_NO_PAIRING_SLOTS_SUB), 0);
 }
 
 core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {

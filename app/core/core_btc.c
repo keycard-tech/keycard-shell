@@ -594,7 +594,7 @@ static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint
   psbt_read(psbt_in, psbt_len, &psbt, core_btc_parser_cb, tx_ctx);
 
   if (tx_ctx->error != ERR_OK) {
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
     return tx_ctx->error;
   }
 
@@ -604,10 +604,10 @@ static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint
   case ERR_OK:
     break;
   case ERR_MISMATCH:
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_CARD), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_CARD_MSG), LSTR(INFO_WRONG_CARD_SUB), 0);
     return ERR_MISMATCH;
   case ERR_DATA:
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
     return ERR_DATA;
   default:
     ui_card_transport_error();
@@ -627,7 +627,7 @@ static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint
   tx_ctx->index_out = UINT32_MAX;
 
   if (psbt_read(psbt_in, psbt_len, &psbt, core_btc_sign_handler, tx_ctx) != PSBT_OK) {
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
     return ERR_DATA;
   }
 
@@ -635,7 +635,7 @@ static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint
   case ERR_OK:
     break;
   case ERR_DATA:
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
     return ERR_DATA;
   default:
     ui_card_transport_error();
@@ -679,7 +679,7 @@ app_err_t core_btc_sign_msg_run(const uint8_t* msg, size_t msg_len, uint32_t exp
   }
 
   if (mfp != expected_mfp) {
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_CARD), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_CARD_MSG), LSTR(INFO_WRONG_CARD_SUB), 0);
     return ERR_MISMATCH;
   }
 
@@ -709,7 +709,7 @@ app_err_t core_btc_sign_msg_run(const uint8_t* msg, size_t msg_len, uint32_t exp
   uint8_t* data = APDU_RESP(&kc->apdu);
 
   if (keycard_read_signature(data, digest, &out[1]) != ERR_OK) {
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
     return ERR_DATA;
   }
 
@@ -722,7 +722,7 @@ void core_btc_sign_msg_qr_run(struct btc_sign_request* qr_request) {
   if (!qr_request->btc_sign_request_btc_derivation_paths_crypto_keypath_m_present ||
       !qr_request->btc_sign_request_btc_derivation_paths_crypto_keypath_m.crypto_keypath_source_fingerprint_present ||
       (core_set_derivation_path(&qr_request->btc_sign_request_btc_derivation_paths_crypto_keypath_m) != ERR_OK)) {
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
     return;
   }
 
