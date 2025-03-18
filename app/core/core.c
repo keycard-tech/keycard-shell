@@ -328,7 +328,7 @@ void core_display_public_eip4527() {
   }
 
   cbor_encode_hd_key(g_core.data.key.cbor_key, CBOR_KEY_MAX_LEN, &key, &g_core.data.key.cbor_len);
-  ui_display_ur_qr(LSTR(QR_CONNECT_EIP4527_TITLE), g_core.data.key.cbor_key, g_core.data.key.cbor_len, CRYPTO_HDKEY);
+  ui_display_ur_qr(LSTR(QR_SCAN_WALLET_TITLE), g_core.data.key.cbor_key, g_core.data.key.cbor_len, CRYPTO_HDKEY);
 }
 
 // this macro can only be used in core_display_public_bitcoin()
@@ -352,7 +352,7 @@ void core_display_public_bitcoin(uint32_t coin) {
   account.crypto_account_output_descriptors_crypto_output_m_count = 4;
   account.crypto_account_master_fingerprint = g_core.master_fingerprint;
   cbor_encode_crypto_account(&g_mem_heap[keys_off], MEM_HEAP_SIZE, &account, &g_core.data.key.cbor_len);
-  ui_display_ur_qr(LSTR(QR_CONNECT_BITCOIN_TITLE), &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_ACCOUNT);
+  ui_display_ur_qr(LSTR(QR_SCAN_WALLET_TITLE), &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_ACCOUNT);
 }
 
 void core_display_public_bitcoin_mainnet() {
@@ -400,7 +400,7 @@ void core_display_public_multicoin() {
   accounts.crypto_multi_accounts_master_fingerprint = g_core.master_fingerprint;
 
   cbor_encode_crypto_multi_accounts(&g_mem_heap[keys_off], MEM_HEAP_SIZE, &accounts, &g_core.data.key.cbor_len);
-  ui_display_ur_qr(LSTR(QR_CONNECT_MULTIACCOUNT_TITLE), &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_MULTI_ACCOUNTS);
+  ui_display_ur_qr(LSTR(QR_SCAN_WALLET_TITLE), &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_MULTI_ACCOUNTS);
 }
 
 static void core_addresses(const char* title, uint32_t purpose, uint32_t coin, core_addr_encoder_t encoder) {

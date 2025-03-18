@@ -57,5 +57,6 @@ typedef enum {
 
 app_err_t icon_draw(const screen_text_ctx_t* ctx, icon_t icon);
 app_err_t icon_draw_info(const screen_text_ctx_t* ctx, info_icon_t icon);
+app_err_t icon_draw_battery_indicator(const screen_text_ctx_t* ctx, uint8_t level);
 
 #endif

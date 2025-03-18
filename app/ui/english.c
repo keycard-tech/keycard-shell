@@ -12,7 +12,7 @@ const char *const i18n_english_strings[] = {
     "Ethereum",
     "Bitcoin",
     "Sparrow Testnet",
-    "Cross-chain",
+    "Multichain",
 
     // Addresses menu
     "Ethereum",
@@ -75,9 +75,6 @@ const char *const i18n_english_strings[] = {
     // QR output
     "Scan with your wallet",
     "Scan to verify",
-    "Scan with your EVM-chain wallet",
-    "Scan with your Bitcoin wallet",
-    "Scan with your wallet",
     "Your ETH address",
     "Your BTC address",
 

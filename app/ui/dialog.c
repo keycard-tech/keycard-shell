@@ -106,26 +106,17 @@ app_err_t dialog_inverted_string(screen_text_ctx_t* ctx, const char* str, uint16
   return err;
 }
 
-app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg, uint16_t icon) {
+app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg) {
   screen_area_t area = { 0, 0, SCREEN_WIDTH, TH_TITLE_HEIGHT };
   screen_fill_area(&area, bg);
 
   screen_text_ctx_t ctx = { TH_FONT_TITLE, fg, bg, TH_TITLE_LEFT_MARGIN, TH_TITLE_TOP_MARGIN };
   screen_draw_string(&ctx, title);
 
-  ctx.font = TH_FONT_ICONS;
-  ctx.fg = icon;
   ctx.x = TH_TITLE_ICON_LEFT_MARGIN;
   ctx.y = TH_TITLE_ICON_TOP_MARGIN;
 
-  uint8_t i = g_ui_ctx.battery / 25;
-  if (i > 5) {
-    i = 4;
-  } else if (i >= 4) {
-    i = 3;
-  }
-
-  return screen_draw_glyph(&ctx, &ctx.font->glyph[i]) == HAL_SUCCESS? ERR_OK : ERR_HW;
+  return icon_draw_battery_indicator(&ctx, g_ui_ctx.battery);
 }
 
 app_err_t dialog_footer_colors(uint16_t yOff, uint16_t bg) {

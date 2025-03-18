@@ -84,3 +84,23 @@ app_err_t icon_draw_info(const screen_text_ctx_t* ctx, info_icon_t icon) {
 
   return ERR_OK;
 }
+
+app_err_t icon_draw_battery_indicator(const screen_text_ctx_t* ctx, uint8_t level) {
+  screen_text_ctx_t c_ctx;
+  memcpy(&c_ctx, ctx, sizeof(screen_text_ctx_t));
+  c_ctx.font = TH_TOPBAR_ICONS;
+  c_ctx.fg = c_ctx.bg == TH_COLOR_FG ? TH_COLOR_TITLE_ICON_INVERT : TH_COLOR_TITLE_ICON;
+
+  uint8_t i = level / 25;
+
+  if (i > 5) {
+    i = 4;
+  } else if (i >= 4) {
+    i = 3;
+  } else if (i == 0) {
+    i = 1;
+    c_ctx.fg = TH_COLOR_TITLE_ICON_WARN;
+  }
+
+  return screen_draw_glyph(&c_ctx, &c_ctx.font->glyph[i]) == HAL_SUCCESS? ERR_OK : ERR_HW;
+}

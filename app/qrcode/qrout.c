@@ -38,7 +38,7 @@ app_err_t qrout_display(const char* str, uint16_t max_y) {
 }
 
 static void qrout_prepare_canvas(const char* title) {
-  dialog_title_colors(title, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK, SCREEN_COLOR_BLACK);
+  dialog_title_colors(title, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
   dialog_footer_colors(TH_TITLE_HEIGHT, SCREEN_COLOR_WHITE);
   dialog_nav_hints_colors(ICON_NONE, ICON_NAV_CONFIRM, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
 }
