@@ -81,9 +81,9 @@ const char *const i18n_english_strings[] = {
     // PIN input
     "Keycard PIN",
     "Wrong PIN",
-    "Choose a new PIN",
+    "Set Keycard PIN",
     " remaining attempt(s)",
-    "Repeat the PIN",
+    "Repeat Keycard PIN",
     "New PIN saved",
 
     // PUK input

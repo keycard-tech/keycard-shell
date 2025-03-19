@@ -42,7 +42,7 @@ static app_err_t keycard_init_card(keycard_t* kc, uint8_t* sc_key, uint8_t* pin)
   }
 
   memset(puk, 0, KEYCARD_PUK_LEN);
-
+  ui_keycard_init_ok();
   return ERR_OK;
 }
 
@@ -325,7 +325,9 @@ static app_err_t keycard_read_name(keycard_t* kc) {
 static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin) {
   if (keycard_cmd_select(kc, KEYCARD_AID, KEYCARD_AID_LEN) != ERR_OK) {
     return ERR_TXRX;
-  }  
+  }
+
+  kc->ch.open = 0;
 
   if (APDU_SW(&kc->apdu) != SW_OK) {
     ui_keycard_wrong_card();

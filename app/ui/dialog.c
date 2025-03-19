@@ -777,7 +777,7 @@ app_err_t dialog_prompt() {
   };
 
   size_t len = strlen(g_ui_cmd.params.prompt.msg);
-  screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (uint8_t*) g_ui_cmd.params.prompt.msg, len, false, false);
+  screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (const uint8_t*) g_ui_cmd.params.prompt.msg, len, false, false);
 
   return dialog_wait_dismiss(UI_INFO_CANCELLABLE | UI_INFO_NEXT);
 }

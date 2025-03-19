@@ -134,6 +134,10 @@ void ui_keycard_old_card() {
 void ui_keycard_not_initialized() {
 }
 
+void ui_keycard_init_ok() {
+  ui_info(ICON_INFO_SUCCESS, LSTR(PIN_CHANGE_SUCCESS), NULL, 0);
+}
+
 void ui_keycard_init_failed() {
 }
 

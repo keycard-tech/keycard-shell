@@ -42,6 +42,7 @@ void ui_card_accepted();
 void ui_keycard_wrong_card();
 void ui_keycard_old_card();
 void ui_keycard_not_initialized();
+void ui_keycard_init_ok();
 void ui_keycard_init_failed();
 void ui_keycard_no_keys();
 void ui_keycard_ready();
