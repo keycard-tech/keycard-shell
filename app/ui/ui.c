@@ -219,18 +219,15 @@ core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable) {
 }
 
 core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t *len) {
-  while(ui_read_string(LSTR(PAIRING_INPUT_TITLE), (char*) pairing, len) != CORE_EVT_UI_OK) {
-    continue;
-  }
-
-  return CORE_EVT_UI_OK;
+  return ui_read_string(LSTR(PAIRING_INPUT_TITLE), (char*) pairing, len, UI_READ_STRING_UNDISMISSABLE);
 }
 
-core_evt_t ui_read_string(const char* title, char* out, uint8_t* len) {
+core_evt_t ui_read_string(const char* title, char* out, uint8_t* len, ui_read_string_opt_t opts) {
   g_ui_cmd.type = UI_CMD_INPUT_STRING;
   g_ui_cmd.params.input_string.title = title;
   g_ui_cmd.params.input_string.out = out;
   g_ui_cmd.params.input_string.len = len;
+  g_ui_cmd.params.input_string.options = opts;
 
   return ui_signal_wait(0);
 }

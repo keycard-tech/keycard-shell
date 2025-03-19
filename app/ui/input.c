@@ -505,6 +505,44 @@ static char input_keyboard(keyboard_state_t* keyboard) {
   return c;
 }
 
+static void input_nav_hints(uint8_t len, bool allow_dismiss, bool valid) {
+  icon_t nav_left;
+
+  if (len > 0) {
+    nav_left = ICON_NAV_BACKSPACE;
+  } else if (allow_dismiss) {
+    nav_left = ICON_NAV_CANCEL;
+  } else {
+    nav_left = ICON_NONE;
+  }
+
+  icon_t nav_right;
+
+  if (valid) {
+    nav_right = ICON_NAV_NEXT_HOLD;
+  } else {
+    nav_right = ICON_NONE;
+  }
+
+  dialog_nav_hints(nav_left, nav_right);
+
+  if (allow_dismiss) {
+    screen_text_ctx_t ctx = { .font = TH_FONT_TEXT, .bg = TH_COLOR_BG, .fg = TH_COLOR_FG, .x = TH_NAV_HINT_INPUT_LEFT_X, .y = TH_NAV_HINT_INPUT_TOP };
+    screen_draw_string(&ctx, LSTR(INPUT_NAV_EXIT));
+  } else {
+    screen_area_t hint_area = { .x = TH_NAV_HINT_INPUT_LEFT_X, .y = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT, .width = TH_NAV_HINT_INPUT_LEFT_WIDTH, .height = TH_NAV_HINT_HEIGHT };
+    screen_fill_area(&hint_area, TH_COLOR_BG);
+  }
+
+  if (valid) {
+    screen_text_ctx_t ctx = { .font = TH_FONT_TEXT, .bg = TH_COLOR_BG, .fg = TH_COLOR_ACCENT, .x = TH_NAV_HINT_INPUT_RIGHT_X, .y = TH_NAV_HINT_INPUT_TOP };
+    screen_draw_string(&ctx, LSTR(INPUT_NAV_SAVE));
+  } else {
+    screen_area_t hint_area = { .x = TH_NAV_HINT_INPUT_RIGHT_X, .y = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT, .width = TH_NAV_HINT_INPUT_RIGHT_WIDTH, .height = TH_NAV_HINT_HEIGHT };
+    screen_fill_area(&hint_area, TH_COLOR_BG);
+  }
+}
+
 static void input_render_text_field(const char* str, screen_area_t* field_area, int len, int suggestion_len) {
   screen_text_ctx_t ctx = {
       .font = TH_FONT_TEXT,
@@ -595,13 +633,16 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
   keyboard_state_t keyboard;
   keyboard.idx = 0;
   keyboard.layout = KEYBOARD_MNEMONIC;
+  bool valid = (*idx != UINT16_MAX);
+
+  input_nav_hints(len, true, valid);
 
   while(1) {
     input_mnemonic_render(word, len, *idx);
     char c = input_keyboard(&keyboard);
 
     if (c == KEY_RETURN) {
-      if (*idx != UINT16_MAX) {
+      if (valid) {
         return ERR_OK;
       }
     } else if (c == KEY_BACKSPACE) {
@@ -615,6 +656,9 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
       word[len++] = c;
       *idx = input_mnemonic_lookup(word, len, ((*idx) == UINT16_MAX ? 0 : *idx));
     }
+
+    valid = (*idx != UINT16_MAX);
+    input_nav_hints(len, true, valid);
   }
 }
 
@@ -724,23 +768,35 @@ app_err_t input_string() {
   keyboard_state_t keyboard;
   keyboard.idx = 0;
   keyboard.layout = KEYBOARD_LOWERCASE;
+  bool allow_dismiss = !(g_ui_cmd.params.input_string.options & UI_READ_STRING_UNDISMISSABLE);
+  bool allow_empty = g_ui_cmd.params.input_string.options & UI_READ_STRING_ALLOW_EMPTY;
+  bool valid = allow_empty;
+
+  input_nav_hints(len, allow_dismiss, valid);
 
   while(1) {
     input_render_editable_text_field(g_ui_cmd.params.input_string.out, len, 0);
     char c = input_keyboard(&keyboard);
 
     if (c == KEY_RETURN) {
-      g_ui_cmd.params.input_string.out[len] = '\0';
-      *g_ui_cmd.params.input_string.len = len;
-      return ERR_OK;
+      if (valid) {
+        g_ui_cmd.params.input_string.out[len] = '\0';
+        *g_ui_cmd.params.input_string.len = len;
+        return ERR_OK;
+      }
     } else if (c == KEY_BACKSPACE) {
       if (len > 0) {
         len--;
       }
     } else if (c == KEY_ESCAPE) {
-      return ERR_CANCEL;
+      if (allow_dismiss) {
+        return ERR_CANCEL;
+      }
     } else if (len < *g_ui_cmd.params.input_string.len) {
       g_ui_cmd.params.input_string.out[len++] = c;
     }
+
+    valid = (len > 0) || allow_empty;
+    input_nav_hints(len, allow_dismiss, valid);
   }
 }

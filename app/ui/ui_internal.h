@@ -6,6 +6,7 @@
 
 #include "menu.h"
 #include "dialog.h"
+#include "input.h"
 #include "keypad/keypad.h"
 #include "bitcoin/bitcoin.h"
 #include "core/core.h"
@@ -114,6 +115,7 @@ struct cmd_input_string {
   const char* title;
   char* out;
   uint8_t* len;
+  ui_read_string_opt_t options;
 };
 
 struct cmd_mnemo {

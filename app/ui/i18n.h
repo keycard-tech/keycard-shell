@@ -108,6 +108,10 @@ typedef enum {
   // Name input
   CARD_NAME_CHANGE_SUCCESS,
 
+  // Input hints
+  INPUT_NAV_EXIT,
+  INPUT_NAV_SAVE,
+
   // Factory reset
   FACTORY_RESET_TITLE,
   FACTORY_RESET_WARNING,

@@ -102,6 +102,10 @@ const char *const i18n_english_strings[] = {
     // Name input
     "Card name saved",
 
+    // Input hints
+    "Hold to exit",
+    "Hold to save",
+
     // Factory reset
     "Card factory reset",
     "Factory reset will permanently erase all keys on your card.\nEnsure you back up your seed phrase. The device will restart after resetting.",
