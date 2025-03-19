@@ -53,7 +53,7 @@
 #define TH_FONT_TITLE &shell_16px
 #define TH_FONT_TEXT &shell_16px
 #define TH_FONT_INFO &inter_20px
-#define TH_TOPBAR_ICONS &icons_28px
+#define TH_TOPBAR_ICONS &navigation_24px
 #define TH_NAV_ICONS &navigation_24px
 #define TH_INFO_ICONS &msg_40px
 

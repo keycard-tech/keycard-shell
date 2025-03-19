@@ -91,16 +91,18 @@ app_err_t icon_draw_battery_indicator(const screen_text_ctx_t* ctx, uint8_t leve
   c_ctx.font = TH_TOPBAR_ICONS;
   c_ctx.fg = c_ctx.bg == TH_COLOR_FG ? TH_COLOR_TITLE_ICON_INVERT : TH_COLOR_TITLE_ICON;
 
-  uint8_t i = level / 25;
+  char icon = level / 25;
 
-  if (i > 5) {
-    i = 4;
-  } else if (i >= 4) {
-    i = 3;
-  } else if (i == 0) {
-    i = 1;
+  if (icon > 5) {
+    icon = ICON_BATTERY_CHARGING;
+  } else if (icon >= 4) {
+    icon = ICON_BATTERY_FULL;
+  } else if (icon == 0) {
+    icon = ICON_BATTERY_ONE;
     c_ctx.fg = TH_COLOR_TITLE_ICON_WARN;
+  } else {
+    icon += (ICON_BATTERY_ONE - 1);
   }
 
-  return screen_draw_glyph(&c_ctx, &c_ctx.font->glyph[i]) == HAL_SUCCESS? ERR_OK : ERR_HW;
+  return screen_draw_char(&c_ctx, icon) == HAL_SUCCESS? ERR_OK : ERR_HW;
 }

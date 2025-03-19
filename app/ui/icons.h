@@ -8,11 +8,10 @@
 #include "theme.h"
 
 typedef enum {
-  ICON_BATTERY_LOW = 0x80,
-  ICON_BATTERY_ONE = 0x81,
-  ICON_BATTERY_TWO = 0x82,
-  ICON_BATTERY_FULL = 0x83,
-  ICON_BATTERY_CHARGING = 0x84
+  ICON_BATTERY_ONE = 0x05,
+  ICON_BATTERY_TWO = 0x06,
+  ICON_BATTERY_FULL = 0x07,
+  ICON_BATTERY_CHARGING = 0x08
 } title_icon_t;
 
 typedef enum {
