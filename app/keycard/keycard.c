@@ -157,6 +157,16 @@ app_err_t keycard_factoryreset(keycard_t* kc) {
   return keycard_cmd_factory_reset(kc);
 }
 
+static app_err_t keycard_factoryreset_on_init(keycard_t* kc) {
+  app_err_t err = keycard_factoryreset(kc);
+
+  if ((err == ERR_OK) || (err == ERR_CANCEL)) {
+    return ERR_RETRY;
+  } else {
+    return err;
+  }
+}
+
 static app_err_t keycard_unblock(keycard_t* kc, uint8_t pukRetries) {
   uint8_t pin[KEYCARD_PIN_LEN];
 
@@ -191,7 +201,7 @@ static app_err_t keycard_unblock(keycard_t* kc, uint8_t pukRetries) {
     }    
   }
 
-  return keycard_factoryreset(kc);
+  return keycard_factoryreset_on_init(kc);
 }
 
 static app_err_t keycard_authenticate(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin) {
@@ -366,9 +376,7 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
   err = keycard_pair(kc, &pairing, info.instance_uid);
   if (err == ERR_FULL) {
     if (ui_keycard_no_pairing_slots() == CORE_EVT_UI_OK) {
-      if (keycard_factoryreset(kc) == ERR_OK) {
-        return ERR_RETRY;
-      }
+      return keycard_factoryreset_on_init(kc);
     }
 
     return ERR_FULL;
