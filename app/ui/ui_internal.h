@@ -57,6 +57,7 @@ struct cmd_info {
 struct cmd_prompt {
   const char* title;
   const char* msg;
+  ui_info_opt_t options;
 };
 
 struct cmd_eth_txn {

@@ -88,10 +88,11 @@ core_evt_t ui_info(info_icon_t icon, const char* msg, const char* subtext, ui_in
   return ui_signal_wait(0);
 }
 
-core_evt_t ui_prompt(const char* title, const char* msg) {
+core_evt_t ui_prompt(const char* title, const char* msg, ui_info_opt_t opts) {
   g_ui_cmd.type = UI_CMD_PROMPT;
   g_ui_cmd.params.prompt.title = title;
   g_ui_cmd.params.prompt.msg = msg;
+  g_ui_cmd.params.prompt.options = opts;
   return ui_signal_wait(0);
 }
 
@@ -101,12 +102,7 @@ core_evt_t ui_wrong_auth(const char* msg, uint8_t retries) {
   remaining_attempts[0] = retries + '0';
   memcpy(&remaining_attempts[1], LSTR(PIN_LABEL_REMAINING_ATTEMPTS), label_len + 1);
 
-  g_ui_cmd.type = UI_CMD_INFO;
-  g_ui_cmd.params.info.icon = ICON_INFO_ERROR;
-  g_ui_cmd.params.info.msg = msg;
-  g_ui_cmd.params.info.subtext = remaining_attempts;
-  g_ui_cmd.params.info.options = UI_INFO_NEXT;
-  return ui_signal_wait(0);
+  return ui_info(ICON_INFO_ERROR, msg, remaining_attempts, UI_INFO_NEXT);
 }
 
 void ui_card_inserted() {
@@ -197,7 +193,7 @@ core_evt_t ui_prompt_try_puk() {
 }
 
 core_evt_t ui_confirm_factory_reset() {
-  return ui_prompt(LSTR(FACTORY_RESET_TITLE), LSTR(FACTORY_RESET_WARNING));
+  return ui_prompt(LSTR(FACTORY_RESET_TITLE), LSTR(FACTORY_RESET_WARNING), (UI_INFO_CANCELLABLE | UI_INFO_DANGEROUS));
 }
 
 core_evt_t ui_keycard_no_pairing_slots() {
@@ -291,7 +287,7 @@ core_evt_t ui_display_mnemonic(uint16_t* indexes, uint32_t len) {
 static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
   const char* const* tmp = *i18n_strings;
 
-  if (ui_prompt(LSTR(MNEMO_VERIFY_TITLE), LSTR(MNEMO_VERIFY_PROMPT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt(LSTR(MNEMO_VERIFY_TITLE), LSTR(MNEMO_VERIFY_PROMPT), (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
     return ERR_OK;
   }
 
@@ -377,7 +373,7 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
 }
 
 core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len) {
-  if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
     return CORE_EVT_UI_CANCELLED;
   };
 

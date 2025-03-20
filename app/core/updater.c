@@ -87,7 +87,7 @@ void device_info() {
   p = append_label(p, LSTR(DEVICE_INFO_SN));
   append_sn(p, device_uid);
 
-  ui_prompt(LSTR(MENU_INFO), info);
+  ui_prompt(LSTR(MENU_INFO), info, 0);
 }
 
 void device_help() {
@@ -153,7 +153,7 @@ static app_err_t updater_prompt_version() {
   p = append_label(p, LSTR(DEVICE_INFO_DB));
   append_db_version(p, db_ver);
 
-  if (ui_prompt(LSTR(DB_UPDATE_TITLE), info) != CORE_EVT_UI_OK) {
+  if (ui_prompt(LSTR(DB_UPDATE_TITLE), info, (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
   }
 

@@ -12,6 +12,7 @@ typedef enum {
   UI_INFO_UNDISMISSABLE = 1,
   UI_INFO_NEXT = 2,
   UI_INFO_CANCELLABLE = 4,
+  UI_INFO_DANGEROUS = 8,
 } ui_info_opt_t;
 
 app_err_t dialog_begin_line(screen_text_ctx_t* ctx, uint16_t line_height);

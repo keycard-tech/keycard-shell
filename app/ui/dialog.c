@@ -22,9 +22,22 @@
 
 static app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
   icon_t left = opts & UI_INFO_CANCELLABLE ? ICON_NAV_CANCEL : ICON_NONE;
-  icon_t right = opts & UI_INFO_NEXT ? ICON_NAV_NEXT : ICON_NAV_CONFIRM;
+  icon_t right;
+
+  if (opts & UI_INFO_DANGEROUS) {
+    right = ICON_NAV_NEXT_HOLD;
+  } else if (opts & UI_INFO_NEXT) {
+    right = ICON_NAV_NEXT;
+  } else {
+    right = ICON_NAV_CONFIRM;
+  }
 
   dialog_nav_hints(left, right);
+
+  if (opts & UI_INFO_DANGEROUS) {
+    screen_text_ctx_t ctx = { .font = TH_FONT_TEXT, .bg = TH_COLOR_BG, .fg = TH_COLOR_ACCENT, .x = TH_NAV_HINT_INPUT_PROCEED_RIGHT_X, .y = TH_NAV_HINT_INPUT_TOP };
+    screen_draw_string(&ctx, LSTR(INPUT_NAV_PROCEED));
+  }
 
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
@@ -36,7 +49,10 @@ static app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
       }
       break;
     case KEYPAD_KEY_CONFIRM:
-      return ERR_OK;
+      if (!(opts & UI_INFO_DANGEROUS) || g_ui_ctx.keypad.last_key_long) {
+        return ERR_OK;
+      }
+      break;
     default:
       break;
     }
@@ -780,6 +796,5 @@ app_err_t dialog_prompt() {
 
   size_t len = strlen(g_ui_cmd.params.prompt.msg);
   screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (const uint8_t*) g_ui_cmd.params.prompt.msg, len, false, false);
-
-  return dialog_wait_dismiss(UI_INFO_CANCELLABLE | UI_INFO_NEXT);
+  return dialog_wait_dismiss(g_ui_cmd.params.prompt.options);
 }

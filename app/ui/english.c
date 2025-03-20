@@ -106,6 +106,7 @@ const char *const i18n_english_strings[] = {
     // Input hints
     "Hold to exit",
     "Hold to save",
+    "Hold to proceed",
 
     // Factory reset
     "Card factory reset",

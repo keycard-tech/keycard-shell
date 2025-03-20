@@ -36,7 +36,7 @@ void card_change_pin() {
 }
 
 void card_change_puk() {
-  if (ui_prompt(LSTR(MENU_CHANGE_PUK), LSTR(PUK_CHANGE_PROMPT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt(LSTR(MENU_CHANGE_PUK), LSTR(PUK_CHANGE_PROMPT), (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
     return;
   }
 
@@ -57,7 +57,7 @@ void card_change_puk() {
 }
 
 void card_change_pairing() {
-  if (ui_prompt(LSTR(MENU_CHANGE_PAIRING), LSTR(PAIRING_CHANGE_PROMPT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt(LSTR(MENU_CHANGE_PAIRING), LSTR(PAIRING_CHANGE_PROMPT), (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
     return;
   }
 
