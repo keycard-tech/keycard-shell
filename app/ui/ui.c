@@ -237,7 +237,7 @@ void ui_seed_loaded() {
 }
 
 void ui_bad_seed() {
-  ui_info(ICON_INFO_ERROR, LSTR(INFO_KEYCARD_BAD_SEED_MSG), LSTR(INFO_KEYCARD_BAD_SEED_SUB), 0);
+  ui_info(ICON_INFO_ERROR, LSTR(INFO_KEYCARD_BAD_SEED_MSG), LSTR(INFO_TRY_AGAIN), 0);
 }
 
 core_evt_t ui_read_mnemonic_len(uint32_t* len) {

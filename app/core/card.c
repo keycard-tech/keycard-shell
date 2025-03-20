@@ -12,7 +12,7 @@ void card_change_name() {
   }
 
   if (keycard_set_name(&g_core.keycard, name) == ERR_OK) {
-    ui_info(ICON_INFO_SUCCESS, LSTR(CARD_NAME_CHANGE_SUCCESS), NULL, 0);
+    ui_info(ICON_INFO_SUCCESS, LSTR(CARD_NAME_CHANGE_SUCCESS), name, 0);
   } else {
     ui_card_transport_error();
   }
@@ -50,7 +50,7 @@ void card_change_puk() {
   memset(puk, 0, KEYCARD_PUK_LEN);
 
   if (err == ERR_OK) {
-    ui_info(ICON_INFO_SUCCESS, LSTR(PUK_CHANGE_SUCCESS), NULL, 0);
+    ui_info(ICON_INFO_SUCCESS, LSTR(PUK_CHANGE_SUCCESS), LSTR(INFO_WRITE_KEEP_SAFE), 0);
   } else {
     ui_card_transport_error();
   }
@@ -76,7 +76,7 @@ void card_change_pairing() {
   app_err_t err = keycard_cmd_change_credential(&g_core.keycard, KEYCARD_PAIRING, pairing, 32);
 
   if (err == ERR_OK) {
-    ui_info(ICON_INFO_SUCCESS, LSTR(PAIRING_CHANGE_SUCCESS), NULL, 0);
+    ui_info(ICON_INFO_SUCCESS, LSTR(PAIRING_CHANGE_SUCCESS), LSTR(INFO_WRITE_KEEP_SAFE), 0);
   } else {
     ui_card_transport_error();
   }

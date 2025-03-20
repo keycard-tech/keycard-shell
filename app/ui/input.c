@@ -712,7 +712,7 @@ static void input_render_mnemonic_word(int word_num, const char* str, screen_are
 }
 
 app_err_t input_display_mnemonic() {
-  dialog_title(LSTR(MNEMO_BACKUP_TITLE));
+  dialog_title(LSTR(INFO_WRITE_KEEP_SAFE));
   int page = 0;
   int last_page = g_ui_cmd.params.mnemo.len == 12 ? 0 : 1;
 

@@ -132,6 +132,7 @@ const char *const i18n_english_strings[] = {
     "Keep your recovery phrase safe",
     "Invalid phrase entered",
     "Try again",
+    "Write it down and keep it safe",
 
     // DB Update
     "Downloading database",
@@ -157,7 +158,6 @@ const char *const i18n_english_strings[] = {
     "Generate new key pair",
     "Enter word #",
     "Select word #",
-    "Write down and keep it safe",
     "Ensure your recovery phrase is written down and stored securely.\nYou will need to complete a quiz to confirm the integrity of your backup.",
     "Wrong answer",
     "Phrase incorrectly recalled",
