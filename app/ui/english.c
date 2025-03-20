@@ -92,13 +92,13 @@ const char *const i18n_english_strings[] = {
     "Set Keycard PUK",
     "Repeat Keycard PUK",
     "New PUK saved",
+    "If your Keycard becomes blocked, you can enter your Personal Unlocking Code (PUK) to unblock it. Your PUK can be any 12 digit number. Don’t forget to write it down.",
 
     // Pairing input
     "Insert your pairing password",
     "Input new pairing password",
     "New pairing password saved",
     "If you change the pairing pass from the default, you will have to manually enter it on pairing requests between your current Keycard and any other wallet and app.",
-    "Change pairing password",
 
     // Name input
     "Card name saved",
