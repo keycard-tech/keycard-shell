@@ -22,8 +22,7 @@ typedef struct {
 } font_t;
 
 extern const font_t shell_16px;
-extern const font_t inter_20px;
-extern const font_t icons_28px;
+extern const font_t shell_18px;
 extern const font_t navigation_24px;
 extern const font_t msg_40px;
 
