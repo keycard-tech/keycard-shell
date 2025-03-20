@@ -126,6 +126,10 @@ const char *const i18n_english_strings[] = {
     "Invalid QR",
     "Malformed data or unsupported format.",
     "Keycard blocked",
+    "Key pair added to Keycard",
+    "Keep your recovery phrase safe",
+    "Invalid phrase entered",
+    "Try again",
 
     // DB Update
     "Downloading database",
@@ -151,11 +155,13 @@ const char *const i18n_english_strings[] = {
     "Generate new key pair",
     "Enter word #",
     "Select word #",
-    "Write down and keep safe",
-    "Prepare your pen and paper",
+    "Write down and keep it safe",
+    "Ensure your recovery phrase is written down and stored securely.\nYou will need to complete a quiz to confirm the integrity of your backup.",
     "Wrong answer",
-    "Recovery phrase was incorrectly written",
-    "Ensure your recovery phrase is written down and stored securely. You will need to complete a quiz to confirm the integrity of your backup.",
+    "Phrase incorrectly recalled",
+    "View phrase again",
+    "Confirm recovery phrase",
+    "You will now be asked to confirm your recovery phrase. You can go back and write it down if you haven't already.",
 
     // Device verification
     "Wrong QR",
@@ -163,8 +169,6 @@ const char *const i18n_english_strings[] = {
     "This QR code does not contain a valid device verification.",
     "Device and site authentic",
     "You can safely use your device.",
-    "Authentic, but...",
-    "this is not the first time this device has been authenticated. Was it you?",
 
     // LCD settings
     "LCD brightness",

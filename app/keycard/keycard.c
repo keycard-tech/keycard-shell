@@ -282,6 +282,11 @@ static app_err_t keycard_init_keys(keycard_t* kc) {
 
     if (err == ERR_TXRX) {
       return ERR_TXRX;
+    } else if (err == ERR_OK) {
+      if (!mnemonic_check(indexes, len)) {
+        ui_bad_seed();
+        err = ERR_RETRY;
+      }
     }
   } while(err != ERR_OK);
 

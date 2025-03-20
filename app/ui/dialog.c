@@ -172,7 +172,9 @@ app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, u
   total_len += p_len;
 
   if (last_page != UINT32_MAX) {
+    page_indicator[total_len++] = ' ';
     page_indicator[total_len++] = '/';
+    page_indicator[total_len++] = ' ';
 
     p = u32toa(last_page + base_page, page_str, UINT32_STRING_LEN);
     p_len = strlen((char *) p);

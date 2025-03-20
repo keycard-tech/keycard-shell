@@ -39,9 +39,8 @@ bool mnemonic_generate(char* mnemo, int strength);  // strength in bits
 bool mnemonic_from_data(char* mnemo, const uint8_t *data, int len);
 void mnemonic_from_indexes( char* mnemo, const uint16_t *indexes, int len);
 
-int mnemonic_check(const char *mnemonic);
-
-int mnemonic_to_bits(const char *mnemonic, uint8_t *bits);
+int mnemonic_check(const uint16_t *mnemonic, int len);
+int mnemonic_to_bits(const uint16_t *mnemonic, int n, uint8_t *bits);
 
 // passphrase must be at most 256 characters otherwise it would be truncated
 void mnemonic_to_seed(const char *mnemonic, const char *passphrase,

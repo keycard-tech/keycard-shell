@@ -57,6 +57,7 @@ void ui_keycard_puk_ok();
 void ui_keycard_wrong_pin(uint8_t retries);
 void ui_keycard_wrong_puk(uint8_t retries);
 void ui_seed_loaded();
+void ui_bad_seed();
 
 core_evt_t ui_prompt_try_puk();
 core_evt_t ui_confirm_factory_reset();

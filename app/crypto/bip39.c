@@ -92,21 +92,7 @@ void mnemonic_from_indexes(char* mnemo, const uint16_t *indexes, int len) {
   *(--p) = '\0';
 }
 
-int mnemonic_to_bits(const char *mnemonic, uint8_t *bits) {
-  if (!mnemonic) {
-    return 0;
-  }
-
-  uint32_t i = 0, n = 0;
-
-  while (mnemonic[i]) {
-    if (mnemonic[i] == ' ') {
-      n++;
-    }
-    i++;
-  }
-  n++;
-
+int mnemonic_to_bits(const uint16_t *mnemonic, int n, uint8_t *bits) {
   // check that number of words is valid for BIP-39:
   // (a) between 128 and 256 bits of initial entropy (12 - 24 words)
   // (b) number of bits divisible by 33 (1 checksum bit per 32 input bits)
@@ -115,40 +101,25 @@ int mnemonic_to_bits(const char *mnemonic, uint8_t *bits) {
     return 0;
   }
 
-  char current_word[10] = {0};
-  uint32_t j = 0, ki = 0, bi = 0;
+  uint32_t bi = 0;
   uint8_t result[32 + 1] = {0};
-
   memzero(result, sizeof(result));
-  i = 0;
-  while (mnemonic[i]) {
-    j = 0;
-    while (mnemonic[i] != ' ' && mnemonic[i] != 0) {
-      if (j >= sizeof(current_word) - 1) {
-        return 0;
-      }
-      current_word[j] = mnemonic[i];
-      i++;
-      j++;
-    }
-    current_word[j] = 0;
-    if (mnemonic[i] != 0) {
-      i++;
-    }
-    int k = mnemonic_find_word(current_word);
-    if (k < 0) {  // word not found
-      return 0;
-    }
-    for (ki = 0; ki < 11; ki++) {
+
+  for (int i = 0; i < n; i++) {
+    int k = mnemonic[i];
+
+    for (int ki = 0; ki < 11; ki++) {
       if (k & (1 << (10 - ki))) {
         result[bi / 8] |= 1 << (7 - (bi % 8));
       }
       bi++;
     }
   }
+
   if (bi != n * 11) {
     return 0;
   }
+
   memcpy(bits, result, sizeof(result));
   memzero(result, sizeof(result));
 
@@ -156,9 +127,9 @@ int mnemonic_to_bits(const char *mnemonic, uint8_t *bits) {
   return n * 11;
 }
 
-int mnemonic_check(const char *mnemonic) {
+int mnemonic_check(const uint16_t *mnemonic, int len) {
   uint8_t bits[32 + 1] = {0};
-  int mnemonic_bits_len = mnemonic_to_bits(mnemonic, bits);
+  int mnemonic_bits_len = mnemonic_to_bits(mnemonic, len, bits);
   if (mnemonic_bits_len != (12 * 11) && mnemonic_bits_len != (18 * 11) &&
       mnemonic_bits_len != (24 * 11)) {
     return 0;

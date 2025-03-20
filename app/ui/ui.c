@@ -237,6 +237,11 @@ core_evt_t ui_read_string(const char* title, char* out, uint8_t* len, ui_read_st
 }
 
 void ui_seed_loaded() {
+  ui_info(ICON_INFO_SUCCESS, LSTR(INFO_KEYCARD_LOADED_MSG), LSTR(INFO_KEYCARD_LOADED_SUB), 0);
+}
+
+void ui_bad_seed() {
+  ui_info(ICON_INFO_ERROR, LSTR(INFO_KEYCARD_BAD_SEED_MSG), LSTR(INFO_KEYCARD_BAD_SEED_SUB), 0);
 }
 
 core_evt_t ui_read_mnemonic_len(uint32_t* len) {
@@ -286,7 +291,7 @@ core_evt_t ui_display_mnemonic(uint16_t* indexes, uint32_t len) {
 static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
   const char* const* tmp = *i18n_strings;
 
-  if (ui_prompt(LSTR(MNEMO_BACKUP_TITLE), LSTR(MNEMO_VERIFY_PROMPT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt(LSTR(MNEMO_VERIFY_TITLE), LSTR(MNEMO_VERIFY_PROMPT)) != CORE_EVT_UI_OK) {
     return ERR_OK;
   }
 
@@ -357,7 +362,7 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
 
       if (selected != indexes[pos - 1]) {
         if (--retries == 0) {
-          ui_info(ICON_INFO_ERROR, LSTR(MNEMO_MISMATCH_LIMIT), NULL, 0);
+          ui_info(ICON_INFO_ERROR, LSTR(MNEMO_MISMATCH_LIMIT), LSTR(MNEMO_MISMATCH_RETRY), 0);
           return ERR_CANCEL;
         } else {
           ui_wrong_auth(LSTR(MNEMO_MISMATCH), retries);
@@ -372,7 +377,9 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
 }
 
 core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len) {
-  ui_info(ICON_INFO_ERROR, LSTR(MNEMO_BACKUP_PROMPT), NULL, 0);
+  if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT)) != CORE_EVT_UI_OK) {
+    return CORE_EVT_UI_CANCELLED;
+  };
 
   do {
     if (ui_display_mnemonic(indexes, len) == CORE_EVT_UI_CANCELLED) {
@@ -396,18 +403,7 @@ core_evt_t ui_confirm_eth_address(const char* address) {
 }
 
 core_evt_t ui_device_auth(uint32_t first_auth, uint32_t auth_time, uint32_t auth_count) {
-  i18n_str_id_t msg;
-  i18n_str_id_t sub;
-
-  if (auth_count > 1) {
-    msg = DEV_AUTH_INFO_WARNING_MSG;
-    sub = DEV_AUTH_INFO_WARNING_SUB;
-  } else {
-    msg = DEV_AUTH_INFO_SUCCESS_MSG;
-    sub = DEV_AUTH_INFO_SUCCESS_SUB;
-  }
-
-  return ui_info(ICON_INFO_SUCCESS, LSTR(msg), LSTR(sub), 0);
+  return ui_info(ICON_INFO_SUCCESS, LSTR(DEV_AUTH_INFO_SUCCESS_MSG), LSTR(DEV_AUTH_INFO_SUCCESS_SUB), 0);
 }
 
 core_evt_t ui_settings_brightness(uint8_t* brightness) {
