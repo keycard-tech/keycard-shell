@@ -95,13 +95,18 @@ static app_err_t input_render_secret(uint16_t yOff, int len, int pos, icon_t ful
   return ERR_OK;
 }
 
-static app_err_t input_pin_entry(const char* title, char* out, char* compare, bool dismissable) {
+static app_err_t input_secret_entry(const char* title, char* out, char* compare, size_t secret_len, bool dismissable) {
   dialog_title("");
   dialog_footer(TH_TITLE_HEIGHT);
 
   uint8_t position = 0;
   bool comparison_failed = false;
-  uint16_t start_y = (SCREEN_HEIGHT - ((TH_FONT_TEXT)->yAdvance + TH_PIN_FIELD_VERTICAL_MARGIN + (TH_NAV_ICONS)->yAdvance)) / 2;
+  uint16_t start_y = (SCREEN_HEIGHT - TH_TITLE_HEIGHT - TH_NAV_HINT_HEIGHT - ((TH_FONT_TEXT)->yAdvance + TH_PIN_FIELD_VERTICAL_MARGIN + (TH_NAV_ICONS)->yAdvance));
+  if (secret_len > PIN_LEN) {
+    start_y -= (TH_PUK_FIELD_VERTICAL_MARGIN + (TH_NAV_ICONS)->yAdvance);
+  }
+  start_y = TH_TITLE_HEIGHT + (start_y / 2);
+
   icon_t full_icon = compare ? ICON_OK : ICON_PIN_FULL;
 
   screen_text_ctx_t ctx = {
@@ -118,7 +123,7 @@ static app_err_t input_pin_entry(const char* title, char* out, char* compare, bo
     ctx.x = 0;
     ctx.y = start_y;
 
-    if (position == PIN_LEN) {
+    if (position == secret_len) {
       dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NAV_CONFIRM);
     } else if (position > 0) {
       dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NONE);
@@ -127,6 +132,10 @@ static app_err_t input_pin_entry(const char* title, char* out, char* compare, bo
     }
 
     input_render_secret(ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN, PIN_LEN, (position - comparison_failed), full_icon, comparison_failed ? ICON_FAIL : ICON_PIN_CURRENT);
+    if (secret_len > PIN_LEN) {
+      input_render_secret((ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN) + ((TH_NAV_ICONS)->yAdvance + TH_PUK_FIELD_VERTICAL_MARGIN), PIN_LEN, (position - PIN_LEN - comparison_failed), full_icon, comparison_failed ? ICON_FAIL : ICON_PIN_CURRENT);
+    }
+
     keypad_key_t key = ui_wait_keypress(portMAX_DELAY);
     if (key == KEYPAD_KEY_BACK) {
       if (position > 0) {
@@ -135,10 +144,10 @@ static app_err_t input_pin_entry(const char* title, char* out, char* compare, bo
         return ERR_CANCEL;
       }
     } else if (key == KEYPAD_KEY_CONFIRM) {
-      if ((position == PIN_LEN) && !comparison_failed) {
+      if ((position == secret_len) && !comparison_failed) {
         return ERR_OK;
       }
-    } else if ((position < PIN_LEN) && !comparison_failed) {
+    } else if ((position < secret_len) && !comparison_failed) {
       char digit = KEYPAD_TO_DIGIT[key];
       if (digit != DIG_INV) {
         out[position++] = digit;
@@ -154,59 +163,36 @@ static app_err_t input_pin_entry(const char* title, char* out, char* compare, bo
 app_err_t input_pin() {
   if (g_ui_cmd.params.input_pin.retries == PIN_NEW_CODE) {
     while(1) {
-      if (input_pin_entry(LSTR(PIN_CREATE_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, g_ui_cmd.params.input_pin.dismissable) != ERR_OK) {
+      if (input_secret_entry(LSTR(PIN_CREATE_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, PIN_LEN, g_ui_cmd.params.input_pin.dismissable) != ERR_OK) {
         return ERR_CANCEL;
       }
 
       char repeat[PIN_LEN];
 
-      if (input_pin_entry(LSTR(PIN_LABEL_REPEAT), repeat, (char *) g_ui_cmd.params.input_pin.out, true) == ERR_OK) {
+      if (input_secret_entry(LSTR(PIN_LABEL_REPEAT), repeat, (char *) g_ui_cmd.params.input_pin.out, PIN_LEN, true) == ERR_OK) {
         return ERR_OK;
       }
     }
   } else {
-    return input_pin_entry(LSTR(PIN_INPUT_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, g_ui_cmd.params.input_pin.dismissable);
+    return input_secret_entry(LSTR(PIN_INPUT_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, PIN_LEN, g_ui_cmd.params.input_pin.dismissable);
   }
 }
 
 app_err_t input_puk() {
-  dialog_title("");
-  dialog_footer(TH_TITLE_HEIGHT);
-
-  screen_text_ctx_t ctx = {
-      .bg = TH_COLOR_TEXT_BG,
-      .fg = TH_COLOR_TEXT_FG,
-      .font = TH_FONT_TEXT,
-      .x = 0,
-      .y = (SCREEN_HEIGHT - ((TH_FONT_TEXT)->yAdvance + TH_PIN_FIELD_VERTICAL_MARGIN + ((TH_NAV_ICONS)->yAdvance) * 2) + (TH_PUK_FIELD_VERTICAL_MARGIN * 2)) / 2
-  };
-
-  screen_draw_centered_string(&ctx, (g_ui_cmd.params.input_pin.retries == PUK_NEW_CODE) ? LSTR(PUK_CREATE_TITLE) : LSTR(PUK_INPUT_TITLE));
-
-  char* out = (char *) g_ui_cmd.params.input_pin.out;
-  uint8_t position = 0;
-
-  while(1) {
-    input_render_secret(ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN, 6, position, ICON_PIN_FULL, ICON_PIN_CURRENT);
-    input_render_secret((ctx.y + TH_PIN_FIELD_VERTICAL_MARGIN) + ((TH_NAV_ICONS)->yAdvance + TH_PUK_FIELD_VERTICAL_MARGIN), 6, position - 6, ICON_PIN_FULL, ICON_PIN_CURRENT);
-
-    keypad_key_t key = ui_wait_keypress(portMAX_DELAY);
-    if (key == KEYPAD_KEY_BACK) {
-      if (position > 0) {
-        position--;
-      } else if (g_ui_cmd.params.input_pin.retries == PUK_NEW_CODE) {
+  if (g_ui_cmd.params.input_pin.retries == PUK_NEW_CODE) {
+    while(1) {
+      if (input_secret_entry(LSTR(PUK_CREATE_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, PUK_LEN, g_ui_cmd.params.input_pin.dismissable) != ERR_OK) {
         return ERR_CANCEL;
       }
-    } else if (key == KEYPAD_KEY_CONFIRM) {
-      if (position == PUK_LEN) {
+
+      char repeat[PUK_LEN];
+
+      if (input_secret_entry(LSTR(PUK_LABEL_REPEAT), repeat, (char *) g_ui_cmd.params.input_pin.out, PUK_LEN, true) == ERR_OK) {
         return ERR_OK;
       }
-    } else if (position < PUK_LEN) {
-      char digit = KEYPAD_TO_DIGIT[key];
-      if (digit != DIG_INV) {
-        out[position++] = digit;
-      }
     }
+  } else {
+    return input_secret_entry(LSTR(PUK_INPUT_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, PUK_LEN, g_ui_cmd.params.input_pin.dismissable);
   }
 }
 

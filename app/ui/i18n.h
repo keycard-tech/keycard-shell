@@ -96,6 +96,7 @@ typedef enum {
   PUK_INPUT_TITLE,
   PUK_WRONG_WARNING,
   PUK_CREATE_TITLE,
+  PUK_LABEL_REPEAT,
   PUK_CHANGE_SUCCESS,
 
   // Pairing input

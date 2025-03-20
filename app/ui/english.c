@@ -89,7 +89,8 @@ const char *const i18n_english_strings[] = {
     // PUK input
     "Keycard PUK",
     "Wrong PUK",
-    "Choose a new PUK",
+    "Set Keycard PUK",
+    "Repeat Keycard PUK",
     "New PUK saved",
 
     // Pairing input
