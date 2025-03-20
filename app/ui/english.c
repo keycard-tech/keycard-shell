@@ -92,7 +92,7 @@ const char *const i18n_english_strings[] = {
     "Set Keycard PUK",
     "Repeat Keycard PUK",
     "New PUK saved",
-    "If your Keycard becomes blocked, you can enter your Personal Unlocking Code (PUK) to unblock it. Your PUK can be any 12 digit number. Don’t forget to write it down.",
+    "If your Keycard becomes blocked, you can enter your Personal Unlocking Code (PUK) to unblock it. Your PUK can be any 12 digit number. Don't forget to write it down.",
 
     // Pairing input
     "Insert your pairing password",
@@ -124,7 +124,7 @@ const char *const i18n_english_strings[] = {
     "No free pairing slots on card.",
     "Use Keycard with a previous device or factory reset",
     "Wrong key pair",
-    "This QR can’t be used with this key pair. Try a different Keycard.",
+    "This QR can't be used with this key pair. Try a different Keycard.",
     "Invalid QR",
     "Malformed data or unsupported format.",
     "Keycard blocked",
