@@ -62,6 +62,7 @@ const char *const i18n_english_strings[] = {
     "SINGLE",
     "ANYONECANPAY",
     "Change",
+    "Sat",
 
     // MSG Confirmation
     "Sign message",

@@ -232,6 +232,13 @@ static inline void dialog_label(screen_text_ctx_t *ctx, const char* label) {
   screen_draw_string(ctx, label);
 }
 
+static inline void dialog_label_2lines(screen_text_ctx_t *ctx, const char* label) {
+  dialog_label_ctx(ctx);
+  dialog_begin_line(ctx, TH_LABEL_HEIGHT * 2);
+  ctx->y = ctx->v1;
+  screen_draw_string(ctx, label);
+}
+
 static inline void dialog_label_only(screen_text_ctx_t *ctx, const char* label) {
   dialog_label(ctx, label);
   dialog_end_line(ctx);
@@ -250,6 +257,12 @@ static inline void dialog_data(screen_text_ctx_t *ctx, const char* data) {
   dialog_end_line(ctx);
 }
 
+static inline void dialog_data_2lines(screen_text_ctx_t *ctx, const char* data) {
+  dialog_data_ctx(ctx);
+  screen_draw_text(ctx, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y + (TH_LABEL_HEIGHT * 2), (uint8_t*) data, strlen(data), false, false);
+  dialog_end_line(ctx);
+}
+
 static void dialog_chain(screen_text_ctx_t *ctx, const char* name) {
   dialog_label(ctx, LSTR(TX_CHAIN));
   dialog_data(ctx, name);
@@ -259,14 +272,8 @@ static void dialog_address(screen_text_ctx_t *ctx, i18n_str_id_t label, addr_typ
   char str[MAX_ADDR_LEN];
   address_format(addr_type, addr, str);
 
-  dialog_label_ctx(ctx);
-  dialog_begin_line(ctx, TH_LABEL_HEIGHT * 2);
-  ctx->y = ctx->v1;
-  screen_draw_string(ctx, LSTR(label));
-
-  dialog_data_ctx(ctx);
-  screen_draw_text(ctx, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y +(TH_LABEL_HEIGHT * 2), (uint8_t*) str, strlen(str), false, false);
-  dialog_end_line(ctx);
+  dialog_label_2lines(ctx, LSTR(label));
+  dialog_data_2lines(ctx, str);
 }
 
 static void dialog_address_block(screen_text_ctx_t *ctx, i18n_str_id_t label, addr_type_t addr_type, const uint8_t* addr) {
@@ -292,12 +299,17 @@ static void dialog_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, const bi
 }
 
 static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint64_t amount) {
-  //TODO: better formatting, add ticker
-  uint8_t tmp[UINT64_STRING_LEN];
-  uint8_t* p = u64toa(amount, tmp, UINT64_STRING_LEN);
+  const char* ticker = LSTR(TX_SATOSHI);
+  size_t ticker_len = strlen(ticker);
+
+  uint8_t tmp[UINT64_STRING_LEN + ticker_len + 2];
+  char* p = (char*) u64toa(amount, tmp, UINT64_STRING_LEN);
+  size_t off = strlen(p);
+  p[off++] = ' ';
+  memcpy(&p[off], ticker, ticker_len + 1);
 
   dialog_label(ctx, LSTR(prompt));
-  dialog_data(ctx, (char*) p);
+  dialog_data(ctx, p);
 }
 
 static app_err_t dialog_confirm_eth_transfer(eth_data_type_t data_type) {
@@ -480,12 +492,13 @@ void dialog_confirm_btc_summary(const btc_tx_ctx_t* tx) {
     screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (const uint8_t*) LSTR(TX_SIGHASH_WARNING), strlen(LSTR(TX_SIGHASH_WARNING)), false, false);
   } else {
     char buf[BIGNUM_STRING_LEN];
-    dialog_label(&ctx, LSTR(TX_ADDRESS));
 
     if (dest_idx >= 0) {
+      dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
       script_output_to_address(tx->outputs[dest_idx].script, tx->outputs[dest_idx].script_len, buf);
-      dialog_data(&ctx, buf);
+      dialog_data_2lines(&ctx, buf);
     } else {
+      dialog_label(&ctx, LSTR(TX_ADDRESS));
       dialog_data(&ctx, LSTR(TX_MULTIPLE_RECIPIENT));
     }
   }
@@ -534,9 +547,9 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
     char* idx = (char *) u32toa(i, (uint8_t *) buf, BIGNUM_STRING_LEN);
     dialog_data(&ctx, idx);
 
-    dialog_label(&ctx, LSTR(TX_ADDRESS));
+    dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
     script_output_to_address(tx->input_data[i].script_pubkey, tx->input_data[i].script_pubkey_len, buf);
-    dialog_data(&ctx, buf);
+    dialog_data_2lines(&ctx, buf);
 
     uint64_t t;
     memcpy(&t, tx->input_data[i].amount, sizeof(uint64_t));
@@ -560,9 +573,9 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
     char* idx = (char *) u32toa(i, (uint8_t *) buf, BIGNUM_STRING_LEN);
     dialog_data(&ctx, idx);
 
-    dialog_label(&ctx, LSTR(TX_ADDRESS));
+    dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
     script_output_to_address(tx->outputs[i].script, tx->outputs[i].script_len, buf);
-    dialog_data(&ctx, buf);
+    dialog_data_2lines(&ctx, buf);
 
     uint64_t t;
     memcpy(&t, tx->outputs[i].amount, sizeof(uint64_t));
@@ -584,9 +597,9 @@ app_err_t dialog_confirm_bip322(const btc_tx_ctx_t* tx) {
   ctx.y = TH_TITLE_HEIGHT;
   char buf[BIGNUM_STRING_LEN];
 
-  dialog_label(&ctx, LSTR(TX_ADDRESS));
+  dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
   script_output_to_address(tx->input_data[0].script_pubkey, tx->input_data[0].script_pubkey_len, buf);
-  dialog_data(&ctx, buf);
+  dialog_data_2lines(&ctx, buf);
 
   while(1) {
     switch(ui_wait_keypress(pdMS_TO_TICKS(TX_CONFIRM_TIMEOUT))) {
