@@ -31,9 +31,12 @@ core_evt_t ui_display_msg(addr_type_t addr_type, const uint8_t* address, const u
 core_evt_t ui_display_eip712(const uint8_t* address, const eip712_ctx_t* eip712);
 core_evt_t ui_display_ur_qr(const char* title, const uint8_t* data, uint32_t len, ur_type_t type);
 core_evt_t ui_display_address_qr(const char* title, const char* address, uint32_t* index);
+core_evt_t ui_display_msg_qr(const char* title, const char* msg, char* label);
 core_evt_t ui_info(info_icon_t icon, const char* msg, const char* subtext, ui_info_opt_t opts);
 core_evt_t ui_prompt(const char* title, const char* msg, ui_info_opt_t opts);
 core_evt_t ui_wrong_auth(const char* msg, uint8_t retries);
+core_evt_t ui_devinfo(const char* fw_ver, const char* db_ver, const char* sn);
+core_evt_t ui_dbinfo(const char* db_ver);
 
 void ui_card_inserted();
 void ui_card_removed();

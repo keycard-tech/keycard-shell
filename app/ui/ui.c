@@ -79,6 +79,15 @@ core_evt_t ui_display_address_qr(const char* title, const char* address, uint32_
   return ui_signal_wait(0);
 }
 
+core_evt_t ui_display_msg_qr(const char* title, const char* msg, char* label) {
+  g_ui_cmd.type = UI_CMD_DISPLAY_MSG_QR;
+  g_ui_cmd.params.qrmsg.title = title;
+  g_ui_cmd.params.qrmsg.msg = msg;
+  g_ui_cmd.params.qrmsg.label = label;
+
+  return ui_signal_wait(0);
+}
+
 core_evt_t ui_info(info_icon_t icon, const char* msg, const char* subtext, ui_info_opt_t opts) {
   g_ui_cmd.type = UI_CMD_INFO;
   g_ui_cmd.params.info.icon = icon;
@@ -103,6 +112,22 @@ core_evt_t ui_wrong_auth(const char* msg, uint8_t retries) {
   memcpy(&remaining_attempts[1], LSTR(PIN_LABEL_REMAINING_ATTEMPTS), label_len + 1);
 
   return ui_info(ICON_INFO_ERROR, msg, remaining_attempts, UI_INFO_NEXT);
+}
+
+core_evt_t ui_devinfo(const char* fw_ver, const char* db_ver, const char* sn) {
+  g_ui_cmd.type = UI_CMD_DEVINFO;
+  g_ui_cmd.params.devinfo.fw_version = fw_ver;
+  g_ui_cmd.params.devinfo.db_version = db_ver;
+  g_ui_cmd.params.devinfo.sn = sn;
+
+  return ui_signal_wait(0);
+}
+
+core_evt_t ui_dbinfo(const char* db_ver) {
+  g_ui_cmd.type = UI_CMD_DBINFO;
+  g_ui_cmd.params.devinfo.db_version = db_ver;
+
+  return ui_signal_wait(0);
 }
 
 void ui_card_inserted() {
