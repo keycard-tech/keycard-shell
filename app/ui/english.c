@@ -134,13 +134,13 @@ const char *const i18n_english_strings[] = {
     "Invalid phrase entered",
     "Try again",
     "Write it down and keep it safe",
+    "Missing",
 
     // DB Update
     "Downloading database",
     "The database update was successful.",
     "The new database data seems to be invalid.\n Check that you are using the correct site and try again.",
     "Internal error while writing the new data, please try again.",
-    "Enter the version number below on the update website to generate the update QR, then press OK to scan.\n\n",
     "No database found. Please use the USB cable to perform its installation.",
     "Update database",
 
@@ -190,7 +190,8 @@ const char *const i18n_english_strings[] = {
     "On",
 
     // Device info
-    "Firmware version: ",
-    "Database version: ",
-    "S/N: ",
+    "Device information",
+    "Firmware version",
+    "Database version",
+    "Serial number",
 };

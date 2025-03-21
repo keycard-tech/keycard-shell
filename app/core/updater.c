@@ -17,15 +17,7 @@
 #define UPDATE_SEGMENT_LEN 240
 #define FW_UPGRADE_REBOOT_DELAY 150
 
-#define MAX_INFO_SIZE 1024
-
-static char* append_label(char* dst, const char* label) {
-  size_t label_len = strlen(label);
-  memcpy(dst, label, label_len);
-  dst += label_len;
-  *dst = '\0';
-  return dst;
-}
+#define MAX_INFO_SIZE 64
 
 static char* append_fw_version(char* dst, const uint8_t* version) {
   uint8_t tmp[4];
@@ -69,25 +61,27 @@ static char* append_sn(char* dst, const uint8_t uid[HAL_DEVICE_UID_LEN]) {
 }
 
 void device_info() {
-  char info[MAX_INFO_SIZE];
-  char* p = append_label(info, LSTR(DEVICE_INFO_FW));
-  p = append_fw_version(p, FW_VERSION);
-  *(p++) = '\n';
+  char fw[MAX_INFO_SIZE];
+  append_fw_version(fw, FW_VERSION);
 
   uint32_t db_ver;
+  char db_buf[MAX_INFO_SIZE];
+  const char* db;
+
   if (eth_db_lookup_version(&db_ver) == ERR_OK) {
-    p = append_label(p, LSTR(DEVICE_INFO_DB));
-    p = append_db_version(p, db_ver);
-    *(p++) = '\n';
+    append_db_version(db_buf, db_ver);
+    db = db_buf;
+  } else {
+    db = LSTR(INFO_MISSING);
   }
 
   uint8_t device_uid[HAL_DEVICE_UID_LEN];
   hal_device_uid(device_uid);
 
-  p = append_label(p, LSTR(DEVICE_INFO_SN));
-  append_sn(p, device_uid);
+  char sn[MAX_INFO_SIZE];
+  append_sn(sn, device_uid);
 
-  ui_prompt(LSTR(MENU_INFO), info, 0);
+  ui_devinfo(fw, db, sn);
 }
 
 void device_help() {
@@ -147,13 +141,10 @@ static app_err_t updater_prompt_version() {
     return ERR_CANCEL;
   }
 
-  char info[MAX_INFO_SIZE];
+  char db[MAX_INFO_SIZE];
+  append_db_version(db, db_ver);
 
-  char *p = append_label(info, LSTR(DB_UPDATE_PROMPT));
-  p = append_label(p, LSTR(DEVICE_INFO_DB));
-  append_db_version(p, db_ver);
-
-  if (ui_prompt(LSTR(DB_UPDATE_TITLE), info, (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
+  if (ui_dbinfo(db) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
   }
 

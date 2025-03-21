@@ -20,7 +20,7 @@
 
 #define BTC_DIALOG_PAGE_ITEMS 1
 
-static app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
+app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
   icon_t left = opts & UI_INFO_CANCELLABLE ? ICON_NAV_CANCEL : ICON_NONE;
   icon_t right;
 
@@ -212,11 +212,6 @@ app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, u
 
   screen_draw_centered_string(&ctx, (char*) page_indicator);
   return ERR_OK;
-}
-
-app_err_t dialog_margin(uint16_t yOff, uint16_t height) {
-  screen_area_t area = { 0, yOff, SCREEN_WIDTH, height };
-  return screen_fill_area(&area, TH_COLOR_BG);
 }
 
 static inline void dialog_label_ctx(screen_text_ctx_t *ctx) {

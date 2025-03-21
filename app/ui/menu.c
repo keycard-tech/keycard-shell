@@ -117,6 +117,11 @@ static app_err_t menu_draw_inverted(screen_text_ctx_t* ctx, const char* str) {
   return dialog_inverted_string(ctx, str, TH_MENU_CONSTRAST_PADDING);
 }
 
+static app_err_t menu_margin(uint16_t yOff, uint16_t height) {
+  screen_area_t area = { 0, yOff, SCREEN_WIDTH, height };
+  return screen_fill_area(&area, TH_COLOR_BG);
+}
+
 void menu_render_entry(const menu_entry_t* entry, uint8_t is_selected, uint16_t yOff) {
   screen_text_ctx_t ctx;
   ctx.font = TH_FONT_MENU;
@@ -166,7 +171,7 @@ void menu_render(const menu_t* menu, const char* title, uint8_t selected, enum m
   switch(mode) {
   case MENU_ALL:
     dialog_title(title);
-    dialog_margin(TH_TITLE_HEIGHT, TH_MENU_VERTICAL_MARGIN);
+    menu_margin(TH_TITLE_HEIGHT, TH_MENU_VERTICAL_MARGIN);
     i = 0;
     l = menu->len;
     break;

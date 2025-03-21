@@ -150,7 +150,34 @@ app_err_t settings_ui_update_progress() {
 }
 
 app_err_t settings_ui_devinfo() {
-  return ERR_OK;
+  dialog_title(LSTR(DEVICE_INFO_TITLE));
+  dialog_footer(TH_TITLE_HEIGHT);
+
+  screen_text_ctx_t label_ctx = {.font = TH_FONT_LABEL, .fg = TH_COLOR_LABEL_FG, .bg = TH_COLOR_LABEL_BG, .x = TH_TEXT_HORIZONTAL_MARGIN, .y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN};
+  screen_text_ctx_t data_ctx = {.font = TH_FONT_DATA, .fg = TH_COLOR_DATA_FG, .bg = TH_COLOR_DATA_BG, .x = TH_TEXT_HORIZONTAL_MARGIN, .y = label_ctx.y + label_ctx.font->yAdvance};
+
+  screen_draw_string(&label_ctx, LSTR(DEVICE_INFO_FW));
+  screen_draw_string(&data_ctx, g_ui_cmd.params.devinfo.fw_version);
+
+  label_ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+  data_ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+
+  label_ctx.y += label_ctx.font->yAdvance + data_ctx.font->yAdvance + TH_TEXT_VERTICAL_MARGIN;
+  data_ctx.y = label_ctx.y + label_ctx.font->yAdvance;
+
+  screen_draw_string(&label_ctx, LSTR(DEVICE_INFO_DB));
+  screen_draw_string(&data_ctx, g_ui_cmd.params.devinfo.db_version);
+
+  label_ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+  data_ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+
+  label_ctx.y += label_ctx.font->yAdvance + data_ctx.font->yAdvance + TH_TEXT_VERTICAL_MARGIN;
+  data_ctx.y = label_ctx.y + label_ctx.font->yAdvance;
+
+  screen_draw_string(&label_ctx, LSTR(DEVICE_INFO_SN));
+  screen_draw_string(&data_ctx, g_ui_cmd.params.devinfo.sn);
+
+  return dialog_wait_dismiss(0);
 }
 
 app_err_t settings_ui_dbinfo() {
