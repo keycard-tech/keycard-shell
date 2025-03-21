@@ -759,7 +759,7 @@ app_err_t dialog_info() {
       .fg = TH_COLOR_TEXT_FG,
       .bg = TH_COLOR_TEXT_BG,
       .x = (SCREEN_WIDTH - (TH_INFO_ICONS)->yAdvance) / 2,
-      .y = TH_TITLE_HEIGHT + TH_INFO_ICON_TOP_MARGIN
+      .y = TH_TITLE_HEIGHT + ((g_ui_cmd.params.info.subtext == NULL) ? TH_INFO_ICON_TOP_MARGIN_NO_SUB : TH_INFO_ICON_TOP_MARGIN)
   };
 
   icon_draw_info(&ctx, g_ui_cmd.params.info.icon);

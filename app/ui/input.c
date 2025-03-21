@@ -702,7 +702,14 @@ static void input_render_mnemonic_word(int word_num, const char* str, screen_are
   num[numlen++] = screen_lookup_glyph(ctx.font, (word_num % 10) + '0');
   numwidth += num[0]->xAdvance;
 
-  ctx.x += (TH_MNEMONIC_NUM_SIZE - numwidth + 1) / 2;
+  ctx.x += (TH_MNEMONIC_NUM_SIZE - numwidth) / 2;
+
+  // offset integer math error
+  if ((word_num == 10) || ((word_num < 20) && (word_num > 11))) {
+    ctx.x--;
+  } else if ((word_num == 21) || (word_num == 6)) {
+    ctx.x++;
+  }
 
   screen_draw_glyphs(&ctx, num, numlen);
 
@@ -728,8 +735,8 @@ app_err_t input_display_mnemonic() {
     for (int i = 0; i < 6; i++) {
       field_area.x = TH_MNEMONIC_LEFT_MARGIN;
 
-      for (int j = 0; j < 2; j++) {
-        int word_num = (page * 12) + ((i * 2) + j);
+      for (int j = 0; j < 7; j += 6) {
+        int word_num = (page * 12) + (i + j);
         const char* word = BIP39_WORDLIST_ENGLISH[g_ui_cmd.params.mnemo.indexes[word_num]];
         input_render_mnemonic_word(word_num + 1, word, &field_area);
         field_area.x += TH_MNEMONIC_FIELD_WIDTH + TH_MNEMONIC_LEFT_MARGIN;
