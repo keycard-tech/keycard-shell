@@ -148,3 +148,11 @@ app_err_t settings_ui_update_progress() {
 
   return ERR_OK;
 }
+
+app_err_t settings_ui_devinfo() {
+  return ERR_OK;
+}
+
+app_err_t settings_ui_dbinfo() {
+  return ERR_OK;
+}

@@ -146,3 +146,7 @@ app_err_t qrout_display_address() {
     }
   }
 }
+
+app_err_t qrout_display_msg() {
+  return ERR_OK;
+}

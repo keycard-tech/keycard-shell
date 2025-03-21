@@ -33,6 +33,7 @@ enum cmd_type {
   UI_CMD_DISPLAY_EIP712,
   UI_CMD_DISPLAY_QR,
   UI_CMD_DISPLAY_ADDRESS_QR,
+  UI_CMD_DISPLAY_MSG_QR,
   UI_CMD_QRSCAN,
   UI_CMD_INPUT_PIN,
   UI_CMD_INPUT_PUK,
@@ -41,6 +42,8 @@ enum cmd_type {
   UI_CMD_DISPLAY_MNEMO,
   UI_CMD_LCD_BRIGHTNESS,
   UI_CMD_PROGRESS,
+  UI_CMD_DEVINFO,
+  UI_CMD_DBINFO,
 #ifdef TEST_APP
   UI_CMD_KEYPAD_TEST,
   UI_CMD_LCD_TEST,
@@ -94,6 +97,12 @@ struct cmd_address_qr {
   uint32_t* index;
 };
 
+struct cmd_msg_qr {
+  const char* title;
+  const char* msg;
+  const char* label;
+};
+
 struct cmd_menu {
   const char* title;
   const menu_t* menu;
@@ -133,6 +142,12 @@ struct cmd_progress {
   uint8_t value;
 };
 
+struct cmd_devinfo {
+  const char* fw_version;
+  const char* db_version;
+  const char* sn;
+};
+
 union cmd_params {
   struct cmd_info info;
   struct cmd_prompt prompt;
@@ -142,6 +157,7 @@ union cmd_params {
   struct cmd_eip712 eip712;
   struct cmd_qrout qrout;
   struct cmd_address_qr address;
+  struct cmd_msg_qr qrmsg;
   struct cmd_menu menu;
   struct cmd_qrscan qrscan;
   struct cmd_input_pin input_pin;
@@ -149,6 +165,7 @@ union cmd_params {
   struct cmd_mnemo mnemo;
   struct cmd_brightness lcd;
   struct cmd_progress progress;
+  struct cmd_devinfo devinfo;
 };
 
 struct ui_cmd {

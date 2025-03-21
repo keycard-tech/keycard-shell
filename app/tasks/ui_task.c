@@ -68,6 +68,9 @@ void ui_task_entry(void* pvParameters) {
     case UI_CMD_DISPLAY_ADDRESS_QR:
       g_ui_cmd.result = qrout_display_address();
       break;
+    case UI_CMD_DISPLAY_MSG_QR:
+      g_ui_cmd.result = qrout_display_msg();
+      break;
     case UI_CMD_QRSCAN:
       g_ui_cmd.result = qrscan_scan();
       break;
@@ -91,6 +94,12 @@ void ui_task_entry(void* pvParameters) {
       break;
     case UI_CMD_PROGRESS:
       g_ui_cmd.result = settings_ui_update_progress();
+      break;
+    case UI_CMD_DEVINFO:
+      g_ui_cmd.result = settings_ui_devinfo();
+      break;
+    case UI_CMD_DBINFO:
+      g_ui_cmd.result = settings_ui_dbinfo();
       break;
     default:
       g_ui_cmd.result = ERR_CANCEL;

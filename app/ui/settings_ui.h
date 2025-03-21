@@ -7,5 +7,7 @@
 
 app_err_t settings_ui_lcd_brightness();
 app_err_t settings_ui_update_progress();
+app_err_t settings_ui_devinfo();
+app_err_t settings_ui_dbinfo();
 
 #endif
