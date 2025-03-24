@@ -203,7 +203,7 @@ void menu_render(const menu_t* menu, const char* title, uint8_t selected, enum m
   }
 
   if (mode == MENU_ALL) {
-    dialog_footer(yOff);
+    dialog_blank(yOff);
   }
 }
 

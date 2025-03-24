@@ -97,7 +97,7 @@ static app_err_t input_render_secret(uint16_t yOff, int len, int pos, icon_t ful
 
 static app_err_t input_secret_entry(const char* title, char* out, char* compare, size_t secret_len, bool dismissable) {
   dialog_title("");
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   uint8_t position = 0;
   bool comparison_failed = false;
@@ -612,7 +612,7 @@ static uint16_t input_mnemonic_lookup(char* word, int len, uint16_t idx) {
 
 static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
   input_mnemonic_title(i);
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   char word[WORD_MAX_LEN];
   int len = 0;
@@ -649,7 +649,7 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
 }
 
 app_err_t input_mnemonic() {
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   memset(g_ui_cmd.params.mnemo.indexes, 0xff, (sizeof(uint16_t) * g_ui_cmd.params.mnemo.len));
 
@@ -724,7 +724,7 @@ app_err_t input_display_mnemonic() {
   int last_page = g_ui_cmd.params.mnemo.len == 12 ? 0 : 1;
 
   while(1) {
-    dialog_footer(TH_TITLE_HEIGHT);
+    dialog_blank(TH_TITLE_HEIGHT);
 
     screen_area_t field_area = {
         .y = TH_TITLE_HEIGHT + TH_MNEMONIC_TOP_MARGIN + TH_TEXT_VERTICAL_MARGIN,
@@ -776,7 +776,7 @@ app_err_t input_display_mnemonic() {
 
 app_err_t input_string() {
   dialog_title(g_ui_cmd.params.input_string.title);
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   int len = 0;
   keyboard_state_t keyboard;

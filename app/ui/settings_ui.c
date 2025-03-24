@@ -68,7 +68,7 @@ static void handle_lcd_change(bool increase) {
 
 app_err_t settings_ui_lcd_brightness() {
   dialog_title(LSTR(LCD_BRIGHTNESS_TITLE));
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   const glyph_t* left_chevron = screen_lookup_glyph(TH_FONT_TEXT, SYM_LEFT_CHEVRON);
 
@@ -124,7 +124,7 @@ static bool updating_progress() {
 
 app_err_t settings_ui_update_progress() {
   dialog_title(g_ui_cmd.params.progress.title);
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
   screen_area_t progress_area = {
       .x = TH_PROGRESS_LEFT_MARGIN,
       .y = TH_TITLE_HEIGHT + TH_PROGRESS_VERTICAL_MARGIN,
@@ -151,7 +151,7 @@ app_err_t settings_ui_update_progress() {
 
 app_err_t settings_ui_devinfo() {
   dialog_title(LSTR(DEVICE_INFO_TITLE));
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   screen_text_ctx_t label_ctx = {.font = TH_FONT_LABEL, .fg = TH_COLOR_LABEL_FG, .bg = TH_COLOR_LABEL_BG, .x = TH_TEXT_HORIZONTAL_MARGIN, .y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN};
   screen_text_ctx_t data_ctx = {.font = TH_FONT_DATA, .fg = TH_COLOR_DATA_FG, .bg = TH_COLOR_DATA_BG, .x = TH_TEXT_HORIZONTAL_MARGIN, .y = label_ctx.y + label_ctx.font->yAdvance};
@@ -182,7 +182,7 @@ app_err_t settings_ui_devinfo() {
 
 app_err_t settings_ui_dbinfo() {
   dialog_title(LSTR(DB_UPDATE_FLOW_TITLE));
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
   screen_area_t version_box = {
       .x = TH_SCREEN_MARGIN,
       .y = TH_TITLE_HEIGHT + TH_DB_VERSION_BOX_VERTICAL_MARGIN,

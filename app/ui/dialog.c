@@ -135,7 +135,7 @@ app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg) {
   return icon_draw_battery_indicator(&ctx, g_ui_ctx.battery);
 }
 
-app_err_t dialog_footer_colors(uint16_t yOff, uint16_t bg) {
+app_err_t dialog_blank_color(uint16_t yOff, uint16_t bg) {
   screen_area_t area = { 0, yOff, SCREEN_WIDTH, SCREEN_HEIGHT - yOff };
   return screen_fill_area(&area, bg);
 }
@@ -360,7 +360,7 @@ static app_err_t dialog_confirm_eth_transfer(eth_data_type_t data_type) {
 
       dialog_amount(&ctx, TX_AMOUNT, &tx_info.value, tx_info.token.decimals, tx_info.token.ticker);
       dialog_amount(&ctx, TX_FEE, &tx_info.fees, 18, tx_info.chain.ticker);
-      dialog_footer(ctx.y);
+      dialog_blank(ctx.y);
     } else {
       size_t offset = pages[page];
 
@@ -370,11 +370,11 @@ static app_err_t dialog_confirm_eth_transfer(eth_data_type_t data_type) {
         ctx.fg = TH_COLOR_TEXT_FG;
         ctx.bg = TH_COLOR_TEXT_BG;
         ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
-        dialog_footer(ctx.y);
+        dialog_blank(ctx.y);
       } else {
         ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
         ctx.y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN;
-        dialog_footer(TH_TITLE_HEIGHT);
+        dialog_blank(TH_TITLE_HEIGHT);
       }
 
       screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &tx_info.data_str[offset], (tx_info.data_str_len - offset), false, false);
@@ -409,7 +409,7 @@ static app_err_t dialog_confirm_approval(const eth_approve_info* info, const uin
       dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, info->token.addr);
     }
 
-    dialog_footer(ctx.y);
+    dialog_blank(ctx.y);
     ret = dialog_wait_paged(&page, 1);
   }
 
@@ -586,7 +586,7 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
 
 app_err_t dialog_confirm_bip322(const btc_tx_ctx_t* tx) {
   dialog_title(LSTR(MSG_CONFIRM_TITLE));
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   screen_text_ctx_t ctx;
   ctx.y = TH_TITLE_HEIGHT;
@@ -625,7 +625,7 @@ app_err_t dialog_confirm_btc_tx() {
   app_err_t ret = ERR_NEED_MORE_DATA;
 
   while(ret == ERR_NEED_MORE_DATA) {
-    dialog_footer(TH_TITLE_HEIGHT);
+    dialog_blank(TH_TITLE_HEIGHT);
 
     if (page == 0) {
       dialog_confirm_btc_summary(tx);
@@ -701,7 +701,7 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
         dialog_data(&ctx, chain.name);
         dialog_label(&ctx, LSTR(EIP712_NAME));
         dialog_data(&ctx, eip712->name);
-        dialog_footer(ctx.y);
+        dialog_blank(ctx.y);
         ctx.y = SCREEN_HEIGHT;
       } else {
         dialog_address_block(&ctx, TX_SIGNER, g_ui_cmd.params.msg.addr_type, g_ui_cmd.params.msg.addr);
@@ -712,11 +712,11 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
       ctx.fg = TH_COLOR_TEXT_FG;
       ctx.bg = TH_COLOR_TEXT_BG;
       ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
-      dialog_footer(ctx.y);
+      dialog_blank(ctx.y);
     } else {
       ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
       ctx.y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN;
-      dialog_footer(TH_TITLE_HEIGHT);
+      dialog_blank(TH_TITLE_HEIGHT);
     }
 
     screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &data[offset], (len - offset), false, false);
@@ -760,7 +760,7 @@ app_err_t dialog_confirm_eip712() {
 
 app_err_t dialog_info() {
   dialog_title("");
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   screen_text_ctx_t ctx = {
       .font = TH_FONT_INFO,
@@ -792,7 +792,7 @@ app_err_t dialog_info() {
 
 app_err_t dialog_prompt() {
   dialog_title(g_ui_cmd.params.prompt.title);
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   screen_text_ctx_t ctx = {
       .font = TH_FONT_TEXT,
