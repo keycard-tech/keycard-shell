@@ -142,7 +142,7 @@ const char *const i18n_english_strings[] = {
     // DB Update
     "Downloading database",
     "Update ERC-20 database",
-    "The database update was successful",
+    "Database updated",
     "Received database is invalid",
     "Couldn't write database",
     "No database",
