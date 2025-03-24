@@ -14,6 +14,14 @@
 #define AUTH_SIG_LEN 64
 
 void device_auth_run() {
+  // Inform the user
+  if (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT), (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
+    return;
+  }
+
+  const char* addr = "https://keycard.tech/verify";
+  ui_display_msg_qr(LSTR(DEV_AUTH_TITLE), addr, &addr[8]);
+
   struct dev_auth auth;
 
   // Challenge QR
@@ -96,6 +104,6 @@ void device_auth_run() {
   if (!ecdsa_verify(&secp256k1, key, auth.dev_auth_auth_sig.dev_auth_auth_sig.value, digest)) {
     ui_device_auth(auth.dev_auth_first_auth.dev_auth_first_auth, auth.dev_auth_auth_time.dev_auth_auth_time, auth.dev_auth_auth_count.dev_auth_auth_count);
   } else {
-    ui_info(ICON_INFO_ERROR, LSTR(DEV_AUTH_INVALID_QR), LSTR(DEV_AUTH_INVALID_AUTH_SUB), 0);
+    ui_info(ICON_INFO_ERROR, LSTR(DEV_AUTH_INVALID_SITE_MSG), LSTR(DEV_AUTH_INVALID_SITE_SUB), 0);
   }
 }

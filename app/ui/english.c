@@ -170,11 +170,14 @@ const char *const i18n_english_strings[] = {
     "You will now be asked to confirm your recovery phrase. You can go back and write it down if you haven't already.",
 
     // Device verification
+    "Verify device",
+    "Confirm the authenticity of your Keycard Shell. Scan your device's authentication QR on on the official Keycard website. You will also scan a QR on the Keycard website with the device to ensure the site is also legitimate. Better safe than sorry!",
     "Wrong QR",
-    "This is not a device verification QR code.",
-    "This QR code does not contain a valid device verification.",
+    "This is not a device verification QR code",
+    "Site is not authentic",
+    "Check URL or try another browser",
     "Device and site authentic",
-    "You can safely use your device.",
+    "You can safely use your device",
 
     // LCD settings
     "LCD brightness",
