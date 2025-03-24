@@ -100,45 +100,39 @@ static app_err_t updater_verify_db(uint8_t* data, size_t data_len) {
   return ecdsa_verify(&secp256k1, key, &data[len], digest) ? ERR_DATA : ERR_OK;
 }
 
-static app_err_t updater_confirm_database_update(uint32_t db_ver) {
-  char info[MAX_INFO_SIZE];
-  append_db_version(info, db_ver);
-
-  if (ui_info(ICON_INFO_UPLOAD, LSTR(DB_UPDATE_CONFIRM), info, UI_INFO_CANCELLABLE | UI_INFO_NEXT) != CORE_EVT_UI_OK) {
-    return ERR_CANCEL;
-  }
-
-  return ERR_OK;
-}
-
-static app_err_t updater_database_update(uint8_t* data, size_t len) {
+static app_err_t updater_database_update(uint8_t* data, size_t len, bool require_confirmation) {
   uint32_t version;
 
   if ((len < MIN_DB_LEN) ||
       (updater_verify_db(data, len) != ERR_OK) ||
       (eth_db_extract_version(data, &version) != ERR_OK)) {
-    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_INVALID), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_INVALID), LSTR(INFO_TRY_AGAIN), 0);
     return ERR_DATA;
   }
 
-  if (updater_confirm_database_update(version) != ERR_OK) {
+  char version_string[MAX_INFO_SIZE];
+  append_db_version(version_string, version);
+
+  if (require_confirmation && (ui_info(ICON_INFO_UPLOAD, LSTR(DB_UPDATE_CONFIRM), version_string, UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return ERR_CANCEL;
   }
 
-  if (eth_db_update(data, len - SIG_LEN) != ERR_OK) {
-    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERROR), NULL, 0);
-    return ERR_DATA;
+  app_err_t err = eth_db_update(data, len - SIG_LEN);
+  if (err == ERR_OK) {
+    ui_info(ICON_INFO_SUCCESS, LSTR(DB_UPDATE_OK), version_string, 0);
+  } else if (err == ERR_VERSION) {
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERR_VERSION), LSTR(DB_UPDATE_ERR_VERSION_HINT), require_confirmation ? 0 : UI_INFO_NEXT);
   } else {
-    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_OK), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERROR), LSTR(INFO_TRY_AGAIN), require_confirmation ? 0 : UI_INFO_NEXT);
   }
 
-  return ERR_OK;
+  return err;
 }
 
 static app_err_t updater_prompt_version() {
   uint32_t db_ver;
   if (eth_db_lookup_version(&db_ver) != ERR_OK) {
-    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_NO_DB), NULL, 0);
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_NO_DB), LSTR(DB_UPDATE_NO_DB_HINT), 0);
     return ERR_CANCEL;
   }
 
@@ -153,17 +147,20 @@ static app_err_t updater_prompt_version() {
 }
 
 void updater_database_run() {
-  if (updater_prompt_version() != ERR_OK) {
-    return;
-  }
-
   data_t data;
 
-  if (ui_qrscan(FS_DATA, &data) != CORE_EVT_UI_OK) {
-    return;
-  }
+  do {
+    if (updater_prompt_version() != ERR_OK) {
+      return;
+    }
 
-  updater_database_update(data.data, data.len);
+    const char* addr = "https://keycard.tech/update";
+    ui_display_msg_qr(LSTR(DB_UPDATE_FLOW_TITLE), addr, &addr[8]);
+
+    if (ui_qrscan(FS_DATA, &data) != CORE_EVT_UI_OK) {
+      return;
+    }
+  } while (updater_database_update(data.data, data.len, false) != ERR_OK);
 }
 
 static void updater_clear_flash_area() {
@@ -257,7 +254,7 @@ app_err_t updater_usb_fw_upgrade(command_t *cmd, apdu_t* apdu) {
     if (updater_verify_firmware() != ERR_OK) {
       updater_clear_flash_area();
       core_usb_err_sw(apdu, 0x6a, 0x80);
-      ui_info(ICON_INFO_ERROR, LSTR(FW_UPGRADE_INVALID), NULL, 0);
+      ui_info(ICON_INFO_ERROR, LSTR(FW_UPGRADE_INVALID_MSG), LSTR(FW_UPGRADE_INVALID_SUB), 0);
       return ERR_DATA;
     }
 
@@ -304,7 +301,7 @@ app_err_t updater_usb_db_upgrade(apdu_t* apdu) {
     core_usb_err_sw(apdu, 0x6a, 0x80);
     return ERR_DATA;
   } else if (g_core.data.msg.received == g_core.data.msg.len) {
-    if (updater_database_update(g_mem_heap, g_core.data.msg.len) != ERR_OK) {
+    if (updater_database_update(g_mem_heap, g_core.data.msg.len, true) != ERR_OK) {
       core_usb_err_sw(apdu, 0x6a, 0x80);
       return ERR_DATA;
     } else {

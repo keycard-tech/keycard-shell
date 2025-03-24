@@ -141,16 +141,21 @@ const char *const i18n_english_strings[] = {
 
     // DB Update
     "Downloading database",
-    "The database update was successful.",
-    "The new database data seems to be invalid.\n Check that you are using the correct site and try again.",
-    "Internal error while writing the new data, please try again.",
-    "No database found. Please use the USB cable to perform its installation.",
+    "Update ERC-20 database",
+    "The database update was successful",
+    "Received database is invalid",
+    "Couldn't write database",
+    "No database",
+    "Please use USB update",
     "Update database",
+    "Incompatible delta",
+    "Select the correct database version",
 
     // FW Upgrade
     "Downloading firmware",
     "Do not disconnect your device",
-    "The uploaded firmware's signature does not match. Please make sure you are using the official website or app.",
+    "Invalid firmware",
+    "This firmware is not authentic. Please upgrade through the official site",
     "Update firmware",
 
     // Mnemonic input
