@@ -79,7 +79,7 @@ core_evt_t ui_display_address_qr(const char* title, const char* address, uint32_
   return ui_signal_wait(0);
 }
 
-core_evt_t ui_display_msg_qr(const char* title, const char* msg, char* label) {
+core_evt_t ui_display_msg_qr(const char* title, const char* msg, const char* label) {
   g_ui_cmd.type = UI_CMD_DISPLAY_MSG_QR;
   g_ui_cmd.params.qrmsg.title = title;
   g_ui_cmd.params.qrmsg.msg = msg;

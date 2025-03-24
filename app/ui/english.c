@@ -38,6 +38,9 @@ const char *const i18n_english_strings[] = {
     "Auto-off time",
     "USB-data",
 
+    // Help menu
+    "View help documentation",
+
     // TX
     "Confirm transfer",
     "Confirm approval",

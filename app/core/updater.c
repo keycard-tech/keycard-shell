@@ -85,7 +85,8 @@ void device_info() {
 }
 
 void device_help() {
-
+  const char* addr = "https://keycard.tech/help";
+  ui_display_msg_qr(LSTR(HELP_TITLE), addr, &addr[8]);
 }
 
 static app_err_t updater_verify_db(uint8_t* data, size_t data_len) {

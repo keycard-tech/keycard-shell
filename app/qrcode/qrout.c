@@ -56,6 +56,7 @@ static app_err_t qrout_display_single_ur(ur_out_t* ur) {
 
   while(1) {
     switch(ui_wait_keypress(pdMS_TO_TICKS(QR_DISPLAY_TIMEOUT))) {
+    case KEYPAD_KEY_CANCEL:
     case KEYPAD_KEY_INVALID:
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
@@ -78,6 +79,7 @@ static app_err_t qrout_display_animated_ur(ur_out_t* ur) {
     }
 
     switch(ui_wait_keypress(QR_FRAME_DURATION)) {
+    case KEYPAD_KEY_CANCEL:
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
     default:
@@ -104,6 +106,10 @@ app_err_t qrout_display_address() {
 
   uint16_t qr_height = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - ((TH_FONT_DATA)->yAdvance * 2);
 
+  if (qrout_display(g_ui_cmd.params.address.address, qr_height) != ERR_OK) {
+    return ERR_DATA;
+  }
+
   screen_text_ctx_t ctx = {
       .bg = SCREEN_COLOR_WHITE,
       .fg = SCREEN_COLOR_BLACK,
@@ -112,10 +118,6 @@ app_err_t qrout_display_address() {
       .y = qr_height + TH_QRCODE_VERTICAL_MARGIN
   };
 
-  if (qrout_display(g_ui_cmd.params.address.address, qr_height) != ERR_OK) {
-    return ERR_DATA;
-  }
-
   screen_draw_text(&ctx, (SCREEN_WIDTH - TH_QRCODE_ADDR_MARGIN), SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT, (uint8_t*) g_ui_cmd.params.address.address, strlen(g_ui_cmd.params.address.address), false, true);
 
   dialog_pager_colors(*g_ui_cmd.params.address.index, UINT32_MAX, 0, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
@@ -123,8 +125,6 @@ app_err_t qrout_display_address() {
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:
-    case KEYPAD_KEY_BACK:
-    case KEYPAD_KEY_INVALID:
     case KEYPAD_KEY_CONFIRM:
       *g_ui_cmd.params.address.index = UINT32_MAX;
       return ERR_OK;
@@ -148,5 +148,47 @@ app_err_t qrout_display_address() {
 }
 
 app_err_t qrout_display_msg() {
-  return ERR_OK;
+  qrout_prepare_canvas(g_ui_cmd.params.qrmsg.title);
+  uint16_t qr_height = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - TH_QRCODE_MSG_LABEL_HEIGHT;
+
+  if (qrout_display(g_ui_cmd.params.qrmsg.msg, qr_height) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  size_t label_len = strlen(g_ui_cmd.params.qrmsg.label);
+  const glyph_t* label_glyphs[label_len];
+  size_t label_width = 0;
+
+  for (int i = 0; i < label_len; i++) {
+    label_glyphs[i] = screen_lookup_glyph(TH_FONT_TEXT, g_ui_cmd.params.qrmsg.label[i]);
+    label_width += label_glyphs[i]->xAdvance;
+  }
+
+  screen_text_ctx_t ctx = {
+      .bg = TH_COLOR_BG,
+      .fg = TH_COLOR_FG,
+      .font = TH_FONT_TEXT,
+      .x = (SCREEN_WIDTH - label_width) / 2,
+      .y = qr_height + TH_QRCODE_VERTICAL_MARGIN + ((TH_QRCODE_MSG_LABEL_HEIGHT - (TH_FONT_TEXT)->yAdvance) / 2)
+  };
+
+  screen_area_t label_box = {
+      .x = ctx.x - TH_QRCODE_MSG_BOX_MARGIN,
+      .y = qr_height + TH_QRCODE_VERTICAL_MARGIN,
+      .width = label_width + (TH_QRCODE_MSG_BOX_MARGIN * 2),
+      .height = TH_QRCODE_MSG_LABEL_HEIGHT
+  };
+
+  screen_fill_area(&label_box, TH_COLOR_BG);
+  screen_draw_glyphs(&ctx, label_glyphs, label_len);
+
+  while(1) {
+    switch(ui_wait_keypress(portMAX_DELAY)) {
+    case KEYPAD_KEY_CANCEL:
+    case KEYPAD_KEY_CONFIRM:
+      return ERR_OK;
+    default:
+      break;
+    }
+  }
 }

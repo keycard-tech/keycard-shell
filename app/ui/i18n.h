@@ -38,11 +38,12 @@ typedef enum {
   MENU_INFO,
   MENU_DEV_AUTH,
   MENU_DB_UPDATE,
-
-  // Settings menu
   MENU_BRIGHTNESS,
   MENU_SET_OFF_TIME,
   MENU_USB,
+
+  // Help menu
+  HELP_TITLE,
 
   // TX Confirmation
   TX_CONFIRM_TRANSFER,
