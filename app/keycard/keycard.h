@@ -9,7 +9,7 @@
 #define KEYCARD_PUK_LEN 12
 
 #define KEYCARD_NAME_MAX_LEN 20
-#define KEYCARD_PAIRING_PASS_MAX_LEN KEYCARD_NAME_MAX_LEN
+#define KEYCARD_PAIRING_PASS_MAX_LEN 32
 
 typedef struct {
   smartcard_t sc;

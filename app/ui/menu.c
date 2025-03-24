@@ -108,6 +108,13 @@ const menu_t menu_keycard_blocked = {
   }
 };
 
+const menu_t menu_keycard_pair = {
+  2, {
+    {MENU_PAIR, NULL},
+    {MENU_RESET_CARD, NULL},
+  }
+};
+
 #define MENU_MAX_DEPTH 5
 #define GLYPH_AS_STRING(__NAME__, __CODE__) char __NAME__[2] = { __CODE__, 0x00 }
 

@@ -29,6 +29,7 @@ const char *const i18n_english_strings[] = {
     "Change pairing pass",
     "Factory reset card",
     "Unblock with PUK",
+    "Enter pairing password",
 
     // Device menu
     "Information",
@@ -138,6 +139,8 @@ const char *const i18n_english_strings[] = {
     "Try again",
     "Write it down and keep it safe",
     "Missing",
+    "Keycard paired",
+    "Wrong pairing password",
 
     // DB Update
     "Downloading database",

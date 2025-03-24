@@ -168,13 +168,28 @@ void ui_keycard_no_keys() {
 void ui_keycard_ready() {
 }
 
-void ui_keycard_paired() {
+void ui_keycard_paired(bool default_pass) {
+  if (!default_pass) {
+    ui_info(ICON_INFO_SUCCESS, LSTR(INFO_CARD_PAIRED), NULL, UI_INFO_NEXT);
+  }
 }
 
 void ui_keycard_already_paired() {
 }
 
-void ui_keycard_pairing_failed() {
+core_evt_t ui_keycard_pairing_failed(const char* card_name, bool default_pass) {
+  if (default_pass) {
+    return CORE_EVT_UI_OK;
+  }
+
+  ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_PAIRING), LSTR(INFO_TRY_AGAIN), UI_INFO_NEXT);
+
+  i18n_str_id_t selected = MENU_PAIR;
+  while (ui_menu(card_name, &menu_keycard_pair, &selected, -1, 0) != CORE_EVT_UI_OK) {
+    ;
+  }
+
+  return selected == MENU_RESET_CARD ? CORE_EVT_UI_CANCELLED : CORE_EVT_UI_OK;
 }
 
 void ui_keycard_flash_failed() {

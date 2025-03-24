@@ -104,51 +104,6 @@ static app_err_t keycard_check_genuine(keycard_t* kc) {
   return ERR_OK;
 }
 
-static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instance_uid) {
-  memcpy(pairing->instance_uid, instance_uid, APP_INFO_INSTANCE_UID_LEN);
-  
-  if (pairing_read(pairing) == ERR_OK) {
-    ui_keycard_already_paired();
-    return ERR_OK;
-  }
-
-  if (keycard_check_genuine(kc) != ERR_OK) {
-    if (ui_keycard_not_genuine() != CORE_EVT_UI_OK) {
-      return ERR_CANCEL;
-    }
-  }
-
-  uint8_t* psk = (uint8_t*) KEYCARD_DEFAULT_PSK;
-  
-  while(1) {
-    app_err_t err = keycard_cmd_autopair(kc, psk, pairing);
-    if (err == ERR_OK) {
-      if (pairing_write(pairing) != ERR_OK) {
-        ui_keycard_flash_failed();
-        return ERR_DATA;
-      }
-
-      ui_keycard_paired();
-      return ERR_OK;
-    } else if (err == ERR_FULL) {
-      return ERR_FULL;
-    }
-
-    uint8_t password[KEYCARD_PAIRING_PASS_MAX_LEN + 1];
-    uint8_t pairing[32];
-    uint8_t len = KEYCARD_PAIRING_PASS_MAX_LEN;
-    psk = pairing;
-
-    ui_keycard_pairing_failed();
-
-    if (ui_read_pairing(password, &len) != CORE_EVT_UI_OK) {
-      return ERR_CANCEL;
-    }
-
-    keycard_pairing_password_hash(password, len, pairing);
-  }
-}
-
 app_err_t keycard_factoryreset(keycard_t* kc) {
   if (ui_confirm_factory_reset() != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
@@ -164,6 +119,55 @@ static app_err_t keycard_factoryreset_on_init(keycard_t* kc) {
     return ERR_RETRY;
   } else {
     return err;
+  }
+}
+
+static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instance_uid) {
+  memcpy(pairing->instance_uid, instance_uid, APP_INFO_INSTANCE_UID_LEN);
+  
+  if (pairing_read(pairing) == ERR_OK) {
+    ui_keycard_already_paired();
+    return ERR_OK;
+  }
+
+  if (keycard_check_genuine(kc) != ERR_OK) {
+    if (ui_keycard_not_genuine() != CORE_EVT_UI_OK) {
+      return ERR_CANCEL;
+    }
+  }
+
+  uint8_t* psk = (uint8_t*) KEYCARD_DEFAULT_PSK;
+  bool default_pass = true;
+  
+  while(1) {
+    app_err_t err = keycard_cmd_autopair(kc, psk, pairing);
+    if (err == ERR_OK) {
+      if (pairing_write(pairing) != ERR_OK) {
+        ui_keycard_flash_failed();
+        return ERR_DATA;
+      }
+
+      ui_keycard_paired(default_pass);
+      return ERR_OK;
+    } else if (err == ERR_FULL) {
+      return ERR_FULL;
+    }
+
+    uint8_t password[KEYCARD_PAIRING_PASS_MAX_LEN + 1];
+    uint8_t pairing[32];
+    uint8_t len = KEYCARD_PAIRING_PASS_MAX_LEN;
+    psk = pairing;
+
+    if (ui_keycard_pairing_failed(kc->name, default_pass) == CORE_EVT_UI_CANCELLED) {
+      return keycard_factoryreset_on_init(kc);
+    }
+
+    if (ui_read_pairing(password, &len) != CORE_EVT_UI_OK) {
+      return ERR_CANCEL;
+    }
+
+    default_pass = false;
+    keycard_pairing_password_hash(password, len, pairing);
   }
 }
 
@@ -534,7 +538,7 @@ app_err_t keycard_set_name(keycard_t* kc, const char* name) {
 }
 
 void keycard_pairing_password_hash(uint8_t* pass, uint8_t len, uint8_t pairing[32]) {
-  pbkdf2_hmac_sha256(pass, len, (uint8_t*)"Keycard Pairing Password Salt", 30, 50000, pairing, 32);
+  pbkdf2_hmac_sha256(pass, len, (uint8_t*)"Keycard Pairing Password Salt", 29, 50000, pairing, 32);
 }
 
 void keycard_in(keycard_t* kc) {

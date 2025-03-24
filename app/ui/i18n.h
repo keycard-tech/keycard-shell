@@ -33,6 +33,7 @@ typedef enum {
   MENU_CHANGE_PAIRING,
   MENU_RESET_CARD,
   MENU_UNBLOCK_PUK,
+  MENU_PAIR,
 
   // Device menu
   MENU_INFO,
@@ -142,6 +143,8 @@ typedef enum {
   INFO_TRY_AGAIN,
   INFO_WRITE_KEEP_SAFE,
   INFO_MISSING,
+  INFO_CARD_PAIRED,
+  INFO_WRONG_PAIRING,
 
   // DB Update
   DB_UPDATE_TITLE,
