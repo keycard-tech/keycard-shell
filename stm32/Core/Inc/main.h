@@ -53,6 +53,7 @@ extern TIM_HandleTypeDef htim6;
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim5;
+extern TIM_HandleTypeDef htim7;
 extern DMA_HandleTypeDef handle_GPDMA2_Channel5;
 extern CRC_HandleTypeDef hcrc;
 extern ADC_HandleTypeDef hadc1;
@@ -87,6 +88,7 @@ void MX_TIM5_Init(void);
 void MX_ADC1_Init(void);
 void MX_TIM3_Init(void);
 void MX_PKA_Init(void);
+void MX_TIM7_Init(void);
 
 /* USER CODE BEGIN EFP */
 void SystemClock_Config(void);
@@ -97,6 +99,7 @@ void SystemClock_Config(void);
 #define SC_DEFAULT_PSC 25
 #define SC_DEFAULT_BAUD_RATE 10752
 #define HALT_REQ_MS 10
+#define BATTERY_POLL_MS 125
 #define GPIO_VUSB_OK_Pin GPIO_PIN_13
 #define GPIO_VUSB_OK_GPIO_Port GPIOC
 #define GPIO_VUSB_OK_EXTI_IRQn EXTI13_IRQn
