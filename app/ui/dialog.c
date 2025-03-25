@@ -10,6 +10,7 @@
 #include "ethereum/ethUtils.h"
 #include "mem.h"
 #include "theme.h"
+#include "pwr.h"
 #include "ui/ui_internal.h"
 
 #define TX_CONFIRM_TIMEOUT 30000
@@ -123,6 +124,7 @@ app_err_t dialog_inverted_string(screen_text_ctx_t* ctx, const char* str, uint16
 }
 
 app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg) {
+  g_ui_ctx.title_bg = bg;
   screen_area_t area = { 0, 0, SCREEN_WIDTH, TH_TITLE_HEIGHT };
   screen_fill_area(&area, bg);
 
@@ -132,6 +134,20 @@ app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg) {
   ctx.x = TH_TITLE_ICON_LEFT_MARGIN;
   ctx.y = TH_TITLE_ICON_TOP_MARGIN;
 
+  return icon_draw_battery_indicator(&ctx, g_ui_ctx.battery);
+}
+
+app_err_t dialog_update_battery() {
+  if (g_ui_ctx.title_bg == UINT32_MAX) {
+    return ERR_OK;
+  }
+
+  g_ui_ctx.battery = pwr_battery_level();
+
+  screen_area_t area = { TH_TITLE_ICON_LEFT_MARGIN, 0, (SCREEN_WIDTH - TH_TITLE_ICON_LEFT_MARGIN), TH_TITLE_HEIGHT };
+  screen_fill_area(&area, g_ui_ctx.title_bg);
+
+  screen_text_ctx_t ctx = { TH_FONT_TITLE, 0, g_ui_ctx.title_bg, TH_TITLE_ICON_LEFT_MARGIN, TH_TITLE_ICON_TOP_MARGIN };
   return icon_draw_battery_indicator(&ctx, g_ui_ctx.battery);
 }
 

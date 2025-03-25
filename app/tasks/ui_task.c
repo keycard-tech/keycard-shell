@@ -31,6 +31,7 @@ void ui_task_entry(void* pvParameters) {
 
   while(1) {
     g_ui_ctx.battery = pwr_battery_level();
+    g_ui_ctx.title_bg = UINT32_MAX;
 
     if (!g_ui_cmd.received && ((ui_wait_event(portMAX_DELAY) & UI_CMD_EVT) == 0)) {
       continue;

@@ -39,15 +39,24 @@ void pwr_usb_plugged(bool from_isr) {
 
   if (from_isr) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    BaseType_t xHigherPriorityTaskWoken2 = pdFALSE;
+
     vTaskNotifyGiveIndexedFromISR(APP_TASK(usb), USB_NOTIFICATION_IDX, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    xTaskNotifyIndexedFromISR(APP_TASK(ui), UI_NOTIFICATION_IDX, UI_USB_PLUG_EVT, eSetBits, &xHigherPriorityTaskWoken2);
+
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken || xHigherPriorityTaskWoken2);
   } else {
     xTaskNotifyGiveIndexed(APP_TASK(usb), USB_NOTIFICATION_IDX);
   }
 }
 
-void pwr_usb_unplugged() {
+void pwr_usb_unplugged(bool from_isr) {
   hal_usb_stop();
+  if (from_isr) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xTaskNotifyIndexedFromISR(APP_TASK(ui), UI_NOTIFICATION_IDX, UI_USB_PLUG_EVT, eSetBits, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+  }
 }
 
 void pwr_smartcard_inserted() {

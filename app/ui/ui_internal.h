@@ -15,11 +15,6 @@
 #include "ur/ur_types.h"
 #include "ur/ur.h"
 
-#define UI_NOTIFICATION_IDX 2
-
-#define UI_CMD_EVT 1
-#define UI_KEY_EVT 2
-
 extern struct ui_cmd g_ui_cmd;
 extern struct ui_ctx g_ui_ctx;
 
@@ -178,6 +173,7 @@ struct ui_cmd {
 struct ui_ctx {
   keypad_t keypad;
   uint8_t battery;
+  uint32_t title_bg;
 };
 
 static inline uint32_t ui_wait_event(uint32_t timeout) {
@@ -187,12 +183,14 @@ static inline uint32_t ui_wait_event(uint32_t timeout) {
 
 static inline keypad_key_t ui_wait_keypress(uint32_t timeout) {
   uint32_t evt = ui_wait_event(timeout);
-
   if (evt & UI_CMD_EVT) {
     g_ui_cmd.received = 1;
     return KEYPAD_KEY_CANCEL;
   } else if (evt & UI_KEY_EVT) {
     return g_ui_ctx.keypad.last_key;
+  } else if (evt & UI_USB_PLUG_EVT) {
+    dialog_update_battery();
+    return ui_wait_keypress(timeout);
   }
 
   return KEYPAD_KEY_INVALID;

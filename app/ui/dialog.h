@@ -21,6 +21,7 @@ app_err_t dialog_end_line(screen_text_ctx_t* ctx);
 app_err_t dialog_inverted_string(screen_text_ctx_t* ctx, const char* str, uint16_t padding);
 
 app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg);
+app_err_t dialog_update_battery();
 app_err_t dialog_blank_color(uint16_t yOff, uint16_t bg);
 app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg, uint16_t fg);
 app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, uint16_t bg, uint16_t fg);

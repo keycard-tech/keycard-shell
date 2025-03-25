@@ -45,7 +45,7 @@ void HAL_GPIO_EXTI_Rising_Callback(uint16_t gpio_pin) {
     pwr_smartcard_inserted();
     break;
   case GPIO_VUSB_OK_Pin:
-    pwr_usb_unplugged();
+    pwr_usb_unplugged(true);
     break;
   }
 }

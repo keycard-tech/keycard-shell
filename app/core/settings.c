@@ -127,6 +127,6 @@ void settings_usb_onoff() {
   } else if (g_settings.enable_usb) {
     usb_start_if_connected();
   } else {
-    pwr_usb_unplugged();
+    pwr_usb_unplugged(false);
   }
 }
