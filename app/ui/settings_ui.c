@@ -181,7 +181,7 @@ app_err_t settings_ui_devinfo() {
 }
 
 app_err_t settings_ui_dbinfo() {
-  dialog_title(LSTR(DB_UPDATE_FLOW_TITLE));
+  dialog_title(LSTR(MENU_DB_UPDATE));
   dialog_blank(TH_TITLE_HEIGHT);
   screen_area_t version_box = {
       .x = TH_SCREEN_MARGIN,

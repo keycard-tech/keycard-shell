@@ -34,7 +34,7 @@ const char *const i18n_english_strings[] = {
     // Device menu
     "Information",
     "Verification",
-    "Update ERC20 db",
+    "Update ERC-20 database",
     "Set brightness",
     "Auto-off time",
     "USB-data",
@@ -144,7 +144,6 @@ const char *const i18n_english_strings[] = {
 
     // DB Update
     "Downloading database",
-    "Update ERC-20 database",
     "Database updated",
     "Received database is invalid",
     "Couldn't write database",

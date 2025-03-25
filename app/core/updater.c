@@ -155,7 +155,7 @@ void updater_database_run() {
     }
 
     const char* addr = "https://keycard.tech/update";
-    ui_display_msg_qr(LSTR(DB_UPDATE_FLOW_TITLE), addr, &addr[8]);
+    ui_display_msg_qr(LSTR(MENU_DB_UPDATE), addr, &addr[8]);
 
     if (ui_qrscan(FS_DATA, &data) != CORE_EVT_UI_OK) {
       return;
