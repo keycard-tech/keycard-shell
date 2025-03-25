@@ -13,6 +13,10 @@ typedef uint32_t hal_crc32_ctx_t;
 #define APP_RAMFUNC
 #define CAMERA_BUFFER_ALIGN 4
 
+#define VBAT_MIN 3100
+#define VBAT_MAX 4100
+#define VBAT_USB 4600
+
 #define HAL_FLASH_SIZE FLASH_SIZE
 #define HAL_FLASH_BLOCK_SIZE FLASH_SECTOR_SIZE
 #define HAL_FLASH_WORD_SIZE 16

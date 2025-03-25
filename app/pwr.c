@@ -8,10 +8,6 @@
 #include "pwr.h"
 #include "usb/usb.h"
 
-#define VBAT_MIN 3100
-#define VBAT_MAX 4100
-#define VBAT_USB 4600
-
 static void pwr_graceful_shutdown() {
   while(hal_flash_busy()) {
     ;
