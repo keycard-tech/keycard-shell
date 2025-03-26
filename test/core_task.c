@@ -39,8 +39,10 @@ app_err_t core_usb_get_app_config(apdu_t* cmd);
 
 static core_evt_t ui_info_usb(const char* msg) {
   g_ui_cmd.type = UI_CMD_INFO;
-  g_ui_cmd.params.info.dismissable = 1;
+  g_ui_cmd.params.info.icon = ICON_INFO_UPLOAD;
+  g_ui_cmd.params.info.options = 0;
   g_ui_cmd.params.info.msg = msg;
+  g_ui_cmd.params.info.subtext = NULL;
 
   while (ui_signal_wait(1) != CORE_EVT_USB_CMD) {
     continue;
@@ -51,8 +53,10 @@ static core_evt_t ui_info_usb(const char* msg) {
 
 static void ui_info_nowait(const char* msg) {
   g_ui_cmd.type = UI_CMD_INFO;
-  g_ui_cmd.params.info.dismissable = 1;
+  g_ui_cmd.params.info.icon = ICON_INFO_UPLOAD;
+  g_ui_cmd.params.info.options = 0;
   g_ui_cmd.params.info.msg = msg;
+  g_ui_cmd.params.info.subtext = NULL;
 
   ui_signal();
 }
@@ -99,13 +103,13 @@ static void core_button_test(apdu_t* apdu) {
 static void core_backlight_test(apdu_t* apdu) {
   hal_pwm_set_dutycycle(PWM_BACKLIGHT, 10);
 
-  if (ui_prompt("Brightness test", "Screen is at minimum brightness. Press is OK if readable, cancel otherwise") != CORE_EVT_UI_OK) {
+  if (ui_prompt("Brightness test", "Screen is at minimum brightness. Press is OK if readable, cancel otherwise", (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x01);
     goto backlight_teardown;
   }
 
   hal_pwm_set_dutycycle(PWM_BACKLIGHT, 100);
-  if (ui_prompt("Brightness test", "Screen is at full brightness. Press is OK if very bright, cancel otherwise") != CORE_EVT_UI_OK) {
+  if (ui_prompt("Brightness test", "Screen is at full brightness. Press is OK if very bright, cancel otherwise", (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x02);
     goto backlight_teardown;
   }

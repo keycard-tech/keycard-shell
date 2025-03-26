@@ -26,7 +26,7 @@ struct ui_ctx g_ui_ctx;
 static app_err_t test_keypad() {
   g_ui_ctx.battery = pwr_battery_level();
   dialog_title("Keypad test");
-  dialog_footer(TH_TITLE_HEIGHT);
+  dialog_blank(TH_TITLE_HEIGHT);
 
   screen_area_t area = {
       .x = TH_FIELD_MARGIN,
