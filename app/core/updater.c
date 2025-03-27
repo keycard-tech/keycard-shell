@@ -147,15 +147,15 @@ static app_err_t updater_prompt_version() {
 }
 
 void updater_database_run() {
+  const char* addr = "https://keycard.tech/update";
+  ui_display_msg_qr(LSTR(MENU_DB_UPDATE), addr, &addr[8]);
+
   data_t data;
 
   do {
     if (updater_prompt_version() != ERR_OK) {
       return;
     }
-
-    const char* addr = "https://keycard.tech/update";
-    ui_display_msg_qr(LSTR(MENU_DB_UPDATE), addr, &addr[8]);
 
     if (ui_qrscan(FS_DATA, &data) != CORE_EVT_UI_OK) {
       return;
