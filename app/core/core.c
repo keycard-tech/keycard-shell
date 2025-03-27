@@ -30,7 +30,7 @@ const uint32_t BTC_TAPROOT_PURPOSE = 0x80000056;
 const uint32_t BTC_MAINNET_COIN = 0x80000000;
 const uint32_t BTC_TESTNET_COIN = 0x80000001;
 
-const char *const EIP4527_NAME = "Keycard Pro";
+const char *const EIP4527_NAME = "Keycard Shell";
 
 const uint8_t *const EIP4527_SOURCE = (uint8_t*) "account.standard";
 const uint32_t EIP4527_SOURCE_LEN = 16;
