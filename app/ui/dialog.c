@@ -720,7 +720,7 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
     } else if (eip712) {
       ctx.y = TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 4) + (TH_LABEL_HEIGHT * 4);
     } else {
-      ctx.y = TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 1) + (TH_LABEL_HEIGHT * 2);
+      ctx.y = TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 2) + (TH_LABEL_HEIGHT * 2);
     }
 
     size_t offset = pages[last_page];
