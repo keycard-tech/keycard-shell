@@ -152,6 +152,9 @@ const char *const i18n_english_strings[] = {
     "Update database",
     "Incompatible delta",
     "Select the correct database version",
+    "Enter this database version number at keycard.tech/update",
+    "Generate the update QR code",
+    "Press OK to scan",
 
     // FW Upgrade
     "Downloading firmware",

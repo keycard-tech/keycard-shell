@@ -201,5 +201,9 @@ app_err_t settings_ui_dbinfo() {
 
   screen_draw_centered_string(&ctx, g_ui_cmd.params.devinfo.db_version);
 
-  return dialog_wait_dismiss(UI_INFO_NEXT);
+  ctx.y = dialog_ordered_point(TH_SCREEN_MARGIN, TH_DB_UPDATE_INSTRUCTION_TOP, 1, LSTR(DB_UPDATE_POINT_1)) + TH_DB_UPDATE_INSTR_MARGIN;
+  ctx.y = dialog_ordered_point(TH_SCREEN_MARGIN, ctx.y, 2, LSTR(DB_UPDATE_POINT_2)) + TH_DB_UPDATE_INSTR_MARGIN;
+  dialog_ordered_point(TH_SCREEN_MARGIN, ctx.y, 3, LSTR(DB_UPDATE_POINT_3));
+
+  return dialog_wait_dismiss(UI_INFO_CANCELLABLE);
 }

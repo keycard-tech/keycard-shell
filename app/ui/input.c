@@ -671,51 +671,8 @@ app_err_t input_mnemonic() {
 }
 
 static void input_render_mnemonic_word(int word_num, const char* str, screen_area_t* field_area) {
-  screen_text_ctx_t ctx = {
-      .font = TH_FONT_TEXT,
-      .fg = TH_TEXT_FIELD_FG,
-      .bg = TH_TEXT_FIELD_BG,
-      .x = field_area->x,
-      .y = field_area->y + TH_MNEMONIC_NUM_INNER_MARGIN
-  };
-
   screen_fill_area(field_area, TH_TEXT_FIELD_BG);
-
-  screen_area_t square = { .x = field_area->x, .y = field_area->y, .width = TH_MNEMONIC_NUM_SIZE, .height = TH_MNEMONIC_NUM_SIZE };
-  screen_fill_area(&square, TH_MNEMONIC_NUM_COLOR);
-
-  square.x += TH_MNEMONIC_NUM_INNER_MARGIN;
-  square.y += TH_MNEMONIC_NUM_INNER_MARGIN;
-  square.width -= (TH_MNEMONIC_NUM_INNER_MARGIN * 2);
-  square.height -= (TH_MNEMONIC_NUM_INNER_MARGIN * 2);
-  screen_fill_area(&square, TH_TEXT_FIELD_BG);
-
-  const glyph_t* num[2];
-  uint8_t numlen = 0;
-  size_t numwidth = 0;
-
-  if (word_num >= 10) {
-    num[numlen++] = screen_lookup_glyph(ctx.font, (word_num / 10) + '0');
-    numwidth += num[0]->xAdvance;
-  }
-
-  num[numlen++] = screen_lookup_glyph(ctx.font, (word_num % 10) + '0');
-  numwidth += num[0]->xAdvance;
-
-  ctx.x += (TH_MNEMONIC_NUM_SIZE - numwidth) / 2;
-
-  // offset integer math error
-  if ((word_num == 10) || ((word_num < 20) && (word_num > 11))) {
-    ctx.x--;
-  } else if ((word_num == 21) || (word_num == 6)) {
-    ctx.x++;
-  }
-
-  screen_draw_glyphs(&ctx, num, numlen);
-
-  ctx.x = field_area->x + TH_MNEMONIC_NUM_SIZE + TH_MNEMONIC_NUM_MARGIN;
-  ctx.y = field_area->y + TH_MNEMONIC_NUM_INNER_MARGIN;
-  screen_draw_string(&ctx, str);
+  dialog_ordered_point(field_area->x, field_area->y, word_num, str);
 }
 
 app_err_t input_display_mnemonic() {
@@ -742,7 +699,7 @@ app_err_t input_display_mnemonic() {
         field_area.x += TH_MNEMONIC_FIELD_WIDTH + TH_MNEMONIC_LEFT_MARGIN;
       }
 
-      field_area.y += TH_MNEMONIC_NUM_SIZE + TH_MNEMONIC_TOP_MARGIN;
+      field_area.y += TH_ORDER_INDEX_SIZE + TH_MNEMONIC_TOP_MARGIN;
     }
 
     dialog_nav_hints(ICON_NAV_CANCEL, page == last_page ? ICON_NAV_NEXT : ICON_NONE);

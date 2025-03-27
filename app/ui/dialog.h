@@ -20,6 +20,7 @@ app_err_t dialog_end_line(screen_text_ctx_t* ctx);
 
 app_err_t dialog_inverted_string(screen_text_ctx_t* ctx, const char* str, uint16_t padding);
 
+uint16_t dialog_ordered_point(uint16_t x, uint16_t y, uint8_t index, const char* msg);
 app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg);
 app_err_t dialog_update_battery();
 app_err_t dialog_blank_color(uint16_t yOff, uint16_t bg);

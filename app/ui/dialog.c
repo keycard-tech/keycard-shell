@@ -230,6 +230,52 @@ app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, u
   return ERR_OK;
 }
 
+uint16_t dialog_ordered_point(uint16_t x, uint16_t y, uint8_t index, const char* msg) {
+  screen_text_ctx_t ctx = {
+      .font = TH_FONT_TEXT,
+      .fg = TH_TEXT_FIELD_FG,
+      .bg = TH_TEXT_FIELD_BG,
+      .y = y + TH_ORDER_INDEX_INNER_MARGIN
+  };
+
+  screen_area_t square = { .x = x, .y = y, .width = TH_ORDER_INDEX_SIZE, .height = TH_ORDER_INDEX_SIZE };
+  screen_fill_area(&square, TH_ORDER_INDEX_COLOR);
+
+  square.x += TH_ORDER_INDEX_INNER_MARGIN;
+  square.y += TH_ORDER_INDEX_INNER_MARGIN;
+  square.width -= (TH_ORDER_INDEX_INNER_MARGIN * 2);
+  square.height -= (TH_ORDER_INDEX_INNER_MARGIN * 2);
+  screen_fill_area(&square, TH_TEXT_FIELD_BG);
+
+  const glyph_t* num[2];
+  uint8_t numlen = 0;
+  size_t numwidth = 0;
+
+  if (index >= 10) {
+    num[numlen++] = screen_lookup_glyph(ctx.font, (index / 10) + '0');
+    numwidth += num[0]->xAdvance;
+  }
+
+  num[numlen++] = screen_lookup_glyph(ctx.font, (index % 10) + '0');
+  numwidth += num[0]->xAdvance;
+
+  ctx.x = x + ((TH_ORDER_INDEX_SIZE - numwidth) / 2);
+
+  // offset integer math error
+  if ((index == 10) || ((index < 20) && (index > 11))) {
+    ctx.x--;
+  } else if ((index == 21) || (index == 6)) {
+    ctx.x++;
+  }
+
+  screen_draw_glyphs(&ctx, num, numlen);
+
+  ctx.x = x + TH_ORDER_INDEX_SIZE + TH_ORDER_INDEX_MARGIN;
+  ctx.y = y + TH_ORDER_INDEX_INNER_MARGIN;
+  screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (uint8_t*) msg, strlen(msg), false, false);
+  return ctx.y;
+}
+
 static inline void dialog_label_ctx(screen_text_ctx_t *ctx) {
   ctx->font = TH_FONT_LABEL;
   ctx->fg = TH_COLOR_LABEL_FG;
