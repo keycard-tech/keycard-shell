@@ -71,6 +71,8 @@ typedef enum {
   TX_SIGN_ANYONECANPAY,
   TX_CHANGE,
   TX_SATOSHI,
+  TX_UNLIMITED,
+  TX_TOOLITTLE,
 
   // MSG Confirmation
   MSG_CONFIRM_TITLE,
