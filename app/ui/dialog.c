@@ -310,7 +310,7 @@ static inline void dialog_data_ctx(screen_text_ctx_t *ctx) {
 
 static inline void dialog_data(screen_text_ctx_t *ctx, const char* data) {
   dialog_data_ctx(ctx);
-  screen_draw_string(ctx, data);
+  screen_draw_text(ctx, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y, (uint8_t*) data, strlen(data), false, false);
   dialog_end_line(ctx);
 }
 
