@@ -37,20 +37,6 @@ static uint32_t unplugged_vbat;
 
 app_err_t core_usb_get_app_config(apdu_t* cmd);
 
-static core_evt_t ui_info_usb(const char* msg) {
-  g_ui_cmd.type = UI_CMD_INFO;
-  g_ui_cmd.params.info.icon = ICON_INFO_UPLOAD;
-  g_ui_cmd.params.info.options = 0;
-  g_ui_cmd.params.info.msg = msg;
-  g_ui_cmd.params.info.subtext = NULL;
-
-  while (ui_signal_wait(1) != CORE_EVT_USB_CMD) {
-    continue;
-  }
-
-  return CORE_EVT_USB_CMD;
-}
-
 static void ui_info_nowait(const char* msg) {
   g_ui_cmd.type = UI_CMD_INFO;
   g_ui_cmd.params.info.icon = ICON_INFO_UPLOAD;
@@ -59,6 +45,17 @@ static void ui_info_nowait(const char* msg) {
   g_ui_cmd.params.info.subtext = NULL;
 
   ui_signal();
+}
+
+static core_evt_t usb_wait(const char* msg) {
+  ui_info_nowait(msg);
+  vTaskDelay(pdMS_TO_TICKS(50));
+
+  while (core_wait_event(portMAX_DELAY, 1) != CORE_EVT_USB_CMD) {
+    continue;
+  }
+
+  return CORE_EVT_USB_CMD;
 }
 
 #define core_test_wait_gpio(__APDU__, __IO__, __VAL__, __ERR__, __TIMEOUT__) \
@@ -124,6 +121,7 @@ static void core_lcd_test(apdu_t* apdu) {
   g_ui_cmd.type = UI_CMD_LCD_TEST;
   if (ui_signal_wait(0) != CORE_EVT_UI_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x01);
+    return;
   }
 
   core_usb_err_sw(apdu, 0x90, 0x00);
@@ -241,6 +239,7 @@ static void core_test_run(apdu_t* apdu) {
     break;
   default:
     core_usb_err_sw(apdu, 0x6a, 0x86);
+    break;
   }
 }
 
@@ -288,11 +287,11 @@ void core_task_entry(void* pvParameters) {
   hal_adc_read(ADC_VBAT, &unplugged_vbat);
 
   g_core.ready = true;
-  ui_info_usb("Plug USB and connect testbench");
+  usb_wait("Plug USB and connect testbench");
 
   while (1) {
     core_test_process_cmd();
-    ui_info_usb("Waiting for next command...");
+    usb_wait("Waiting for next command...");
   }
 }
 #endif

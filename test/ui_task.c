@@ -21,7 +21,7 @@ struct ui_ctx g_ui_ctx;
 
 #define TH_FIELD_MARGIN ((SCREEN_WIDTH - ((TH_KEYPAD_FIELD_WIDTH * 3) + (TH_KEYPAD_FIELD_MARGIN * 2))) / 2)
 
-#define COLOR_TEST_HEADER_REFRESH_MS (1 * 60 * 1000)
+#define KEYPAD_TEST_TIMEOUT_MS (10 * 1000)
 
 static app_err_t test_keypad() {
   g_ui_ctx.battery = pwr_battery_level();
@@ -50,8 +50,11 @@ static app_err_t test_keypad() {
   area.y = TH_TITLE_HEIGHT + TH_KEYPAD_FIELD_VERTICAL_MARGIN;
 
   for (int i = 0; i < 12; i++) {
-    while(ui_wait_keypress(portMAX_DELAY) != i) {
-      continue;
+    keypad_key_t key;
+    while((key = ui_wait_keypress(KEYPAD_TEST_TIMEOUT_MS)) != i) {
+      if (key == KEYPAD_KEY_INVALID) {
+        return ERR_CANCEL;
+      }
     }
 
     screen_fill_area(&area, TH_COLOR_ACCENT);
@@ -67,28 +70,11 @@ static app_err_t test_keypad() {
   return ERR_OK;
 }
 
-static app_err_t test_colors() {
-  screen_area_t area = {
-      .x = 0,
-      .y = TH_TITLE_HEIGHT,
-      .width = (SCREEN_WIDTH / 3),
-      .height = (SCREEN_HEIGHT - TH_TITLE_HEIGHT)
-  };
-
-  screen_fill_area(&area, SCREEN_COLOR_RED);
-
-  area.x += (SCREEN_WIDTH / 3);
-  screen_fill_area(&area, SCREEN_COLOR_GREEN);
-
-  area.x += (SCREEN_WIDTH / 3);
-  screen_fill_area(&area, SCREEN_COLOR_BLUE);
+static app_err_t test_dead_pixels() {
+  screen_fill_area(&screen_fullarea, SCREEN_COLOR_WHITE);
 
   while(1) {
-    hal_inactivity_timer_reset();
-    g_ui_ctx.battery = pwr_battery_level();
-    dialog_title("R G B");
-
-    switch(ui_wait_keypress(pdMS_TO_TICKS(COLOR_TEST_HEADER_REFRESH_MS))) {
+    switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:
     case KEYPAD_KEY_BACK:
       return ERR_CANCEL;
@@ -114,6 +100,7 @@ void ui_task_entry(void* pvParameters) {
 
   while(1) {
     g_ui_ctx.battery = pwr_battery_level();
+    g_ui_ctx.title_bg = UINT32_MAX;
 
     if (!g_ui_cmd.received && ((ui_wait_event(portMAX_DELAY) & UI_CMD_EVT) == 0)) {
       continue;
@@ -135,7 +122,7 @@ void ui_task_entry(void* pvParameters) {
       g_ui_cmd.result = test_keypad();
       break;
     case UI_CMD_LCD_TEST:
-      g_ui_cmd.result = test_colors();
+      g_ui_cmd.result = test_dead_pixels();
       break;
     default:
       g_ui_cmd.result = ERR_CANCEL;
