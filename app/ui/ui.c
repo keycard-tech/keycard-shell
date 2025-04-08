@@ -156,7 +156,11 @@ void ui_keycard_not_initialized() {
 }
 
 void ui_keycard_init_ok(bool has_duress) {
-  ui_info(ICON_INFO_SUCCESS, LSTR(PIN_CHANGE_SUCCESS), NULL, 0);
+  if (has_duress) {
+    ui_info(ICON_INFO_SUCCESS, LSTR(DURESS_OK_MSG), LSTR(DURESS_OK_SUB), 0);
+  } else {
+    ui_info(ICON_INFO_SUCCESS, LSTR(PIN_CHANGE_SUCCESS), NULL, 0);
+  }
 }
 
 void ui_keycard_init_failed() {
@@ -255,7 +259,7 @@ core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
 }
 
 core_evt_t ui_read_duress_pin(uint8_t* out) {
-  if (ui_prompt("Duress", "do you duress?", UI_INFO_CANCELLABLE | UI_INFO_NEXT) == CORE_EVT_UI_CANCELLED) {
+  if (ui_prompt(LSTR(DURESS_PROMPT_TITLE), LSTR(DURESS_PROMPT_MSG), UI_INFO_CANCELLABLE | UI_INFO_NEXT) == CORE_EVT_UI_CANCELLED) {
     return CORE_EVT_UI_CANCELLED;
   }
 
