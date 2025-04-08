@@ -30,8 +30,7 @@ enum cmd_type {
   UI_CMD_DISPLAY_ADDRESS_QR,
   UI_CMD_DISPLAY_MSG_QR,
   UI_CMD_QRSCAN,
-  UI_CMD_INPUT_PIN,
-  UI_CMD_INPUT_PUK,
+  UI_CMD_INPUT_SECRET,
   UI_CMD_INPUT_STRING,
   UI_CMD_INPUT_MNEMO,
   UI_CMD_DISPLAY_MNEMO,
@@ -110,10 +109,11 @@ struct cmd_qrscan {
   ur_type_t type;
 };
 
-struct cmd_input_pin {
+struct cmd_input_secret {
   uint8_t* out;
   int8_t retries;
   uint8_t dismissable;
+  ui_secret_type_t type;
 };
 
 struct cmd_input_string {
@@ -155,7 +155,7 @@ union cmd_params {
   struct cmd_msg_qr qrmsg;
   struct cmd_menu menu;
   struct cmd_qrscan qrscan;
-  struct cmd_input_pin input_pin;
+  struct cmd_input_secret input_secret;
   struct cmd_input_string input_string;
   struct cmd_mnemo mnemo;
   struct cmd_brightness lcd;

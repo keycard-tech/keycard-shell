@@ -75,11 +75,8 @@ void ui_task_entry(void* pvParameters) {
     case UI_CMD_QRSCAN:
       g_ui_cmd.result = qrscan_scan();
       break;
-    case UI_CMD_INPUT_PIN:
-      g_ui_cmd.result = input_pin();
-      break;
-    case UI_CMD_INPUT_PUK:
-      g_ui_cmd.result = input_puk();
+    case UI_CMD_INPUT_SECRET:
+      g_ui_cmd.result = input_secret();
       break;
     case UI_CMD_INPUT_STRING:
       g_ui_cmd.result = input_string();

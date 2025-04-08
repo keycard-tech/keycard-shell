@@ -50,11 +50,24 @@ typedef struct {
   keyboard_layout_t layout;
 } keyboard_state_t;
 
+typedef struct {
+  i18n_str_id_t title_enter;
+  i18n_str_id_t title_new;
+  i18n_str_id_t title_repeat;
+  uint8_t secret_len;
+} secret_spec_t;
+
 const char KEYPAD_TO_DIGIT[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', DIG_INV, '0', DIG_INV, DIG_INV, DIG_INV};
 const char KEYBOARD_MAP[] = {
     'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
     'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
     'z', 'x', 'c', 'v', 'b', 'n', 'm', SYM_UP_ARROW, ' ', SYM_HASHTAG
+};
+
+const secret_spec_t SECRET_SPEC[] = {
+    {PIN_INPUT_TITLE, PIN_CREATE_TITLE, PIN_LABEL_REPEAT, PIN_LEN},
+    {PUK_INPUT_TITLE, PUK_CREATE_TITLE, PUK_LABEL_REPEAT, PUK_LEN},
+    {PIN_INPUT_TITLE, DURESS_CREATE_TITLE, DURESS_LABEL_REPEAT, PIN_LEN},
 };
 
 static app_err_t input_render_secret(uint16_t yOff, int len, int pos, icon_t full, icon_t current) {
@@ -160,39 +173,23 @@ static app_err_t input_secret_entry(const char* title, char* out, char* compare,
   }
 }
 
-app_err_t input_pin() {
-  if (g_ui_cmd.params.input_pin.retries == PIN_NEW_CODE) {
+app_err_t input_secret() {
+  const secret_spec_t* s = &SECRET_SPEC[g_ui_cmd.params.input_secret.type];
+
+  if (g_ui_cmd.params.input_secret.retries == SECRET_NEW_CODE) {
     while(1) {
-      if (input_secret_entry(LSTR(PIN_CREATE_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, PIN_LEN, g_ui_cmd.params.input_pin.dismissable) != ERR_OK) {
+      if (input_secret_entry(LSTR(s->title_new), (char *) g_ui_cmd.params.input_secret.out, NULL, s->secret_len, g_ui_cmd.params.input_secret.dismissable) != ERR_OK) {
         return ERR_CANCEL;
       }
 
-      char repeat[PIN_LEN];
+      char repeat[s->secret_len];
 
-      if (input_secret_entry(LSTR(PIN_LABEL_REPEAT), repeat, (char *) g_ui_cmd.params.input_pin.out, PIN_LEN, true) == ERR_OK) {
+      if (input_secret_entry(LSTR(s->title_repeat), repeat, (char *) g_ui_cmd.params.input_secret.out, s->secret_len, true) == ERR_OK) {
         return ERR_OK;
       }
     }
   } else {
-    return input_secret_entry(LSTR(PIN_INPUT_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, PIN_LEN, g_ui_cmd.params.input_pin.dismissable);
-  }
-}
-
-app_err_t input_puk() {
-  if (g_ui_cmd.params.input_pin.retries == PUK_NEW_CODE) {
-    while(1) {
-      if (input_secret_entry(LSTR(PUK_CREATE_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, PUK_LEN, g_ui_cmd.params.input_pin.dismissable) != ERR_OK) {
-        return ERR_CANCEL;
-      }
-
-      char repeat[PUK_LEN];
-
-      if (input_secret_entry(LSTR(PUK_LABEL_REPEAT), repeat, (char *) g_ui_cmd.params.input_pin.out, PUK_LEN, true) == ERR_OK) {
-        return ERR_OK;
-      }
-    }
-  } else {
-    return input_secret_entry(LSTR(PUK_INPUT_TITLE), (char *) g_ui_cmd.params.input_pin.out, NULL, PUK_LEN, g_ui_cmd.params.input_pin.dismissable);
+    return input_secret_entry(LSTR(s->title_enter), (char *) g_ui_cmd.params.input_secret.out, NULL, s->secret_len, g_ui_cmd.params.input_secret.dismissable);
   }
 }
 

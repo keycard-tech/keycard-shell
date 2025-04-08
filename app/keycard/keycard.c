@@ -18,6 +18,9 @@
 #define KEYCARD_AID_LEN 9
 #define KEYCARD_MIN_VERSION 0x0301
 
+#define KEYCARD_DEF_PIN_RETRIES 3
+#define KEYCARD_DEF_PUK_RETRIES 5
+
 const uint8_t KEYCARD_AID[] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01};
 const uint8_t KEYCARD_DEFAULT_PSK[] = {0x67, 0x5d, 0xea, 0xbb, 0x0d, 0x7c, 0x72, 0x4b, 0x4a, 0x36, 0xca, 0xad, 0x0e, 0x28, 0x08, 0x26, 0x15, 0x9e, 0x89, 0x88, 0x6f, 0x70, 0x82, 0x53, 0x5d, 0x43, 0x1e, 0x92, 0x48, 0x48, 0xbc, 0xf1};
 
@@ -27,22 +30,38 @@ static void keycard_random_puk(uint8_t puk[KEYCARD_PUK_LEN]) {
   }
 }
 
+static void keycard_random_duress(uint8_t pin[KEYCARD_PIN_LEN], uint8_t duress[KEYCARD_PIN_LEN]) {
+  do {
+    for (int i = 0; i < KEYCARD_PIN_LEN; i++) {
+      duress[i] = '0' + random_uniform(10);
+    }
+  } while(memcmp(pin, duress, KEYCARD_PIN_LEN) == 0);
+}
+
 static app_err_t keycard_init_card(keycard_t* kc, uint8_t* sc_key, uint8_t* pin) {
   uint8_t puk[KEYCARD_PUK_LEN];
-  if (ui_read_pin(pin, PIN_NEW_CODE, 0) != CORE_EVT_UI_OK) {
+  if (ui_read_pin(pin, SECRET_NEW_CODE, 0) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
   }
 
   keycard_random_puk(puk);
 
-  if (keycard_cmd_init(kc, sc_key, pin, puk, (uint8_t*)KEYCARD_DEFAULT_PSK) != ERR_OK) {
+  uint8_t duress_pin[KEYCARD_PIN_LEN];
+  bool has_duress = true;
+
+  if (ui_read_duress_pin(duress_pin) != CORE_EVT_UI_OK) {
+    keycard_random_duress(pin, duress_pin);
+    has_duress = false;
+  }
+
+  if (keycard_cmd_init(kc, sc_key, pin, puk, (uint8_t*)KEYCARD_DEFAULT_PSK, KEYCARD_DEF_PIN_RETRIES, KEYCARD_DEF_PUK_RETRIES, duress_pin) != ERR_OK) {
     memset(puk, 0, KEYCARD_PUK_LEN);
     ui_keycard_init_failed();
     return ERR_CRYPTO;
   }
 
   memset(puk, 0, KEYCARD_PUK_LEN);
-  ui_keycard_init_ok();
+  ui_keycard_init_ok(has_duress);
   return ERR_OK;
 }
 
@@ -177,7 +196,7 @@ static app_err_t keycard_unblock(keycard_t* kc, uint8_t pukRetries) {
   if (pukRetries) {
     if (ui_prompt_try_puk() != CORE_EVT_UI_OK) {
       pukRetries = 0;
-    } else if (ui_read_pin(pin, PIN_NEW_CODE, 0) != CORE_EVT_UI_OK) {
+    } else if (ui_read_pin(pin, SECRET_NEW_CODE, 0) != CORE_EVT_UI_OK) {
       return ERR_CANCEL;
     }
   }

@@ -12,9 +12,6 @@
 #include "ur/ur_types.h"
 #include "ur/ur.h"
 
-#define PIN_NEW_CODE -1
-#define PUK_NEW_CODE PIN_NEW_CODE
-
 typedef enum {
   CORE_EVT_USB_CMD,
   CORE_EVT_UI_CANCELLED,
@@ -45,7 +42,7 @@ void ui_card_accepted();
 void ui_keycard_wrong_card();
 void ui_keycard_old_card();
 void ui_keycard_not_initialized();
-void ui_keycard_init_ok();
+void ui_keycard_init_ok(bool has_duress);
 void ui_keycard_init_failed();
 void ui_keycard_no_keys();
 void ui_keycard_ready();
@@ -65,6 +62,7 @@ void ui_bad_seed();
 core_evt_t ui_prompt_try_puk();
 core_evt_t ui_confirm_factory_reset();
 core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable);
+core_evt_t ui_read_duress_pin(uint8_t* out);
 core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable);
 core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t* len);
 core_evt_t ui_read_string(const char* title, char* out, uint8_t* len, ui_read_string_opt_t opts);

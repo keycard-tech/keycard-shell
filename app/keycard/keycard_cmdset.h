@@ -18,7 +18,7 @@ app_err_t keycard_cmd_verify_pin(keycard_t* kc, uint8_t* pin);
 app_err_t keycard_cmd_change_credential(keycard_t* kc, keycard_credentials_t type, uint8_t* credentials, uint8_t len);
 app_err_t keycard_cmd_unblock_pin(keycard_t* kc, uint8_t* pin, uint8_t* puk);
 app_err_t keycard_cmd_get_status(keycard_t* kc);
-app_err_t keycard_cmd_init(keycard_t* kc, uint8_t* sc_pub, uint8_t* pin, uint8_t* puk, uint8_t* psk);
+app_err_t keycard_cmd_init(keycard_t* kc, uint8_t* sc_pub, uint8_t* pin, uint8_t* puk, uint8_t* psk, uint8_t pin_retries, uint8_t puk_retries, uint8_t* duress_pin);
 app_err_t keycard_cmd_generate_mnemonic(keycard_t* kc, uint8_t len);
 app_err_t keycard_cmd_load_seed(keycard_t* kc, uint8_t* seed);
 app_err_t keycard_cmd_export_key(keycard_t* kc, uint8_t export_type, uint8_t* path, uint8_t len);

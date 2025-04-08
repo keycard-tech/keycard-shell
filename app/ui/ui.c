@@ -155,7 +155,7 @@ void ui_keycard_old_card() {
 void ui_keycard_not_initialized() {
 }
 
-void ui_keycard_init_ok() {
+void ui_keycard_init_ok(bool has_duress) {
   ui_info(ICON_INFO_SUCCESS, LSTR(PIN_CHANGE_SUCCESS), NULL, 0);
 }
 
@@ -240,22 +240,30 @@ core_evt_t ui_keycard_no_pairing_slots() {
   return ui_info(ICON_INFO_ERROR, LSTR(INFO_NO_PAIRING_SLOTS_MSG), LSTR(INFO_NO_PAIRING_SLOTS_SUB), 0);
 }
 
-core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
-  g_ui_cmd.type = UI_CMD_INPUT_PIN;
-  g_ui_cmd.params.input_pin.dismissable = dismissable;
-  g_ui_cmd.params.input_pin.retries = retries;
-  g_ui_cmd.params.input_pin.out = out;
+core_evt_t ui_read_secret(ui_secret_type_t type, uint8_t* out, int8_t retries, uint8_t dismissable) {
+  g_ui_cmd.type = UI_CMD_INPUT_SECRET;
+  g_ui_cmd.params.input_secret.type = type;
+  g_ui_cmd.params.input_secret.dismissable = dismissable;
+  g_ui_cmd.params.input_secret.retries = retries;
+  g_ui_cmd.params.input_secret.out = out;
 
   return ui_signal_wait(0);
 }
 
-core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable) {
-  g_ui_cmd.type = UI_CMD_INPUT_PUK;
-  g_ui_cmd.params.input_pin.dismissable = dismissable;
-  g_ui_cmd.params.input_pin.retries = retries;
-  g_ui_cmd.params.input_pin.out = out;
+core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
+  return ui_read_secret(UI_SECRET_PIN, out, retries, dismissable);
+}
 
-  return ui_signal_wait(0);
+core_evt_t ui_read_duress_pin(uint8_t* out) {
+  if (ui_prompt("Duress", "do you duress?", UI_INFO_CANCELLABLE | UI_INFO_NEXT) == CORE_EVT_UI_CANCELLED) {
+    return CORE_EVT_UI_CANCELLED;
+  }
+
+  return ui_read_secret(UI_SECRET_DURESS, out, SECRET_NEW_CODE, 0);
+}
+
+core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable) {
+  return ui_read_secret(UI_SECRET_PUK, out, retries, dismissable);
 }
 
 core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t *len) {
