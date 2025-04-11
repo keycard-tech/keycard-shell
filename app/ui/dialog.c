@@ -41,6 +41,11 @@ app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
     screen_draw_string(&ctx, LSTR(INPUT_NAV_PROCEED));
   }
 
+  if ((opts & UI_INFO_SKIPPABLE) == UI_INFO_SKIPPABLE) {
+    screen_text_ctx_t ctx = { .font = TH_FONT_TEXT, .bg = TH_COLOR_BG, .fg = TH_COLOR_FG, .x = TH_NAV_HINT_INPUT_LEFT_X, .y = TH_NAV_HINT_INPUT_TOP };
+    screen_draw_string(&ctx, LSTR(INPUT_NAV_SKIP));
+  }
+
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:

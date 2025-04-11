@@ -126,6 +126,7 @@ typedef enum {
   INPUT_NAV_EXIT,
   INPUT_NAV_SAVE,
   INPUT_NAV_PROCEED,
+  INPUT_NAV_SKIP,
 
   // Factory reset
   FACTORY_RESET_TITLE,

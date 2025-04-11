@@ -259,7 +259,7 @@ core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
 }
 
 core_evt_t ui_read_duress_pin(uint8_t* out) {
-  if (ui_prompt(LSTR(DURESS_PROMPT_TITLE), LSTR(DURESS_PROMPT_MSG), UI_INFO_CANCELLABLE | UI_INFO_NEXT) == CORE_EVT_UI_CANCELLED) {
+  if (ui_prompt(LSTR(DURESS_PROMPT_TITLE), LSTR(DURESS_PROMPT_MSG), UI_INFO_SKIPPABLE | UI_INFO_NEXT) == CORE_EVT_UI_CANCELLED) {
     return CORE_EVT_UI_CANCELLED;
   }
 
