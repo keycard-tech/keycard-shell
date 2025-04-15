@@ -743,3 +743,47 @@ void core_btc_sign_msg_qr_run(struct btc_sign_request* qr_request) {
   cbor_encode_btc_signature(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &cbor_sig, &g_core.data.sig.cbor_len);
   ui_display_ur_qr(LSTR(QR_SCAN_WALLET_TITLE), g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, BTC_SIGNATURE);
 }
+
+app_err_t core_btc_usb_sign_psbt(keycard_t* kc, command_t* cmd) {
+  apdu_t* apdu = &cmd->apdu;
+  apdu->has_lc = 1;
+  uint8_t* data = APDU_DATA(apdu);
+  size_t len = APDU_LC(apdu);
+  uint8_t first_segment = APDU_P1(apdu) == 0;
+
+  if (first_segment) {
+    g_core.data.msg.len = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+    g_core.data.msg.received = 0;
+    data += 4;
+    len -= 4;
+  }
+
+  if ((g_core.data.msg.received + len) > MEM_HEAP_SIZE) {
+    core_usb_err_sw(apdu, 0x6a, 0x80);
+    return ERR_DATA;
+  }
+
+  memcpy(&g_mem_heap[g_core.data.msg.received], data, len);
+
+  g_core.data.msg.received += len;
+
+  if (g_core.data.msg.received > g_core.data.msg.len) {
+    core_usb_err_sw(apdu, 0x6a, 0x80);
+    return ERR_DATA;
+  } else if (g_core.data.msg.received == g_core.data.msg.len) {
+    uint8_t* psbt_out;
+    size_t out_len;
+
+    if (core_btc_psbt_run(g_mem_heap, g_core.data.msg.len, &psbt_out, &out_len) != ERR_OK) {
+      core_usb_err_sw(apdu, 0x6a, 0x80);
+      return ERR_DATA;
+    } else {
+      cmd->extra_len = out_len;
+      cmd->extra_data = psbt_out;
+      return core_usb_get_response(cmd);
+    }
+  }
+
+  core_usb_err_sw(apdu, 0x90, 0x00);
+  return ERR_NEED_MORE_DATA;
+}

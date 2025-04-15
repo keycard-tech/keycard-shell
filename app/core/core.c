@@ -187,6 +187,33 @@ TEST_APP_ACCESSIBLE app_err_t core_usb_get_app_config(apdu_t* cmd) {
   return ERR_OK;
 }
 
+app_err_t core_usb_get_response(command_t* cmd) {
+  if (cmd->extra_data == NULL) {
+    core_usb_err_sw(&cmd->apdu, 0x69, 0x85);
+    return;
+  }
+
+  apdu_t* apdu = &cmd->apdu;
+  uint8_t* apdu_out = APDU_RESP(apdu);
+
+  uint16_t sent_len = APP_MIN(USB_CMD_MAX_PAYLOAD, cmd->extra_len);
+  memcpy(apdu_out, cmd->extra_data, sent_len);
+  apdu->lr = sent_len + 2;
+
+  cmd->extra_len -= sent_len;
+  cmd->extra_data += sent_len;
+
+  if (cmd->extra_len > 0) {
+    apdu_out[sent_len] = 0x61;
+    apdu_out[sent_len + 1] = cmd->extra_len > USB_CMD_MAX_PAYLOAD ?  0x00 : (cmd->extra_len + 2);
+    return ERR_NEED_MORE_DATA;
+  } else {
+    apdu_out[sent_len] = 0x90;
+    apdu_out[sent_len + 1] = 0x00;
+    return ERR_OK;
+  }
+}
+
 static app_err_t core_usb_command(keycard_t* kc, command_t* cmd) {
   apdu_t* apdu = &cmd->apdu;
 
@@ -208,6 +235,12 @@ static app_err_t core_usb_command(keycard_t* kc, command_t* cmd) {
         break;
       case INS_SIGN_EIP_712:
         err = core_eth_usb_sign_eip712(kc, apdu);
+        break;
+      case INS_SIGN_PSBT:
+        err = core_btc_usb_sign_psbt(kc, cmd);
+        break;
+      case INS_GET_RESPONSE:
+        err = core_usb_get_response(cmd);
         break;
       case INS_FW_UPGRADE:
         err = updater_usb_fw_upgrade(cmd, apdu);
@@ -244,6 +277,9 @@ void core_usb_run() {
       break;
     }
   }
+
+  g_core.usb_command.extra_data = NULL;
+  g_core.usb_command.extra_len = 0;
 }
 
 void core_qr_run() {

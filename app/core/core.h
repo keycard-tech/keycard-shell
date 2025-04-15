@@ -79,10 +79,12 @@ app_err_t core_set_derivation_path(struct crypto_keypath* derivation_path);
 core_evt_t core_wait_event(uint32_t timeout, uint8_t accept_usb);
 
 void core_usb_run();
+app_err_t core_usb_get_response(command_t* cmd);
 app_err_t core_eth_usb_get_address(keycard_t* kc, apdu_t* cmd);
 app_err_t core_eth_usb_sign_tx(keycard_t* kc, apdu_t* cmd);
 app_err_t core_eth_usb_sign_message(keycard_t* kc, apdu_t* cmd);
 app_err_t core_eth_usb_sign_eip712(keycard_t* kc, apdu_t* cmd);
+app_err_t core_btc_usb_sign_psbt(keycard_t* kc, command_t* cmd);
 
 void core_eth_eip4527_run(struct eth_sign_request* qr_request);
 void core_btc_psbt_qr_run(struct zcbor_string* qr_request);

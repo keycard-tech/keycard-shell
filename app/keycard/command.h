@@ -9,9 +9,13 @@
 #define INS_SIGN_ETH_TX 0x04
 #define INS_GET_APP_CONF 0x06
 #define INS_SIGN_ETH_MSG 0x08
-#define INS_SIGN_EIP_712 0x0C
+#define INS_SIGN_EIP_712 0x0c
+#define INS_SIGN_PSBT 0x0e
+#define INS_GET_RESPONSE 0xc0
 #define INS_FW_UPGRADE 0xf2
 #define INS_ERC20_UPGRADE 0xf4
+
+#define USB_CMD_MAX_PAYLOAD 253
 
 typedef enum {
   COMMAND_INBOUND = 0,
@@ -24,6 +28,8 @@ typedef struct {
   command_status_t status;
   uint16_t to_rxtx;
   uint16_t segment_count;
+  uint16_t extra_len;
+  uint8_t* extra_data;
   apdu_t apdu;
 } command_t;
 
