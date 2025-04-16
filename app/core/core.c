@@ -190,7 +190,7 @@ TEST_APP_ACCESSIBLE app_err_t core_usb_get_app_config(apdu_t* cmd) {
 app_err_t core_usb_get_response(command_t* cmd) {
   if (cmd->extra_data == NULL) {
     core_usb_err_sw(&cmd->apdu, 0x69, 0x85);
-    return;
+    return ERR_OK;
   }
 
   apdu_t* apdu = &cmd->apdu;
