@@ -259,11 +259,13 @@ core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
 }
 
 core_evt_t ui_read_duress_pin(uint8_t* out) {
-  if (ui_prompt(LSTR(DURESS_PROMPT_TITLE), LSTR(DURESS_PROMPT_MSG), UI_INFO_SKIPPABLE | UI_INFO_NEXT) == CORE_EVT_UI_CANCELLED) {
-    return CORE_EVT_UI_CANCELLED;
-  }
+  do {
+    if (ui_prompt(LSTR(DURESS_PROMPT_TITLE), LSTR(DURESS_PROMPT_MSG), UI_INFO_SKIPPABLE | UI_INFO_DANGEROUS) == CORE_EVT_UI_CANCELLED) {
+      return CORE_EVT_UI_CANCELLED;
+    }
+  } while(ui_read_secret(UI_SECRET_DURESS, out, SECRET_NEW_CODE, 1) != CORE_EVT_UI_OK);
 
-  return ui_read_secret(UI_SECRET_DURESS, out, SECRET_NEW_CODE, 0);
+  return CORE_EVT_UI_OK;
 }
 
 core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable) {
