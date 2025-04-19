@@ -67,6 +67,14 @@ void HAL_GPIO_EXTI_Falling_Callback(uint16_t gpio_pin) {
   }
 }
 
+static void _hal_check_usb() {
+  uint32_t v;
+  hal_adc_read(ADC_VBAT, &v);
+  if (v < VBAT_USB) {
+    HAL_PCD_Stop(&hpcd_USB_DRD_FS);
+  }
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim == &htim2) {
     keypad_scan_tick();
@@ -74,6 +82,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     pwr_shutdown();
   } else if (htim == &htim5) {
     pwr_inactivity_timer_elapsed();
+  } else if (htim == &htim7) {
+    _hal_check_usb();
   }
 }
 
@@ -100,6 +110,7 @@ hal_err_t hal_init() {
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_TIM5_Init();
+  MX_TIM7_Init();
 
   MX_GPDMA2_Init();
   MX_GPDMA1_Init();

@@ -31,6 +31,17 @@ void HAL_PCD_ResetCallback(PCD_HandleTypeDef *hpcd) {
   _hal_usb_open_ep();
 }
 
+static inline void _hal_start_usb_monitor() {
+  HAL_TIM_Base_Stop_IT(&htim7);
+  __HAL_TIM_SET_COUNTER(&htim7, 0);
+  __HAL_TIM_CLEAR_IT(&htim7, TIM_IT_UPDATE);
+  HAL_TIM_Base_Start_IT(&htim7);
+}
+
+static inline void _hal_stop_usb_monitor() {
+  HAL_TIM_Base_Stop_IT(&htim7);
+}
+
 hal_err_t hal_usb_start() {
   HAL_PWREx_EnableVddUSB();
 
@@ -45,6 +56,7 @@ hal_err_t hal_usb_start() {
   hpcd_USB_DRD_FS.Instance->ISTR = 0U;
   hpcd_USB_DRD_FS.Instance->CNTR = USB_CNTR_CTRM  | USB_CNTR_WKUPM | USB_CNTR_SUSPM | USB_CNTR_ERRM | USB_CNTR_RESETM | USB_CNTR_L1REQM;
 
+  _hal_start_usb_monitor();
   return HAL_OK;
 }
 
@@ -56,6 +68,7 @@ hal_err_t hal_usb_stop() {
     HAL_PWREx_DisableVddUSB();
   }
 
+  _hal_stop_usb_monitor();
   return HAL_OK;
 }
 
