@@ -3,15 +3,13 @@
 from datetime import datetime
 import argparse
 import struct
-
 import requests
+
+from common import PAGE_SIZE, WORD_SIZE
 
 CHAIN_MAGIC = 0x4348
 ERC20_MAGIC = 0x3020
 VERSION_MAGIC = 0x4532
-
-PAGE_SIZE = 8192
-WORD_SIZE = 16
 
 def serialize_addresses(addresses):
     res = b''

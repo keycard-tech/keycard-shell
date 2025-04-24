@@ -2,14 +2,9 @@
 
 import argparse
 import tempfile
-import subprocess
 import pathlib
 
-def elf_to_bin(elf_path, out_path):
-    subprocess.run(["arm-none-eabi-objcopy", "-O", "binary", "--gap-fill=255", elf_path, out_path], check=True)
-
-def replace_elf_section(elf_path, section_name, section_content):
-    subprocess.run(["arm-none-eabi-objcopy", "--update-section", f'.{section_name}={section_content}', elf_path, elf_path], check=True)
+from common import *
 
 def main():
     parser = argparse.ArgumentParser(description='Replace the bootloader public key and convert ELF to bin')

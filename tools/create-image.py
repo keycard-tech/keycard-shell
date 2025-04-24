@@ -2,12 +2,7 @@
 
 import argparse
 
-KB = 1024
-BANK_SIZE = 1024 * KB
-FLASH_SIZE = BANK_SIZE * 2
-FW1_OFFSET = (4 * 8 * KB)
-FW2_OFFSET = BANK_SIZE + FW1_OFFSET
-FS_OFFSET = FW1_OFFSET + (76 * 8 * KB)
+from common import *
 
 def main():
     parser = argparse.ArgumentParser(description='Create a full image to load on the MCU')
