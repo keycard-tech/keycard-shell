@@ -31,7 +31,7 @@ def replace_elf_section(elf_path, section_name, section_content):
     subprocess.run(["arm-none-eabi-objcopy", "--update-section", f'.{section_name}={section_content}', elf_path, elf_path], check=True)
 
 def main():
-    parser = argparse.ArgumentParser(description='Create a database from a token and chain list')
+    parser = argparse.ArgumentParser(description='Sign the firmware and convert ELF to bin')
     parser.add_argument('-s', '--secret-key', help="the secret key file")
     parser.add_argument('-e', '--elf', help="the firmware ELF file")
     parser.add_argument('-o', '--output', help="the output binary file")
