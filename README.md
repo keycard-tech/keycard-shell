@@ -59,6 +59,6 @@ In your `deployment` directory you also need to have a `bootloader-pubkey.txt` f
 
 At this point you can build the BL (bootloader), Release and (optionally) TestApp target
 
-Verifying the firmware is as easy as matching the hashes between the released firmware and the one you built yourself using the matching git tag. The hash must exclude the signature from the calculation since that obviosly depends on the signing keys. A script will be provided that outputs the hash of a valid binary firmware.
+Verifying the firmware is as easy as matching the hashes between the released firmware and the one you built yourself using the matching git tag. The hash must exclude the signature from the calculation, since that obviosly depends on the signing keys, and the firmware must be padded with 0xff bytes up to its maximum size. A script to get a valid hash is in `tools/firmware-hash.py`.
 
 If you want to generate a full image to load on a device you built yourself, take a look at the `tools/create-image.py` script.
