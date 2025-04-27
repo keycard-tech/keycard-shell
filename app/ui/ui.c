@@ -342,7 +342,7 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
   const char* const* tmp = *i18n_strings;
 
   if (ui_prompt(LSTR(MNEMO_VERIFY_TITLE), LSTR(MNEMO_VERIFY_PROMPT), (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
-    return ERR_OK;
+    return ERR_CANCEL;
   }
 
   uint8_t positions[MNEMO_WORDS_TO_CONFIRM];
