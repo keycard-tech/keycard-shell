@@ -52,7 +52,7 @@ app_err_t eip712_extract_domain(const eip712_ctx_t* ctx, eip712_domain_t* out) {
   }
 
   if (eip712_extract_string(ctx, ctx->index.domain, "name", out->name, EIP712_MAX_NAME_LEN) != ERR_OK) {
-    return ERR_DATA;
+    out->name[0] = '\0';
   }
 
   uint8_t chain_bytes[32];
