@@ -192,7 +192,7 @@ static app_err_t eip712_copy_uint(int field_index, bool pad_right, uint8_t out[3
   struct eip712_string tmpstr;
   eip712_string_from_field(&tmpstr, field_index, ctx);
 
-  if ((tmpstr.len > 2) && (tmpstr.str[0] == '0') && (tmpstr.str[1] == 'x')) {
+  if ((tmpstr.len >= 2) && (tmpstr.str[0] == '0') && (tmpstr.str[1] == 'x')) {
     int out_len = (tmpstr.len - 2) / 2;
     int padding = 32 - out_len;
     int offset;
@@ -460,7 +460,7 @@ static app_err_t eip712_encode_field(uint8_t out[32], uint8_t* heap, size_t heap
 
     __DECL_SHA3_CTX();
 
-    if ((tmpstr.len > 2) && (tmpstr.str[0] == '0') && (tmpstr.str[1] == 'x')) {
+    if ((tmpstr.len >= 2) && (tmpstr.str[0] == '0') && (tmpstr.str[1] == 'x')) {
       tmpstr.str += 2;
       tmpstr.len -= 2;
 
