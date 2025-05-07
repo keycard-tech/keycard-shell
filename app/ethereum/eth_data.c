@@ -24,6 +24,102 @@ const uint8_t ETH_ERC20_APPROVE_SIGNATURE[] = {
     0x09, 0x5e, 0xa7, 0xb3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+static inline bool eth_data_check_padding(const uint8_t word[ETH_ABI_WORD_LEN], uint8_t val, uint8_t start, uint8_t end) {
+  while (start < end) {
+    if (word[start++] != val) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool eth_data_validate_numeric_size(const uint8_t word[ETH_ABI_WORD_LEN], bool is_signed, uint8_t byte_size) {
+  uint8_t pad;
+
+  if (is_signed) {
+    pad = (word[ETH_ABI_WORD_LEN - byte_size] & 0x80) ? 0xff : 0x00;
+  } else {
+    pad = 0;
+  }
+
+  return eth_data_check_padding(word, pad, 0, (ETH_ABI_WORD_LEN - byte_size));
+}
+
+static bool eth_data_validate_bytes_size(const uint8_t word[ETH_ABI_WORD_LEN], uint8_t byte_size) {
+  return eth_data_check_padding(word, 0, byte_size, ETH_ABI_WORD_LEN);
+}
+
+static uint16_t eth_data_read_short(const uint8_t val[ETH_ABI_WORD_LEN]) {
+  if (!eth_data_validate_numeric_size(val, false, sizeof(uint16_t))) {
+    return UINT16_MAX;
+  }
+
+  return (val[ETH_ABI_WORD_LEN - 2] << 8) | val[ETH_ABI_WORD_LEN - 1];
+}
+
+app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_t* data, size_t data_len, const uint8_t** out, size_t* out_len) {
+  size_t off = (idx * ETH_ABI_WORD_LEN);
+
+  if ((data_len < ETH_ABI_WORD_LEN) || (off > (data_len - ETH_ABI_WORD_LEN))) {
+    return ERR_DATA;
+  }
+
+  if (type & ETH_ABI_COMPOSITE) {
+    uint16_t content_off = eth_data_read_short(&data[off]);
+
+    if (type & ETH_ABI_DYNAMIC) {
+      if (content_off > (data_len - ETH_ABI_WORD_LEN)) {
+        return ERR_DATA;
+      }
+
+      *out_len = eth_data_read_short(&data[content_off]);
+      if (content_off + ETH_ABI_WORD_LEN + ETH_ABI_TUPLE_SIZE(*out_len) > data_len) {
+        return ERR_DATA;
+      }
+
+      *out = &data[content_off + ETH_ABI_WORD_LEN];
+    } else {
+      if (content_off + ETH_ABI_WORD_LEN + ETH_ABI_TUPLE_SIZE(type) > data_len) {
+        return ERR_DATA;
+      }
+
+      *out = &data[content_off + ETH_ABI_WORD_LEN];
+      *out_len = ETH_ABI_TYPE_SIZE(type);
+    }
+  } if (type & ETH_ABI_DYNAMIC) {
+    uint16_t content_off = eth_data_read_short(&data[off]);
+    if (content_off > (data_len - ETH_ABI_WORD_LEN)) {
+      return ERR_DATA;
+    }
+
+    *out_len = eth_data_read_short(&data[content_off]);
+
+    if ((content_off + ETH_ABI_WORD_LEN + *out_len) > data_len) {
+      return ERR_DATA;
+    }
+
+    *out = &data[content_off + ETH_ABI_WORD_LEN];
+  } else {
+    *out = &data[off];
+    *out_len = ETH_ABI_TYPE_SIZE(type);
+
+    if (type & ETH_ABI_NUMERIC) {
+      if (!eth_data_validate_numeric_size(*out, (type & ETH_ABI_NUM_SIGNED) == ETH_ABI_NUM_SIGNED, *out_len)) {
+        return ERR_DATA;
+      }
+
+      *out_len = ETH_ABI_WORD_LEN;
+    } else {
+      if (!eth_data_validate_bytes_size(*out, *out_len)) {
+        return ERR_DATA;
+      }
+    }
+  }
+
+  return ERR_OK;
+}
+
 eth_data_type_t eth_data_recognize(const txContent_t* tx) {
   if (tx->value.length == 0) {
     if ((tx->dataLength == ETH_ERC20_TRANSFER_LEN) && !memcmp(tx->data, ETH_ERC20_TRANSFER_SIGNATURE, ETH_ERC20_TRANSFER_SIGNATURE_LEN)) {

@@ -11,6 +11,34 @@
 #define EIP712_MAX_NAME_LEN 40
 #define EIP712_ADDR_OFF 12
 
+#define ETH_ABI_NUM_SIGNED (1 << 8)
+#define ETH_ABI_NUM_ADDR (1 << 9)
+#define ETH_ABI_NUM_BOOL (1 << 10)
+#define ETH_ABI_NUM_FIXED (1 << 11)
+#define ETH_ABI_NUMERIC (1 << 12)
+#define ETH_ABI_ALPHA (1 << 13)
+#define ETH_ABI_DYNAMIC (1 << 14)
+#define ETH_ABI_COMPOSITE (1 << 15)
+
+#define ETH_ABI_WORD_LEN 32
+
+typedef enum {
+  ETH_ABI_UINT = ETH_ABI_NUMERIC,
+  ETH_ABI_INT = (ETH_ABI_NUMERIC | ETH_ABI_NUM_SIGNED),
+  ETH_ABI_BOOL = (ETH_ABI_NUMERIC | ETH_ABI_NUM_BOOL | 1),
+  ETH_ABI_FIXED = (ETH_ABI_NUMERIC | ETH_ABI_NUM_FIXED | ETH_ABI_NUM_SIGNED),
+  ETH_ABI_UFIXED = (ETH_ABI_NUMERIC | ETH_ABI_NUM_FIXED),
+  ETH_ABI_ADDRESS = (ETH_ABI_NUMERIC | ETH_ABI_NUM_ADDR | 20),
+  ETH_ABI_BYTES = ETH_ABI_DYNAMIC,
+  ETH_ABI_STRING = (ETH_ABI_DYNAMIC | ETH_ABI_ALPHA),
+  ETH_ABI_TUPLE = ETH_ABI_COMPOSITE,
+  ETH_ABI_ARRAY = (ETH_ABI_COMPOSITE | ETH_ABI_DYNAMIC)
+} eth_abi_type_t;
+
+#define ETH_ABI_SIZED_TYPE(__TYPE__, __SIZE__) (__TYPE__ | (__SIZE__ & 0xff))
+#define ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) (__SIZED_TYPE__ & 0xff)
+#define ETH_ABI_TUPLE_SIZE(__SIZED_TYPE__) (ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) * ETH_ABI_WORD_LEN)
+
 typedef enum {
   ETH_DATA_UNKNOWN,
   ETH_DATA_ERC20_TRANSFER,
@@ -62,5 +90,7 @@ void eth_extract_approve_info(const txContent_t* tx, eth_approve_info* info);
 
 app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info* info);
 app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info* info);
+
+app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_t* data, size_t data_len, const uint8_t** out, size_t* out_len);
 
 #endif
