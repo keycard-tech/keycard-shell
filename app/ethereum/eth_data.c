@@ -4,24 +4,27 @@
 #include "crypto/util.h"
 #include "eth_data.h"
 
-#define ETH_ERC20_TRANSFER_SIGNATURE_LEN 16
-#define ETH_ERC20_TRANSFER_LEN 68
-
 #define ETH_ERC20_TRANSFER_ADDR_OFF 16
 #define ETH_ERC20_TRANSFER_VALUE_OFF 36
-
-const uint8_t ETH_ERC20_TRANSFER_SIGNATURE[] = {
-    0xa9, 0x05, 0x9c, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
-
-#define ETH_ERC20_APPROVE_SIGNATURE_LEN 16
-#define ETH_ERC20_APPROVE_LEN 68
 
 #define ETH_ERC20_APPROVE_ADDR_OFF 16
 #define ETH_ERC20_APPROVE_VALUE_OFF 36
 
-const uint8_t ETH_ERC20_APPROVE_SIGNATURE[] = {
-    0x09, 0x5e, 0xa7, 0xb3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG1 = { .type = ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), .field_id = 1, .next = NULL, .child = NULL };
+const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG0 = { .type = ETH_ABI_ADDRESS, .field_id = 0, .next = &ETH_ERC20_TRANSFER_ARG1, .child = NULL };
+
+const eth_abi_function_t ETH_ABI_DB[] = {
+    { .selector = 0xbb9c05a9, .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_TRANSFER, .attrs = 0 },
+    // since the arguments are the same we don't duplicate the definition, either way this will move to the data area
+    { .selector = 0xb3a75e09, .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_APPROVE, .attrs = 0 },
+    { .selector = 0 }
+};
+
+struct eth_func_search_ctx {
+  uint32_t selector;
+  const uint8_t* args;
+  size_t args_len;
+  bool has_value;
 };
 
 static inline bool eth_data_check_padding(const uint8_t word[ETH_ABI_WORD_LEN], uint8_t val, uint8_t start, uint8_t end) {
@@ -120,13 +123,57 @@ app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_
   return ERR_OK;
 }
 
-eth_data_type_t eth_data_recognize(const txContent_t* tx) {
-  if (tx->value.length == 0) {
-    if ((tx->dataLength == ETH_ERC20_TRANSFER_LEN) && !memcmp(tx->data, ETH_ERC20_TRANSFER_SIGNATURE, ETH_ERC20_TRANSFER_SIGNATURE_LEN)) {
-      return ETH_DATA_ERC20_TRANSFER;
-    } else if ((tx->dataLength == ETH_ERC20_APPROVE_LEN) && !memcmp(tx->data, ETH_ERC20_APPROVE_SIGNATURE, ETH_ERC20_APPROVE_SIGNATURE_LEN)) {
-      return ETH_DATA_ERC20_APPROVE;
+fs_action_t eth_data_find_function(struct eth_func_search_ctx* search_ctx, const eth_abi_function_t* func) {
+  if ((func->selector != search_ctx->selector) || (search_ctx->has_value && !(func->attrs & ETH_FUNC_PAYABLE))) {
+    return FS_REJECT;
+  }
+
+  size_t args = 0;
+  bool strict_size = true;
+
+  const eth_abi_argument_t* arg = ETH_ABI_DEREF(eth_abi_argument_t*, func, first_arg);
+  while(arg != NULL) {
+    const uint8_t* out;
+    size_t out_len;
+
+    if (eth_data_tuple_get_elem(arg->type, args, search_ctx->args, search_ctx->args_len, &out, &out_len) != ERR_OK) {
+      return FS_REJECT;
     }
+
+    if ((arg->type & (ETH_ABI_COMPOSITE | ETH_ABI_DYNAMIC)) != 0) {
+      strict_size = false;
+    }
+
+    arg = ETH_ABI_DEREF(eth_abi_argument_t*, arg, next);
+    args++;
+  }
+
+  if (strict_size && (ETH_ABI_TUPLE_SIZE(args) != search_ctx->args_len)) {
+    return FS_REJECT;
+  }
+
+  return FS_ACCEPT;
+}
+
+eth_data_type_t eth_data_recognize(const txContent_t* tx) {
+  if (tx->dataLength < sizeof(uint32_t)) {
+    return ETH_DATA_UNKNOWN;
+  }
+
+  struct eth_func_search_ctx search_ctx;
+  memcpy(&search_ctx.selector, tx->data, sizeof(uint32_t));
+  search_ctx.args = &tx->data[sizeof(uint32_t)];
+  search_ctx.args_len = tx->dataLength - sizeof(uint32_t);
+  search_ctx.has_value = tx->value.length > 0;
+
+  int i = 0;
+
+  while(ETH_ABI_DB[i].selector != 0) {
+    if (eth_data_find_function(&search_ctx, &ETH_ABI_DB[i]) == FS_ACCEPT) {
+      return ETH_ABI_DB[i].data_type;
+    }
+
+    i++;
   }
 
   return ETH_DATA_UNKNOWN;

@@ -22,6 +22,17 @@
 
 #define ETH_ABI_WORD_LEN 32
 
+#define ETH_ABI_SIZED_TYPE(__TYPE__, __SIZE__) (__TYPE__ | (__SIZE__ & 0xff))
+#define ETH_ABI_BITSIZED_TYPE(__TYPE__, __SIZE__) ETH_ABI_SIZED_TYPE(__TYPE__, (__SIZE__/8))
+#define ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) (__SIZED_TYPE__ & 0xff)
+#define ETH_ABI_TUPLE_SIZE(__SIZED_TYPE__) (ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) * ETH_ABI_WORD_LEN)
+
+#ifdef __ETH_ABI_FS_STORAGE
+#define ETH_ABI_DEREF(__TYPE__, __STRUCT__, __FIELD__) (__TYPE__)(((uint32_t) __STRUCT__) + (__STRUCT__->__FIELD__))
+#else
+#define ETH_ABI_DEREF(__TYPE__, __STRUCT__, __FIELD__) (__STRUCT__->__FIELD__)
+#endif
+
 typedef enum {
   ETH_ABI_UINT = ETH_ABI_NUMERIC,
   ETH_ABI_INT = (ETH_ABI_NUMERIC | ETH_ABI_NUM_SIGNED),
@@ -35,12 +46,13 @@ typedef enum {
   ETH_ABI_ARRAY = (ETH_ABI_COMPOSITE | ETH_ABI_DYNAMIC)
 } eth_abi_type_t;
 
-#define ETH_ABI_SIZED_TYPE(__TYPE__, __SIZE__) (__TYPE__ | (__SIZE__ & 0xff))
-#define ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) (__SIZED_TYPE__ & 0xff)
-#define ETH_ABI_TUPLE_SIZE(__SIZED_TYPE__) (ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) * ETH_ABI_WORD_LEN)
+typedef enum {
+  ETH_FUNC_PAYABLE = 1
+} eth_func_attr_t;
 
 typedef enum {
   ETH_DATA_UNKNOWN,
+  ETH_DATA_PLAIN,
   ETH_DATA_ERC20_TRANSFER,
   ETH_DATA_ERC20_APPROVE,
 } eth_data_type_t;
@@ -50,6 +62,23 @@ typedef enum {
   EIP712_PERMIT,
   EIP712_PERMIT_SINGLE
 } eip712_data_type_t;
+
+typedef struct _eth_abi_argument {
+  eth_abi_type_t type;
+  union {
+    const char* name;
+    uint16_t field_id;
+  };
+  const struct _eth_abi_argument* next;
+  const struct _eth_abi_argument* child;
+} eth_abi_argument_t;
+
+typedef struct {
+  uint32_t selector;
+  const eth_abi_argument_t* first_arg;
+  eth_data_type_t data_type;
+  eth_func_attr_t attrs;
+} eth_abi_function_t;
 
 typedef struct {
   uint8_t address[32];
