@@ -865,27 +865,23 @@ app_err_t dialog_confirm_eip712() {
 
   if (type == EIP712_PERMIT) {
     eth_approve_info info;
-    if (eip712_extract_permit(g_ui_cmd.params.eip712.data, &info) != ERR_OK) {
-      return ERR_DATA;
+    if (eip712_extract_permit(g_ui_cmd.params.eip712.data, &info) == ERR_OK) {
+      return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, false);
     }
-
-    return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, false);
   } else if (type == EIP712_PERMIT_SINGLE) {
     eth_approve_info info;
-    if (eip712_extract_permit_single(g_ui_cmd.params.eip712.data, &info) != ERR_OK) {
-      return ERR_DATA;
+    if (eip712_extract_permit_single(g_ui_cmd.params.eip712.data, &info) == ERR_OK) {
+      return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, false);
     }
-
-    return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, false);
-  } else {
-    eip712_domain_t domain;
-    if (eip712_extract_domain(g_ui_cmd.params.eip712.data, &domain) != ERR_OK) {
-      return ERR_DATA;
-    }
-
-    size_t len = eip712_to_string(g_ui_cmd.params.eip712.data, g_camera_fb[0]);
-    return dialog_confirm_text_based(g_camera_fb[0], len, &domain);
   }
+
+  eip712_domain_t domain;
+  if (eip712_extract_domain(g_ui_cmd.params.eip712.data, &domain) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  size_t len = eip712_to_string(g_ui_cmd.params.eip712.data, g_camera_fb[0]);
+  return dialog_confirm_text_based(g_camera_fb[0], len, &domain);
 }
 
 app_err_t dialog_info() {
