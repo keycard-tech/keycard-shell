@@ -425,13 +425,16 @@ static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint
   dialog_data(ctx, p);
 }
 
-static app_err_t dialog_confirm_eth_transfer(eth_data_type_t data_type) {
+static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_format) {
   eth_transfer_info tx_info;
 
   tx_info.data_str = g_camera_fb[0];
-  tx_info.data_type = data_type;
 
-  eth_extract_transfer_info(g_ui_cmd.params.eth_tx.tx, &tx_info);
+  if (eth_extract_transfer_info(g_ui_cmd.params.eth_tx.tx, data_format, &tx_info) != ERR_OK) {
+    if (eth_extract_transfer_info(g_ui_cmd.params.eth_tx.tx, NULL, &tx_info)) {
+      return ERR_DATA;
+    }
+  }
 
   screen_text_ctx_t ctx;
   size_t pages[MAX_PAGE_COUNT];
@@ -535,15 +538,24 @@ static app_err_t dialog_confirm_approval(const eth_approve_info* info, const uin
 }
 
 app_err_t dialog_confirm_eth_tx() {
-  eth_data_type_t data_type = eth_data_recognize(g_ui_cmd.params.eth_tx.tx);
+  const eth_abi_function_t* data_format = eth_data_recognize(g_ui_cmd.params.eth_tx.tx);
 
-  if (data_type == ETH_DATA_ERC20_APPROVE) {
-    eth_approve_info info;
-    eth_extract_approve_info(g_ui_cmd.params.eth_tx.tx, &info);
-    return dialog_confirm_approval(&info, g_ui_cmd.params.eth_tx.addr, true);
-  } else {
-    return dialog_confirm_eth_transfer(data_type);
+  if (data_format != NULL) {
+    switch(data_format->data_type) {
+    case ETH_DATA_ERC20_APPROVE:
+      eth_approve_info info;
+      if (eth_extract_approve_info(g_ui_cmd.params.eth_tx.tx, data_format, &info) == ERR_OK) {
+        return dialog_confirm_approval(&info, g_ui_cmd.params.eth_tx.addr, true);
+      } else {
+        data_format = NULL;
+      }
+      break;
+    default:
+      break;
+    }
   }
+
+  return dialog_confirm_eth_transfer(data_format);
 }
 
 void dialog_confirm_btc_summary(const btc_tx_ctx_t* tx) {
@@ -804,7 +816,7 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
 
       if (eip712) {
         dialog_address(&ctx, TX_SIGNER, ADDR_ETH, g_ui_cmd.params.eip712.addr);
-        dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, &eip712->address[EIP712_ADDR_OFF]);
+        dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, &eip712->address[ETH_ABI_WORD_ADDR_OFF]);
 
         dialog_label(&ctx, LSTR(TX_CHAIN));
 

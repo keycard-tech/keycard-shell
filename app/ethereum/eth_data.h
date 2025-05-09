@@ -9,7 +9,6 @@
 #include "ethUstream.h"
 
 #define EIP712_MAX_NAME_LEN 40
-#define EIP712_ADDR_OFF 12
 
 #define ETH_ABI_NUM_SIGNED (1 << 8)
 #define ETH_ABI_NUM_ADDR (1 << 9)
@@ -21,6 +20,7 @@
 #define ETH_ABI_COMPOSITE (1 << 15)
 
 #define ETH_ABI_WORD_LEN 32
+#define ETH_ABI_WORD_ADDR_OFF (ETH_ABI_WORD_LEN - ADDRESS_LENGTH)
 
 #define ETH_ABI_SIZED_TYPE(__TYPE__, __SIZE__) (__TYPE__ | (__SIZE__ & 0xff))
 #define ETH_ABI_BITSIZED_TYPE(__TYPE__, __SIZE__) ETH_ABI_SIZED_TYPE(__TYPE__, (__SIZE__/8))
@@ -39,7 +39,7 @@ typedef enum {
   ETH_ABI_BOOL = (ETH_ABI_NUMERIC | ETH_ABI_NUM_BOOL | 1),
   ETH_ABI_FIXED = (ETH_ABI_NUMERIC | ETH_ABI_NUM_FIXED | ETH_ABI_NUM_SIGNED),
   ETH_ABI_UFIXED = (ETH_ABI_NUMERIC | ETH_ABI_NUM_FIXED),
-  ETH_ABI_ADDRESS = (ETH_ABI_NUMERIC | ETH_ABI_NUM_ADDR | 20),
+  ETH_ABI_ADDRESS = (ETH_ABI_NUMERIC | ETH_ABI_NUM_ADDR | ADDRESS_LENGTH),
   ETH_ABI_BYTES = ETH_ABI_DYNAMIC,
   ETH_ABI_STRING = (ETH_ABI_DYNAMIC | ETH_ABI_ALPHA),
   ETH_ABI_TUPLE = ETH_ABI_COMPOSITE,
@@ -51,7 +51,6 @@ typedef enum {
 } eth_func_attr_t;
 
 typedef enum {
-  ETH_DATA_UNKNOWN,
   ETH_DATA_PLAIN,
   ETH_DATA_ERC20_TRANSFER,
   ETH_DATA_ERC20_APPROVE,
@@ -75,6 +74,7 @@ typedef struct _eth_abi_argument {
 
 typedef struct {
   uint32_t selector;
+  const char* name;
   const eth_abi_argument_t* first_arg;
   eth_data_type_t data_type;
   eth_func_attr_t attrs;
@@ -91,7 +91,6 @@ typedef struct {
   erc20_desc_t token;
   uint8_t* data_str;
   size_t data_str_len;
-  eth_data_type_t data_type;
   const uint8_t* to;
   bignum256 value;
   bignum256 fees;
@@ -109,13 +108,13 @@ typedef struct {
   uint8_t _chain_num[11];
 } eth_approve_info;
 
-eth_data_type_t eth_data_recognize(const txContent_t* tx);
+const eth_abi_function_t* eth_data_recognize(const txContent_t* tx);
 eip712_data_type_t eip712_recognize(const eip712_ctx_t* ctx);
 
 app_err_t eip712_extract_domain(const eip712_ctx_t* ctx, eip712_domain_t* out);
 
-void eth_extract_transfer_info(const txContent_t* tx, eth_transfer_info* info);
-void eth_extract_approve_info(const txContent_t* tx, eth_approve_info* info);
+app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info* info);
+app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_approve_info* info);
 
 app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info* info);
 app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info* info);

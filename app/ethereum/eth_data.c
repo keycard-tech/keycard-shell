@@ -4,12 +4,6 @@
 #include "crypto/util.h"
 #include "eth_data.h"
 
-#define ETH_ERC20_TRANSFER_ADDR_OFF 16
-#define ETH_ERC20_TRANSFER_VALUE_OFF 36
-
-#define ETH_ERC20_APPROVE_ADDR_OFF 16
-#define ETH_ERC20_APPROVE_VALUE_OFF 36
-
 const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG1 = { .type = ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), .field_id = 1, .next = NULL, .child = NULL };
 const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG0 = { .type = ETH_ABI_ADDRESS, .field_id = 0, .next = &ETH_ERC20_TRANSFER_ARG1, .child = NULL };
 
@@ -112,7 +106,12 @@ app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_
         return ERR_DATA;
       }
 
-      *out_len = ETH_ABI_WORD_LEN;
+      if (type & ETH_ABI_NUM_ADDR) {
+        *out_len = ADDRESS_LENGTH;
+        *out = *out + ETH_ABI_WORD_ADDR_OFF;
+      } else {
+        *out_len = ETH_ABI_WORD_LEN;
+      }
     } else {
       if (!eth_data_validate_bytes_size(*out, *out_len)) {
         return ERR_DATA;
@@ -155,9 +154,9 @@ fs_action_t eth_data_find_function(struct eth_func_search_ctx* search_ctx, const
   return FS_ACCEPT;
 }
 
-eth_data_type_t eth_data_recognize(const txContent_t* tx) {
+const eth_abi_function_t* eth_data_recognize(const txContent_t* tx) {
   if (tx->dataLength < sizeof(uint32_t)) {
-    return ETH_DATA_UNKNOWN;
+    return NULL;
   }
 
   struct eth_func_search_ctx search_ctx;
@@ -170,13 +169,13 @@ eth_data_type_t eth_data_recognize(const txContent_t* tx) {
 
   while(ETH_ABI_DB[i].selector != 0) {
     if (eth_data_find_function(&search_ctx, &ETH_ABI_DB[i]) == FS_ACCEPT) {
-      return ETH_ABI_DB[i].data_type;
+      return &ETH_ABI_DB[i];
     }
 
     i++;
   }
 
-  return ETH_DATA_UNKNOWN;
+  return NULL;
 }
 
 eip712_data_type_t eip712_recognize(const eip712_ctx_t* ctx) {
@@ -237,21 +236,27 @@ static void eth_lookup_token(uint32_t chain_id, const uint8_t* addr, erc20_desc_
   }
 }
 
-void eth_extract_transfer_info(const txContent_t* tx, eth_transfer_info* info) {
+app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info* info) {
   info->data_str_len = 0;
 
   eth_lookup_chain(tx->chainID, &info->chain, info->_chain_num);
 
   const uint8_t* value;
-  uint8_t value_len;
+  size_t value_len;
 
-  if (info->data_type == ETH_DATA_ERC20_TRANSFER) {
+  if (abi && abi->data_type == ETH_DATA_ERC20_TRANSFER) {
+    const uint8_t* args = &tx->data[sizeof(uint32_t)];
+    size_t args_len = tx->dataLength - sizeof(uint32_t);
+
     eth_lookup_token(info->chain.chain_id, tx->destination, &info->token);
 
-    value = &tx->data[ETH_ERC20_TRANSFER_VALUE_OFF];
-    value_len = INT256_LENGTH;
+    if (eth_data_tuple_get_elem(ETH_ABI_ADDRESS, 0, args, args_len, &info->to, &value_len)) {
+      return ERR_DATA;
+    }
 
-    info->to = &tx->data[ETH_ERC20_TRANSFER_ADDR_OFF];
+    if (eth_data_tuple_get_elem(ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), 1, args, args_len, &value, &value_len)) {
+      return ERR_DATA;
+    }
   } else {
     info->token.ticker = info->chain.ticker;
     info->token.decimals = 18;
@@ -269,15 +274,32 @@ void eth_extract_transfer_info(const txContent_t* tx, eth_transfer_info* info) {
 
   bn_read_compact_be(value, value_len, &info->value);
   eth_calculate_fees(tx, &info->fees);
+
+  return ERR_OK;
 }
 
-void eth_extract_approve_info(const txContent_t* tx, eth_approve_info* info) {
+app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_approve_info* info) {
+  const uint8_t* args = &tx->data[sizeof(uint32_t)];
+  size_t args_len = tx->dataLength - sizeof(uint32_t);
+
+  const uint8_t* value = NULL;
+  size_t value_len;
+
   eth_lookup_chain(tx->chainID, &info->chain, info->_chain_num);
   eth_lookup_token(info->chain.chain_id, tx->destination, &info->token);
-  bn_read_compact_be(&tx->data[ETH_ERC20_APPROVE_VALUE_OFF], INT256_LENGTH, &info->value);
-  info->spender = &tx->data[ETH_ERC20_APPROVE_ADDR_OFF];
+
+  if (eth_data_tuple_get_elem(ETH_ABI_ADDRESS, 0, args, args_len, &info->spender, &value_len) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eth_data_tuple_get_elem(ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), 1, args, args_len, &value, &value_len)) {
+    return ERR_DATA;
+  }
+
+  bn_read_be(value, &info->value);
 
   eth_calculate_fees(tx, &info->fees);
+  return ERR_OK;
 }
 
 app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info* info) {
@@ -286,13 +308,13 @@ app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info* info)
   }
 
   eth_lookup_chain(info->domain.chainID, &info->chain, info->_chain_num);
-  eth_lookup_token(info->chain.chain_id, &info->domain.address[EIP712_ADDR_OFF], &info->token);
+  eth_lookup_token(info->chain.chain_id, &info->domain.address[ETH_ABI_WORD_ADDR_OFF], &info->token);
 
   if (eip712_extract_uint256(ctx, ctx->index.message, "spender", info->_addr) != ERR_OK) {
     return ERR_DATA;
   }
 
-  info->spender = &info->_addr[EIP712_ADDR_OFF];
+  info->spender = &info->_addr[ETH_ABI_WORD_ADDR_OFF];
 
   uint8_t value[INT256_LENGTH];
 
@@ -317,7 +339,7 @@ app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info
     return ERR_DATA;
   }
 
-  info->spender = &info->_addr[EIP712_ADDR_OFF];
+  info->spender = &info->_addr[ETH_ABI_WORD_ADDR_OFF];
 
   int details = eip712_find_field(ctx, ctx->index.message, "details");
 
@@ -329,7 +351,7 @@ app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info
     return ERR_DATA;
   }
 
-  eth_lookup_token(info->chain.chain_id, &info->domain.address[EIP712_ADDR_OFF], &info->token);
+  eth_lookup_token(info->chain.chain_id, &info->domain.address[ETH_ABI_WORD_ADDR_OFF], &info->token);
 
   uint8_t value[INT256_LENGTH];
 
