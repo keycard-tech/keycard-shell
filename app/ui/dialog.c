@@ -431,9 +431,7 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
   tx_info.data_str = g_camera_fb[0];
 
   if (eth_extract_transfer_info(g_ui_cmd.params.eth_tx.tx, data_format, &tx_info) != ERR_OK) {
-    if (eth_extract_transfer_info(g_ui_cmd.params.eth_tx.tx, NULL, &tx_info)) {
-      return ERR_DATA;
-    }
+    return ERR_DATA;
   }
 
   screen_text_ctx_t ctx;
@@ -546,8 +544,6 @@ app_err_t dialog_confirm_eth_tx() {
       eth_approve_info info;
       if (eth_extract_approve_info(g_ui_cmd.params.eth_tx.tx, data_format, &info) == ERR_OK) {
         return dialog_confirm_approval(&info, g_ui_cmd.params.eth_tx.addr, true);
-      } else {
-        data_format = NULL;
       }
       break;
     default:

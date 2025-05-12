@@ -64,10 +64,6 @@ typedef enum {
 
 typedef struct _eth_abi_argument {
   eth_abi_type_t type;
-  union {
-    const char* name;
-    uint16_t field_id;
-  };
   const struct _eth_abi_argument* next;
   const struct _eth_abi_argument* child;
 } eth_abi_argument_t;

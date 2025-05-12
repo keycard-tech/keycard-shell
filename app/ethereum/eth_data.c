@@ -4,8 +4,8 @@
 #include "crypto/util.h"
 #include "eth_data.h"
 
-const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG1 = { .type = ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), .field_id = 1, .next = NULL, .child = NULL };
-const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG0 = { .type = ETH_ABI_ADDRESS, .field_id = 0, .next = &ETH_ERC20_TRANSFER_ARG1, .child = NULL };
+const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG1 = { .type = ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), .next = NULL, .child = NULL };
+const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG0 = { .type = ETH_ABI_ADDRESS, .next = &ETH_ERC20_TRANSFER_ARG1, .child = NULL };
 
 const eth_abi_function_t ETH_ABI_DB[] = {
     { .selector = 0xbb9c05a9, .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_TRANSFER, .attrs = 0 },
@@ -226,14 +226,21 @@ static void eth_lookup_chain(uint32_t chain_id, chain_desc_t* chain, uint8_t* ch
   }
 }
 
-static void eth_lookup_token(uint32_t chain_id, const uint8_t* addr, erc20_desc_t* token) {
+static app_err_t eth_lookup_token(uint32_t chain_id, const uint8_t* addr, erc20_desc_t* token) {
   token->chain = chain_id;
   token->addr = addr;
 
   if (eth_db_lookup_erc20(token) != ERR_OK) {
     token->ticker = "???";
     token->decimals = 18;
+    return ERR_DATA;
   }
+
+  return ERR_OK;
+}
+
+static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const uint8_t* data, uint8_t data_len, uint8_t* out, size_t* out_len) {
+  return ERR_DATA;
 }
 
 app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info* info) {
@@ -248,16 +255,21 @@ app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_functio
     const uint8_t* args = &tx->data[sizeof(uint32_t)];
     size_t args_len = tx->dataLength - sizeof(uint32_t);
 
-    eth_lookup_token(info->chain.chain_id, tx->destination, &info->token);
-
-    if (eth_data_tuple_get_elem(ETH_ABI_ADDRESS, 0, args, args_len, &info->to, &value_len)) {
-      return ERR_DATA;
+    if (eth_data_tuple_get_elem(ETH_ABI_ADDRESS, 0, args, args_len, &info->to, &value_len) != ERR_OK) {
+      abi = NULL;
+      goto fallback;
     }
 
-    if (eth_data_tuple_get_elem(ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), 1, args, args_len, &value, &value_len)) {
-      return ERR_DATA;
+    if (eth_data_tuple_get_elem(ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), 1, args, args_len, &value, &value_len) != ERR_OK) {
+      abi = NULL;
+      goto fallback;
+    }
+
+    if (eth_lookup_token(info->chain.chain_id, tx->destination, &info->token) != ERR_OK) {
+      goto fallback;
     }
   } else {
+fallback:
     info->token.ticker = info->chain.ticker;
     info->token.decimals = 18;
 
@@ -267,8 +279,10 @@ app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_functio
     info->to = tx->destination;
 
     if (tx->dataLength) {
-      base16_encode(tx->data, (char *) info->data_str, tx->dataLength);
-      info->data_str_len = tx->dataLength * 2;
+      if (abi == NULL || (eth_data_format_abi_call(abi, tx->data, tx->dataLength, info->data_str, &info->data_str_len) != ERR_OK)) {
+        base16_encode(tx->data, (char *) info->data_str, tx->dataLength);
+        info->data_str_len = tx->dataLength * 2;
+      }
     }
   }
 
@@ -286,7 +300,10 @@ app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function
   size_t value_len;
 
   eth_lookup_chain(tx->chainID, &info->chain, info->_chain_num);
-  eth_lookup_token(info->chain.chain_id, tx->destination, &info->token);
+
+  if (eth_lookup_token(info->chain.chain_id, tx->destination, &info->token) != ERR_OK) {
+    return ERR_DATA;
+  }
 
   if (eth_data_tuple_get_elem(ETH_ABI_ADDRESS, 0, args, args_len, &info->spender, &value_len) != ERR_OK) {
     return ERR_DATA;
