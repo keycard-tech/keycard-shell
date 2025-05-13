@@ -22,6 +22,9 @@ struct eth_func_search_ctx {
   bool has_value;
 };
 
+static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len);
+static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_count, size_t buf_len, uint8_t* out, size_t* out_len);
+
 static inline bool eth_data_check_padding(const uint8_t word[ETH_ABI_WORD_LEN], uint8_t val, uint8_t start, uint8_t end) {
   while (start < end) {
     if (word[start++] != val) {
@@ -240,6 +243,81 @@ static app_err_t eth_lookup_token(uint32_t chain_id, const uint8_t* addr, erc20_
   return ERR_OK;
 }
 
+static app_err_t eth_data_format_type(const eth_abi_argument_t* abi, const uint8_t* elem_data, size_t elem_len, size_t buf_len, uint8_t* out, size_t* out_len) {
+  bignum256 num;
+
+  switch(abi->type & 0xff00) {
+  case ETH_ABI_UINT:
+    bn_read_be(elem_data, &num);
+    *out_len += bn_format(&num, NULL, NULL, 0, 0, 0, 0, (char*) &out[*out_len], 100);
+    return ERR_OK;
+  case ETH_ABI_BOOL:
+    if (elem_data[ETH_ABI_WORD_LEN - 1]) {
+      memcpy("true", &out[*out_len], 4);
+      *out_len += 4;
+    } else {
+      memcpy("false", &out[*out_len], 5);
+      *out_len += 5;
+    }
+    return ERR_OK;
+  case ETH_ABI_ADDRESS:
+    address_format(ADDR_ETH, elem_data, (char *) &out[*out_len]);
+    *out_len += (ADDRESS_LENGTH * 2) + 2;
+    return ERR_OK;
+  case ETH_ABI_STRING:
+    out[(*out_len)++] = '"';
+    memcpy(&out[*out_len], elem_data, elem_len);
+    *out_len += elem_len;
+    out[(*out_len)++] = '"';
+    return ERR_OK;
+  case ETH_ABI_TUPLE:
+    return eth_data_format_tuple(ETH_ABI_DEREF(eth_abi_argument_t*, abi, child), elem_data, buf_len, out, out_len);
+  case ETH_ABI_ARRAY:
+  case ETH_ABI_VARARRAY:
+    return eth_data_format_array(ETH_ABI_DEREF(eth_abi_argument_t*, abi, child), elem_data, elem_len, buf_len, out, out_len);
+  case ETH_ABI_INT:
+  case ETH_ABI_FIXED:
+  case ETH_ABI_UFIXED:
+  case ETH_ABI_BYTES:
+  case ETH_ABI_VARBYTES:
+  default:
+    base16_encode(elem_data, (char *) &out[*out_len], elem_len);
+    *out_len += elem_len * 2;
+    return ERR_OK;
+  }
+
+  return ERR_DATA;
+}
+
+static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_count, size_t args_len, uint8_t* out, size_t* out_len) {
+  out[(*out_len)++] = '[';
+
+  const uint8_t* elem_data;
+  size_t elem_len;
+
+  for (int i = 0; i < args_count; i++) {
+    if (eth_data_tuple_get_elem(abi->type, i, args, args_len, &elem_data, &elem_len) != ERR_OK) {
+      return ERR_DATA;
+    }
+
+    size_t buf_len = (((uint32_t) args) + args_len) - ((uint32_t) elem_data);
+
+    if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_len) != ERR_OK) {
+      return ERR_DATA;
+    }
+
+    out[(*out_len)++] = ',';
+    out[(*out_len)++] = ' ';
+  }
+
+  if (args_count > 0) {
+    *out_len -= 2;
+  }
+
+  out[(*out_len)++] = ']';
+  return ERR_OK;
+}
+
 static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len) {
   out[(*out_len)++] = '(';
 
@@ -252,29 +330,9 @@ static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint
       return ERR_DATA;
     }
 
-    bignum256 num;
+    size_t buf_len = (((uint32_t) args) + args_len) - ((uint32_t) elem_data);
 
-    switch(abi->type & 0xff00) {
-    case ETH_ABI_UINT:
-      bn_read_be(elem_data, &num);
-      *out_len += bn_format(&num, NULL, NULL, 0, 0, 0, 0, (char*) &out[*out_len], 100);
-      break;
-    case ETH_ABI_INT:
-    case ETH_ABI_BOOL:
-    case ETH_ABI_FIXED:
-    case ETH_ABI_UFIXED:
-      return ERR_DATA;
-    case ETH_ABI_ADDRESS:
-      address_format(ADDR_ETH, elem_data, (char *) &out[*out_len]);
-      *out_len += (ADDRESS_LENGTH * 2) + 2;
-      break;
-    case ETH_ABI_BYTES:
-    case ETH_ABI_VARBYTES:
-    case ETH_ABI_STRING:
-    case ETH_ABI_TUPLE:
-    case ETH_ABI_ARRAY:
-    case ETH_ABI_VARARRAY:
-    default:
+    if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_len) != ERR_OK) {
       return ERR_DATA;
     }
 
