@@ -236,8 +236,6 @@ static app_err_t eth_lookup_token(uint32_t chain_id, const uint8_t* addr, erc20_
   token->addr = addr;
 
   if (eth_db_lookup_erc20(token) != ERR_OK) {
-    token->ticker = "???";
-    token->decimals = 18;
     return ERR_DATA;
   }
 
@@ -453,7 +451,9 @@ app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info* info)
   }
 
   eth_lookup_chain(info->domain.chainID, &info->chain, info->_chain_num);
-  eth_lookup_token(info->chain.chain_id, &info->domain.address[ETH_ABI_WORD_ADDR_OFF], &info->token);
+  if (eth_lookup_token(info->chain.chain_id, &info->domain.address[ETH_ABI_WORD_ADDR_OFF], &info->token) != ERR_OK) {
+    return ERR_DATA;
+  }
 
   if (eip712_extract_uint256(ctx, ctx->index.message, "spender", info->_addr) != ERR_OK) {
     return ERR_DATA;
@@ -496,7 +496,9 @@ app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info
     return ERR_DATA;
   }
 
-  eth_lookup_token(info->chain.chain_id, &info->domain.address[ETH_ABI_WORD_ADDR_OFF], &info->token);
+  if (eth_lookup_token(info->chain.chain_id, &info->domain.address[ETH_ABI_WORD_ADDR_OFF], &info->token) != ERR_OK) {
+    return ERR_DATA;
+  }
 
   uint8_t value[INT256_LENGTH];
 
