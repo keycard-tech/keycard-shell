@@ -10,8 +10,9 @@ const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG0 = { .type = ETH_ABI_SIZED_TYPE(
 
 const eth_abi_function_t ETH_ABI_DB[] = {
     { .selector = 0xbb9c05a9, .name = "transfer", .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_TRANSFER, .attrs = 0 },
-    // since the arguments are the same we don't duplicate the definition, either way this will move to the data area
     { .selector = 0xb3a75e09, .name = "approve", .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_APPROVE, .attrs = 0 },
+    { .selector = 0xb00de3d0, .name = "deposit", .first_arg = NULL, .data_type = ETH_DATA_PLAIN, .attrs = ETH_FUNC_PAYABLE },
+    { .selector = 0x4d7d1a2e, .name = "withdraw", .first_arg = &ETH_ERC20_TRANSFER_ARG1, .data_type = ETH_DATA_PLAIN, .attrs = 0 },
     { .selector = 0 }
 };
 
