@@ -7,7 +7,7 @@
 #include "hal.h"
 
 #define SC_DEFAULT_ETU10NS 9300
-#define SC_MAX_TIMEOUT_MS 30000
+#define SC_MAX_TIMEOUT_MS 1000
 
 static inline void smartcard_state_reset(smartcard_t* sc) {
   sc->send_seq = 0;
