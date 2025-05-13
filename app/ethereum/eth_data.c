@@ -2,15 +2,16 @@
 
 #include "crypto/secp256k1.h"
 #include "crypto/util.h"
+#include "crypto/address.h"
 #include "eth_data.h"
 
 const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG1 = { .type = ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), .next = NULL, .child = NULL };
-const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG0 = { .type = ETH_ABI_ADDRESS, .next = &ETH_ERC20_TRANSFER_ARG1, .child = NULL };
+const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG0 = { .type = ETH_ABI_SIZED_TYPE(ETH_ABI_ADDRESS, 20), .next = &ETH_ERC20_TRANSFER_ARG1, .child = NULL };
 
 const eth_abi_function_t ETH_ABI_DB[] = {
-    { .selector = 0xbb9c05a9, .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_TRANSFER, .attrs = 0 },
+    { .selector = 0xbb9c05a9, .name = "transfer", .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_TRANSFER, .attrs = 0 },
     // since the arguments are the same we don't duplicate the definition, either way this will move to the data area
-    { .selector = 0xb3a75e09, .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_APPROVE, .attrs = 0 },
+    { .selector = 0xb3a75e09, .name = "approve", .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_APPROVE, .attrs = 0 },
     { .selector = 0 }
 };
 
@@ -65,7 +66,7 @@ app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_
   if (type & ETH_ABI_COMPOSITE) {
     uint16_t content_off = eth_data_read_short(&data[off]);
 
-    if (type & ETH_ABI_DYNAMIC) {
+    if (type & ETH_ABI_COMP_VARLEN) {
       if (content_off > (data_len - ETH_ABI_WORD_LEN)) {
         return ERR_DATA;
       }
@@ -239,8 +240,76 @@ static app_err_t eth_lookup_token(uint32_t chain_id, const uint8_t* addr, erc20_
   return ERR_OK;
 }
 
-static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const uint8_t* data, uint8_t data_len, uint8_t* out, size_t* out_len) {
-  return ERR_DATA;
+static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len) {
+  out[(*out_len)++] = '(';
+
+  int idx = 0;
+  const uint8_t* elem_data;
+  size_t elem_len;
+
+  while(abi != NULL) {
+    if (eth_data_tuple_get_elem(abi->type, idx++, args, args_len, &elem_data, &elem_len) != ERR_OK) {
+      return ERR_DATA;
+    }
+
+    bignum256 num;
+
+    switch(abi->type & 0xff00) {
+    case ETH_ABI_UINT:
+      bn_read_be(elem_data, &num);
+      *out_len += bn_format(&num, NULL, NULL, 0, 0, 0, 0, (char*) &out[*out_len], 100);
+      break;
+    case ETH_ABI_INT:
+    case ETH_ABI_BOOL:
+    case ETH_ABI_FIXED:
+    case ETH_ABI_UFIXED:
+      return ERR_DATA;
+    case ETH_ABI_ADDRESS:
+      address_format(ADDR_ETH, elem_data, (char *) &out[*out_len]);
+      *out_len += (ADDRESS_LENGTH * 2) + 2;
+      break;
+    case ETH_ABI_BYTES:
+    case ETH_ABI_VARBYTES:
+    case ETH_ABI_STRING:
+    case ETH_ABI_TUPLE:
+    case ETH_ABI_ARRAY:
+    case ETH_ABI_VARARRAY:
+    default:
+      return ERR_DATA;
+    }
+
+    out[(*out_len)++] = ',';
+    out[(*out_len)++] = ' ';
+    abi = ETH_ABI_DEREF(eth_abi_argument_t*, abi, next);
+  }
+
+  if (idx > 0) {
+    *out_len -= 2;
+  }
+
+  out[(*out_len)++] = ')';
+  return ERR_OK;
+}
+
+static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t* out_len) {
+  const char* func_name = ETH_ABI_DEREF(const char*, abi, name);
+
+  if (func_name == NULL) {
+    return ERR_DATA;
+  }
+
+  *out_len = strlen(func_name);
+  memcpy(out, func_name, *out_len);
+
+  const uint8_t* args = &data[sizeof(uint32_t)];
+  size_t args_len = data_len - sizeof(uint32_t);
+
+  if (eth_data_format_tuple(ETH_ABI_DEREF(eth_abi_argument_t*, abi, first_arg), args, args_len, out, out_len) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  out[*out_len] = '\0';
+  return ERR_OK;
 }
 
 app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info* info) {
@@ -255,7 +324,7 @@ app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_functio
     const uint8_t* args = &tx->data[sizeof(uint32_t)];
     size_t args_len = tx->dataLength - sizeof(uint32_t);
 
-    if (eth_data_tuple_get_elem(ETH_ABI_ADDRESS, 0, args, args_len, &info->to, &value_len) != ERR_OK) {
+    if (eth_data_tuple_get_elem(ETH_ABI_SIZED_TYPE(ETH_ABI_ADDRESS, 20), 0, args, args_len, &info->to, &value_len) != ERR_OK) {
       abi = NULL;
       goto fallback;
     }
@@ -279,7 +348,7 @@ fallback:
     info->to = tx->destination;
 
     if (tx->dataLength) {
-      if (abi == NULL || (eth_data_format_abi_call(abi, tx->data, tx->dataLength, info->data_str, &info->data_str_len) != ERR_OK)) {
+      if ((abi == NULL) || (eth_data_format_abi_call(abi, tx->data, tx->dataLength, info->data_str, &info->data_str_len) != ERR_OK)) {
         base16_encode(tx->data, (char *) info->data_str, tx->dataLength);
         info->data_str_len = tx->dataLength * 2;
       }
@@ -305,7 +374,7 @@ app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function
     return ERR_DATA;
   }
 
-  if (eth_data_tuple_get_elem(ETH_ABI_ADDRESS, 0, args, args_len, &info->spender, &value_len) != ERR_OK) {
+  if (eth_data_tuple_get_elem(ETH_ABI_SIZED_TYPE(ETH_ABI_ADDRESS, 20), 0, args, args_len, &info->spender, &value_len) != ERR_OK) {
     return ERR_DATA;
   }
 
