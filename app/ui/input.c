@@ -38,6 +38,8 @@
 
 #define KEYBOARD_CHAR(k, c) (k->layout == KEYBOARD_UPPERCASE ? (c - 32) : c)
 
+#define MNEMONIC_BACKUP_REFRESH_MS 60000
+
 typedef enum {
   KEYBOARD_MNEMONIC,
   KEYBOARD_LOWERCASE,
@@ -705,7 +707,7 @@ app_err_t input_display_mnemonic() {
       dialog_pager(page, last_page);
     }
 
-    switch(ui_wait_keypress(portMAX_DELAY)) {
+    switch(ui_wait_keypress(pdMS_TO_TICKS(MNEMONIC_BACKUP_REFRESH_MS))) {
     case KEYPAD_KEY_LEFT:
       page = 0;
       break;
@@ -723,6 +725,7 @@ app_err_t input_display_mnemonic() {
       }
       break;
     default:
+      hal_inactivity_timer_reset();
       break;
     }
   }
