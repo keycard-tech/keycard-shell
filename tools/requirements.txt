@@ -1,0 +1,3 @@
+requests >= 2.32
+secp256k1Crypto >= 0.0.1
+freetype-py >= 2.5.1
