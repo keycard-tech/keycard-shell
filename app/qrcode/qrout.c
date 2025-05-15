@@ -7,7 +7,7 @@
 #include "ui/theme.h"
 #include "ui/ui_internal.h"
 
-#define QR_DISPLAY_TIMEOUT 60000
+#define QR_DISPLAY_TIMEOUT 180000
 #define QR_FRAME_DURATION 200
 #define QR_MAX_VERSION 21
 #define QR_BUF_LEN qrcodegen_BUFFER_LEN_FOR_VERSION(QR_MAX_VERSION)

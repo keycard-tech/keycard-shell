@@ -13,7 +13,7 @@
 #include "pwr.h"
 #include "ui/ui_internal.h"
 
-#define TX_CONFIRM_TIMEOUT 30000
+#define TX_CONFIRM_TIMEOUT 180000
 #define BIGNUM_STRING_LEN 100
 #define MAX_PAGE_COUNT 50
 #define MESSAGE_MAX_X (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN)
