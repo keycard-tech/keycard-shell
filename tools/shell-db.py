@@ -60,7 +60,7 @@ def serialize_db(f, m, chains, tokens, abis, version):
 
 def read_json(url_or_path):
     if url_or_path.startswith('http'):
-        return requests.get(url_or_path).json
+        return requests.get(url_or_path).json()
     else:
         with open(url_or_path) as f:
             return json.load(f)
