@@ -78,7 +78,7 @@ app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_
       *out = &data[content_off + ETH_ABI_WORD_LEN];
       *out_len = ETH_ABI_TYPE_SIZE(type);
     }
-  } if (type & ETH_ABI_DYNAMIC) {
+  } else if (type & ETH_ABI_DYNAMIC) {
     uint16_t content_off = eth_data_read_short(&data[off]);
     if (content_off > (data_len - ETH_ABI_WORD_LEN)) {
       return ERR_DATA;
@@ -106,10 +106,8 @@ app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_
       } else {
         *out_len = ETH_ABI_WORD_LEN;
       }
-    } else {
-      if (!eth_data_validate_bytes_size(*out, *out_len)) {
-        return ERR_DATA;
-      }
+    } else if (!eth_data_validate_bytes_size(*out, *out_len)) {
+      return ERR_DATA;
     }
   }
 
@@ -244,10 +242,10 @@ static app_err_t eth_data_format_type(const eth_abi_argument_t* abi, const uint8
     return ERR_OK;
   case ETH_ABI_BOOL:
     if (elem_data[ETH_ABI_WORD_LEN - 1]) {
-      memcpy("true", &out[*out_len], 4);
+      memcpy(&out[*out_len], "true", 4);
       *out_len += 4;
     } else {
-      memcpy("false", &out[*out_len], 5);
+      memcpy(&out[*out_len], "false", 5);
       *out_len += 5;
     }
     return ERR_OK;
