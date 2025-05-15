@@ -1,5 +1,6 @@
 import subprocess
 import hashlib
+from secp256k1Crypto import PrivateKey
 
 PAGE_SIZE = 8192
 WORD_SIZE = 16
@@ -19,6 +20,11 @@ FW1_OFFSET = BL_SIZE
 FW2_OFFSET = BANK_SIZE + FW1_OFFSET
 
 FS_OFFSET = FW1_OFFSET + FW_SIZE
+
+def sign(sign_key, m):
+    key = PrivateKey(bytes(bytearray.fromhex(sign_key)), raw=True)
+    sig = key.ecdsa_sign(m, raw=True)
+    return key.ecdsa_serialize_compact(sig)
 
 def elf_to_bin(elf_path, out_path):
     subprocess.run(["arm-none-eabi-objcopy", "-O", "binary", "--gap-fill=255", elf_path, out_path], check=True)

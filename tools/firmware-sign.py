@@ -1,16 +1,10 @@
 # This tool is for development only, not to be used for releases
 
 import argparse
-from secp256k1Crypto import PrivateKey
 import tempfile
 import pathlib
 
 from common import *
-
-def sign(sign_key, m):
-    key = PrivateKey(bytes(bytearray.fromhex(sign_key)), raw=True)
-    sig = key.ecdsa_sign(m, raw=True)
-    return key.ecdsa_serialize_compact(sig)
 
 def main():
     parser = argparse.ArgumentParser(description='Sign the firmware and convert ELF to bin')
