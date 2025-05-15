@@ -78,7 +78,7 @@ fs_action_t _eth_db_match_version(void* ctx, fs_entry_t* entry) {
 }
 
 fs_action_t _eth_db_match_all(void* ctx, fs_entry_t* entry) {
-  return ((entry->magic == FS_CHAIN_MAGIC) || (entry->magic == FS_ERC20_MAGIC) || (entry->magic == FS_VERSION_MAGIC)) ? FS_REJECT : FS_ACCEPT;
+  return ((entry->magic == FS_CHAIN_MAGIC) || (entry->magic == FS_ERC20_MAGIC) || (entry->magic == FS_VERSION_MAGIC) || (entry->magic == FS_ABI_MAGIC)) ? FS_REJECT : FS_ACCEPT;
 }
 
 static inline fs_action_t _eth_db_match_erase_chain(struct delta_erase_ctx* ctx, struct chain_raw_desc* entry) {

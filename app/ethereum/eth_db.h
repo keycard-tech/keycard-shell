@@ -4,6 +4,8 @@
 #include "storage/fs.h"
 #include "error.h"
 
+#define FS_ABI_MAGIC 0x4142
+
 typedef struct {
   uint32_t chain_id;
   const char *ticker;

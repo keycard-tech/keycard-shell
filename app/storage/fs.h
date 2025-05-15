@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include "hal.h"
 
+#define FS_ENTRY_DATA(__TYPE__, __ENTRY__) (__TYPE__)(((uint32_t) __ENTRY__) + sizeof(fs_entry_t))
+
 typedef struct __attribute__((packed)) {
   uint16_t magic;
   uint16_t len;

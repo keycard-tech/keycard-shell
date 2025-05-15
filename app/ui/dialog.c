@@ -536,22 +536,18 @@ static app_err_t dialog_confirm_approval(const eth_approve_info* info, const uin
 }
 
 app_err_t dialog_confirm_eth_tx() {
-  const eth_abi_function_t* data_format = eth_data_recognize(g_ui_cmd.params.eth_tx.tx);
+  const eth_abi_function_t* abi = eth_data_recognize(g_ui_cmd.params.eth_tx.tx);
 
-  if (data_format != NULL) {
-    switch(data_format->data_type) {
-    case ETH_DATA_ERC20_APPROVE:
+  if ((abi != NULL)) {
+    if ((abi->selector == ETH_DATA_ERC20_APPROVE) && (abi->ext_selector == ETH_DATA_ERC20_APPROVE_EXT_SELECTOR)) {
       eth_approve_info info;
-      if (eth_extract_approve_info(g_ui_cmd.params.eth_tx.tx, data_format, &info) == ERR_OK) {
+      if (eth_extract_approve_info(g_ui_cmd.params.eth_tx.tx, abi, &info) == ERR_OK) {
         return dialog_confirm_approval(&info, g_ui_cmd.params.eth_tx.addr, true);
       }
-      break;
-    default:
-      break;
     }
   }
 
-  return dialog_confirm_eth_transfer(data_format);
+  return dialog_confirm_eth_transfer(abi);
 }
 
 void dialog_confirm_btc_summary(const btc_tx_ctx_t* tx) {

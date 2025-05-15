@@ -32,11 +32,10 @@
 #define ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) (__SIZED_TYPE__ & 0xff)
 #define ETH_ABI_TUPLE_SIZE(__SIZED_TYPE__) (ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) * ETH_ABI_WORD_LEN)
 
-#ifdef __ETH_ABI_FS_STORAGE
 #define ETH_ABI_DEREF(__TYPE__, __STRUCT__, __FIELD__) ((__STRUCT__->__FIELD__) == 0 ? NULL : (__TYPE__)(((uint32_t) __STRUCT__) + (__STRUCT__->__FIELD__)))
-#else
-#define ETH_ABI_DEREF(__TYPE__, __STRUCT__, __FIELD__) (__STRUCT__->__FIELD__)
-#endif
+
+#define ETH_DATA_ERC20_TRANFER_EXT_SELECTOR 0x2432e06e
+#define ETH_DATA_ERC20_APPROVE_EXT_SELECTOR 0x502291f4
 
 typedef enum {
   ETH_ABI_UINT = ETH_ABI_NUMERIC,
@@ -58,9 +57,8 @@ typedef enum {
 } eth_func_attr_t;
 
 typedef enum {
-  ETH_DATA_PLAIN,
-  ETH_DATA_ERC20_TRANSFER,
-  ETH_DATA_ERC20_APPROVE,
+  ETH_DATA_ERC20_TRANSFER = 0xbb9c05a9,
+  ETH_DATA_ERC20_APPROVE = 0xb3a75e09,
 } eth_data_type_t;
 
 typedef enum {
@@ -69,17 +67,17 @@ typedef enum {
   EIP712_PERMIT_SINGLE
 } eip712_data_type_t;
 
-typedef struct _eth_abi_argument {
+typedef struct __attribute__((packed)) {
   eth_abi_type_t type;
-  const struct _eth_abi_argument* next;
-  const struct _eth_abi_argument* child;
+  uint16_t next;
+  uint16_t child;
 } eth_abi_argument_t;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
   uint32_t selector;
-  const char* name;
-  const eth_abi_argument_t* first_arg;
-  eth_data_type_t data_type;
+  uint32_t ext_selector;
+  uint16_t name;
+  uint16_t first_arg;
   eth_func_attr_t attrs;
 } eth_abi_function_t;
 

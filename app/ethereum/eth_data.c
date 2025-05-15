@@ -5,17 +5,6 @@
 #include "crypto/address.h"
 #include "eth_data.h"
 
-const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG1 = { .type = ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256), .next = NULL, .child = NULL };
-const eth_abi_argument_t ETH_ERC20_TRANSFER_ARG0 = { .type = ETH_ABI_SIZED_TYPE(ETH_ABI_ADDRESS, 20), .next = &ETH_ERC20_TRANSFER_ARG1, .child = NULL };
-
-const eth_abi_function_t ETH_ABI_DB[] = {
-    { .selector = 0xbb9c05a9, .name = "transfer", .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_TRANSFER, .attrs = 0 },
-    { .selector = 0xb3a75e09, .name = "approve", .first_arg = &ETH_ERC20_TRANSFER_ARG0, .data_type = ETH_DATA_ERC20_APPROVE, .attrs = 0 },
-    { .selector = 0xb00de3d0, .name = "deposit", .first_arg = NULL, .data_type = ETH_DATA_PLAIN, .attrs = ETH_FUNC_PAYABLE },
-    { .selector = 0x4d7d1a2e, .name = "withdraw", .first_arg = &ETH_ERC20_TRANSFER_ARG1, .data_type = ETH_DATA_PLAIN, .attrs = 0 },
-    { .selector = 0 }
-};
-
 struct eth_func_search_ctx {
   uint32_t selector;
   const uint8_t* args;
@@ -127,7 +116,14 @@ app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_
   return ERR_OK;
 }
 
-fs_action_t eth_data_find_function(struct eth_func_search_ctx* search_ctx, const eth_abi_function_t* func) {
+fs_action_t eth_data_find_function(void* ctx, fs_entry_t* entry) {
+  if (entry->magic != FS_ABI_MAGIC) {
+    return FS_REJECT;
+  }
+
+  struct eth_func_search_ctx* search_ctx = (struct eth_func_search_ctx*) ctx;
+  const eth_abi_function_t* func = FS_ENTRY_DATA(const eth_abi_function_t*, entry);
+
   if ((func->selector != search_ctx->selector) || (search_ctx->has_value && !(func->attrs & ETH_FUNC_PAYABLE))) {
     return FS_REJECT;
   }
@@ -170,14 +166,10 @@ const eth_abi_function_t* eth_data_recognize(const txContent_t* tx) {
   search_ctx.args_len = tx->dataLength - sizeof(uint32_t);
   search_ctx.has_value = tx->value.length > 0;
 
-  int i = 0;
+  fs_entry_t* found = fs_find(eth_data_find_function, &search_ctx);
 
-  while(ETH_ABI_DB[i].selector != 0) {
-    if (eth_data_find_function(&search_ctx, &ETH_ABI_DB[i]) == FS_ACCEPT) {
-      return &ETH_ABI_DB[i];
-    }
-
-    i++;
+  if (found) {
+    return FS_ENTRY_DATA(const eth_abi_function_t*, found);
   }
 
   return NULL;
@@ -377,7 +369,7 @@ app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_functio
   const uint8_t* value;
   size_t value_len;
 
-  if (abi && abi->data_type == ETH_DATA_ERC20_TRANSFER) {
+  if (abi && (abi->selector == ETH_DATA_ERC20_TRANSFER) && (abi->ext_selector == ETH_DATA_ERC20_TRANFER_EXT_SELECTOR)) {
     const uint8_t* args = &tx->data[sizeof(uint32_t)];
     size_t args_len = tx->dataLength - sizeof(uint32_t);
 
