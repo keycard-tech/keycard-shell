@@ -56,14 +56,14 @@ len in bytes: 2 bytes (max len == page size)
 
 ## ABI
 
-is composed of a function struct containing a linked list of argument structs. Internal pointers set to 0 are equivaent to NULL. Because of its nature length is very variable across entries
+is composed of a function struct containing a linked list of argument structs. Internal pointers set to 0 are equivalent to NULL. Because of its nature length is very variable across entries
 
 ### Function struct
 
 - func selector: 4 bytes
+- func ext_selector: 4 bytes
 - internal pointer to name: 2 bytes
 - internal pointer to first argument: 2 bytes
-- data type: 1 byte
 - func attr: 1 byte
 - name: null terminated string
 - first argument: argument struct
