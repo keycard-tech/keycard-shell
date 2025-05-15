@@ -72,11 +72,19 @@ def process_type(abi_type):
     type_base = ""
     type_size = ""
     type_array = False
+    type_array_size = ""
+    type_in_array = False
 
     for c in abi_type["type"]:
         if c.isdigit():
-            type_size = type_size + c
-        elif (c == "[") or (c == "]"):
+            if type_in_array:
+                type_array_size = type_array_size + c
+            else:
+                type_size = type_size + c
+        elif (c == "["):
+            type_in_array = True
+        elif (c == "]"):
+            type_in_array = False
             type_array = True
         else:
             type_base = type_base + c
@@ -104,14 +112,14 @@ def process_type(abi_type):
     elif type_base == "string":
         res["type"] = ETH_ABI_STRING
     elif type_base == "bool":
-        res["type"] = (ETH_ABI_UINT | 1)
+        res["type"] = (ETH_ABI_BOOL | 1)
     
     if type_array:
         arr_type = 0
-        if type_size == "":
+        if type_array_size == "":
             arr_type = ETH_ABI_VARARRAY
         else:
-            arr_type = (ETH_ABI_ARRAY | int(type_size))
+            arr_type = (ETH_ABI_ARRAY | int(type_array_size))
         res = {"type": arr_type, "child": [res]}
 
     return res
@@ -120,7 +128,7 @@ def process_function(func):
     func_hash = eth_utils.keccak(text=eth_utils.abi_to_signature(func))
     out = {"name": func["name"], "selector": func_hash[:4], "ext_selector": eth_utils.keccak(func_hash)[:4]}
 
-    if ("payable" in func) and (func["payable"] == True):
+    if func["stateMutability"] == "payable":
         out["attrs"] = 1
     else:
         out["attrs"] = 0
