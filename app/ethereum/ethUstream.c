@@ -87,6 +87,7 @@ static uint16_t processAccessList(txContext_t *context) {
   if (!context->currentFieldIsList) {
     return EXCEPTION;
   }
+
   if (context->currentFieldPos < context->currentFieldLength) {
     uint32_t copySize = APP_MIN(context->commandLength, context->currentFieldLength - context->currentFieldPos);
     if (copyTxData(context, NULL, copySize) == EXCEPTION) {
@@ -100,6 +101,10 @@ static uint16_t processAccessList(txContext_t *context) {
   }
 
   return 0;
+}
+
+inline static uint16_t processAuthList(txContext_t* context) {
+  return processAccessList(context);
 }
 
 static uint16_t processChainID(txContext_t *context) {
@@ -171,6 +176,10 @@ static uint16_t processStartGas(txContext_t *context) {
   }
 
   return 0;
+}
+
+inline static uint16_t processGasLimit(txContext_t *context) {
+  return processStartGas(context);
 }
 
 static uint16_t processGasprice(txContext_t *context) {
@@ -336,6 +345,40 @@ static uint16_t processV(txContext_t *context) {
   return 0;
 }
 
+static bool processEIP7702Tx(txContext_t *context) {
+    switch (context->currentField) {
+      case EIP7702_RLP_CONTENT: {
+        if (processContent(context) == EXCEPTION) {
+          return true;
+        }
+        context->currentField++;
+        return false;
+      }
+      case EIP7702_RLP_CHAINID:
+        return processChainID(context) == EXCEPTION;
+      case EIP7702_RLP_NONCE:
+        return processNonce(context) == EXCEPTION;
+      case EIP7702_RLP_MAX_FEE_PER_GAS:
+        return processGasprice(context) == EXCEPTION;
+      case EIP7702_RLP_GASLIMIT:
+        return processGasLimit(context) == EXCEPTION;
+      case EIP7702_RLP_TO:
+        return processTo(context) == EXCEPTION;
+      case EIP7702_RLP_VALUE:
+        return processValue(context) == EXCEPTION;
+      case EIP7702_RLP_DATA:
+        return processData(context) == EXCEPTION;
+      case EIP7702_RLP_ACCESS_LIST:
+        return processAccessList(context) == EXCEPTION;
+      case EIP7702_RLP_AUTH_LIST:
+        return processAuthList(context) == EXCEPTION;
+      case EIP7702_RLP_MAX_PRIORITY_FEE_PER_GAS:
+        return processAndDiscard(context) == EXCEPTION;
+      default:
+        return true;
+    }
+}
+
 static bool processEIP1559Tx(txContext_t *context) {
   switch (context->currentField) {
     case EIP1559_RLP_CONTENT: {
@@ -343,39 +386,29 @@ static bool processEIP1559Tx(txContext_t *context) {
         return true;
       }
       context->currentField++;
-      break;
+      return false;
     }
-    case EIP1559_RLP_CHAINID: {
+    case EIP1559_RLP_CHAINID:
       return processChainID(context) == EXCEPTION;
-    }
-    case EIP1559_RLP_NONCE: {
+    case EIP1559_RLP_NONCE:
       return processNonce(context) == EXCEPTION;
-    }
-    case EIP1559_RLP_MAX_FEE_PER_GAS: {
+    case EIP1559_RLP_MAX_FEE_PER_GAS:
       return processGasprice(context) == EXCEPTION;
-    }
-    case EIP1559_RLP_GASLIMIT: {
+    case EIP1559_RLP_GASLIMIT:
       return processStartGas(context) == EXCEPTION;
-    }
-    case EIP1559_RLP_TO: {
+    case EIP1559_RLP_TO:
       return processTo(context) == EXCEPTION;
-    }
-    case EIP1559_RLP_VALUE: {
+    case EIP1559_RLP_VALUE:
       return processValue(context) == EXCEPTION;
-    }
-    case EIP1559_RLP_DATA: {
+    case EIP1559_RLP_DATA:
       return processData(context) == EXCEPTION;
-    }
-    case EIP1559_RLP_ACCESS_LIST: {
+    case EIP1559_RLP_ACCESS_LIST:
       return processAccessList(context) == EXCEPTION;
-    }
     case EIP1559_RLP_MAX_PRIORITY_FEE_PER_GAS:
       return processAndDiscard(context) == EXCEPTION;
     default:
       return true;
   }
-
-  return false;
 }
 
 static bool processEIP2930Tx(txContext_t *context) {
@@ -385,7 +418,7 @@ static bool processEIP2930Tx(txContext_t *context) {
         return true;
       }
       context->currentField++;
-      break;
+      return false;
     case EIP2930_RLP_CHAINID:
       return processChainID(context) == EXCEPTION;
     case EIP2930_RLP_NONCE:
@@ -405,8 +438,6 @@ static bool processEIP2930Tx(txContext_t *context) {
     default:
       return true;
   }
-
-  return false;
 }
 
 static bool processLegacyTx(txContext_t *context) {
@@ -416,7 +447,7 @@ static bool processLegacyTx(txContext_t *context) {
         return true;
       }
       context->currentField++;
-      break;
+      return false;
     case LEGACY_RLP_NONCE:
       return processNonce(context) == EXCEPTION;
       break;
@@ -444,7 +475,6 @@ static bool processLegacyTx(txContext_t *context) {
     default:
       return true;
   }
-  return false;
 }
 
 static parserStatus_e parseRLP(txContext_t *context) {
@@ -543,6 +573,12 @@ parserStatus_e continueTx(txContext_t *context) {
         }
       case EIP1559:
         if (processEIP1559Tx(context)) {
+          return USTREAM_FAULT;
+        } else {
+          break;
+        }
+      case EIP7702:
+        if (processEIP7702Tx(context)) {
           return USTREAM_FAULT;
         } else {
           break;
