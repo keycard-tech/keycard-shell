@@ -346,37 +346,37 @@ static uint16_t processV(txContext_t *context) {
 }
 
 static bool processEIP7702Tx(txContext_t *context) {
-    switch (context->currentField) {
-      case EIP7702_RLP_CONTENT: {
-        if (processContent(context) == EXCEPTION) {
-          return true;
-        }
-        context->currentField++;
-        return false;
-      }
-      case EIP7702_RLP_CHAINID:
-        return processChainID(context) == EXCEPTION;
-      case EIP7702_RLP_NONCE:
-        return processNonce(context) == EXCEPTION;
-      case EIP7702_RLP_MAX_FEE_PER_GAS:
-        return processGasprice(context) == EXCEPTION;
-      case EIP7702_RLP_GASLIMIT:
-        return processGasLimit(context) == EXCEPTION;
-      case EIP7702_RLP_TO:
-        return processTo(context) == EXCEPTION;
-      case EIP7702_RLP_VALUE:
-        return processValue(context) == EXCEPTION;
-      case EIP7702_RLP_DATA:
-        return processData(context) == EXCEPTION;
-      case EIP7702_RLP_ACCESS_LIST:
-        return processAccessList(context) == EXCEPTION;
-      case EIP7702_RLP_AUTH_LIST:
-        return processAuthList(context) == EXCEPTION;
-      case EIP7702_RLP_MAX_PRIORITY_FEE_PER_GAS:
-        return processAndDiscard(context) == EXCEPTION;
-      default:
+  switch (context->currentField) {
+    case EIP7702_RLP_CONTENT: {
+      if (processContent(context) == EXCEPTION) {
         return true;
+      }
+      context->currentField++;
+      return false;
     }
+    case EIP7702_RLP_CHAINID:
+      return processChainID(context) == EXCEPTION;
+    case EIP7702_RLP_NONCE:
+      return processNonce(context) == EXCEPTION;
+    case EIP7702_RLP_MAX_FEE_PER_GAS:
+      return processGasprice(context) == EXCEPTION;
+    case EIP7702_RLP_GASLIMIT:
+      return processGasLimit(context) == EXCEPTION;
+    case EIP7702_RLP_TO:
+      return processTo(context) == EXCEPTION;
+    case EIP7702_RLP_VALUE:
+      return processValue(context) == EXCEPTION;
+    case EIP7702_RLP_DATA:
+      return processData(context) == EXCEPTION;
+    case EIP7702_RLP_ACCESS_LIST:
+      return processAccessList(context) == EXCEPTION;
+    case EIP7702_RLP_AUTH_LIST:
+      return processAuthList(context) == EXCEPTION;
+    case EIP7702_RLP_MAX_PRIORITY_FEE_PER_GAS:
+      return processAndDiscard(context) == EXCEPTION;
+    default:
+      return true;
+  }
 }
 
 static bool processEIP1559Tx(txContext_t *context) {
