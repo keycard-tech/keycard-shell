@@ -236,7 +236,23 @@ static app_err_t eth_data_format_type(const eth_abi_argument_t* abi, const uint8
   bignum256 num;
 
   switch(abi->type & 0xff00) {
+  case ETH_ABI_INT:
+  case ETH_ABI_FIXED:
+    if (elem_data[0] & 0x80) {
+      for (int i = 0; i < ETH_ABI_WORD_LEN; i++) {
+        out[*out_len + i] = ~elem_data[i];
+      }
+      bn_read_be(&out[*out_len], &num);
+      bn_addi(&num, 1);
+      out[(*out_len)++] = '-';
+    } else {
+      bn_read_be(elem_data, &num);
+    }
+
+    *out_len += bn_format(&num, NULL, NULL, 0, 0, 0, 0, (char*) &out[*out_len], 100);
+    return ERR_OK;
   case ETH_ABI_UINT:
+  case ETH_ABI_UFIXED:
     bn_read_be(elem_data, &num);
     *out_len += bn_format(&num, NULL, NULL, 0, 0, 0, 0, (char*) &out[*out_len], 100);
     return ERR_OK;
@@ -264,9 +280,6 @@ static app_err_t eth_data_format_type(const eth_abi_argument_t* abi, const uint8
   case ETH_ABI_ARRAY:
   case ETH_ABI_VARARRAY:
     return eth_data_format_array(ETH_ABI_DEREF(eth_abi_argument_t*, abi, child), elem_data, elem_len, buf_len, out, out_len);
-  case ETH_ABI_INT:
-  case ETH_ABI_FIXED:
-  case ETH_ABI_UFIXED:
   case ETH_ABI_BYTES:
   case ETH_ABI_VARBYTES:
   default:
