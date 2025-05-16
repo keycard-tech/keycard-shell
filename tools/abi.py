@@ -98,10 +98,10 @@ def process_type(abi_type):
         res["type"] = (ETH_ABI_INT | bitsize(type_size))
     elif type_base == "uint":
         res["type"] = (ETH_ABI_UINT | bitsize(type_size))
-    elif type_base == "fixed":
-        res["type"] = (ETH_ABI_FIXED | bitsize(type_size))       
-    elif type_base == "ufixed":
-        res["type"] = (ETH_ABI_UFIXED | bitsize(type_size))
+    elif (type_base == "fixed") or (type_base == "fixedx"):
+        res["type"] = (ETH_ABI_FIXED | 32)       
+    elif (type_base == "ufixed") or (type_base == "ufixedx"):
+        res["type"] = (ETH_ABI_UFIXED | 32)
     elif type_base == "address":
         res["type"] = (ETH_ABI_ADDRESS | 20)
     elif type_base == "bytes":
