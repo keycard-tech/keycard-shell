@@ -91,7 +91,7 @@ static uint8_t t1_handle_s(smartcard_t* sc, uint8_t pcb, uint8_t data, uint8_t* 
   }
 
   if (!is_resp) {
-    if (!t1_transmit_s(sc, res, len, data)) {
+    if (t1_transmit_s(sc, res, len, data) != ERR_OK) {
       *more = 0;
       return ERR_TXRX;
     }
