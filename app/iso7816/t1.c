@@ -228,7 +228,7 @@ app_err_t t1_negotiate_ifsd(smartcard_t* sc, int retry) {
     return ERR_OK;
   }
 
-  if (!retry || !t1_transmit_s(sc, T1_S_RESYNCH, 0, 0)) {
+  if (!retry || (t1_transmit_s(sc, T1_S_RESYNCH, 0, 0) != ERR_OK)) {
     return ERR_TXRX;
   }
 
