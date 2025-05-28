@@ -30,6 +30,7 @@ typedef enum {
  SYM_RIGHT_CHEVRON = 0x84,
  SYM_CANCEL = 0x85,
  SYM_CROSS = 0x86,
+ SYM_DOT = 0x87,
 } symbol_glyph_t;
 
 typedef enum {
@@ -37,7 +38,6 @@ typedef enum {
  ICON_NAV_NEXT_HOLD,
  ICON_NAV_CANCEL,
  ICON_NAV_BACKSPACE,
- ICON_NAV_CONFIRM,
  ICON_OK,
  ICON_FAIL,
  ICON_PIN_CURRENT,

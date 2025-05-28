@@ -87,7 +87,7 @@ app_err_t settings_ui_lcd_brightness() {
 
   ui_brightness_render(*g_ui_cmd.params.lcd.brightness);
 
-  dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_CONFIRM);
+  dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_NEXT);
 
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {

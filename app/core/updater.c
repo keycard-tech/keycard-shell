@@ -121,9 +121,9 @@ static app_err_t updater_database_update(uint8_t* data, size_t len, bool require
   if (err == ERR_OK) {
     ui_info(ICON_INFO_SUCCESS, LSTR(DB_UPDATE_OK), version_string, 0);
   } else if (err == ERR_VERSION) {
-    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERR_VERSION), LSTR(DB_UPDATE_ERR_VERSION_HINT), require_confirmation ? 0 : UI_INFO_NEXT);
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERR_VERSION), LSTR(DB_UPDATE_ERR_VERSION_HINT), 0);
   } else {
-    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERROR), LSTR(INFO_TRY_AGAIN), require_confirmation ? 0 : UI_INFO_NEXT);
+    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERROR), LSTR(INFO_TRY_AGAIN), 0);
   }
 
   return err;
@@ -212,7 +212,7 @@ static app_err_t updater_confirm_fw_upgrade() {
   uint32_t ver_off = ((uint32_t ) FW_VERSION) - HAL_FLASH_FW_START_ADDR;
   append_fw_version(info, (uint8_t*)(HAL_FLASH_FW_UPGRADE_AREA + ver_off));
 
-  if (ui_info(ICON_INFO_UPLOAD, LSTR(FW_UPGRADE_CONFIRM), info, UI_INFO_CANCELLABLE | UI_INFO_NEXT) != CORE_EVT_UI_OK) {
+  if (ui_info(ICON_INFO_UPLOAD, LSTR(FW_UPGRADE_CONFIRM), info, UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
   }
 

@@ -100,13 +100,13 @@ static void core_button_test(apdu_t* apdu) {
 static void core_backlight_test(apdu_t* apdu) {
   hal_pwm_set_dutycycle(PWM_BACKLIGHT, 10);
 
-  if (ui_prompt("Brightness test", "Screen is at minimum brightness. Press is OK if readable, cancel otherwise", (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt("Brightness test", "Screen is at minimum brightness. Press is OK if readable, cancel otherwise", UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x01);
     goto backlight_teardown;
   }
 
   hal_pwm_set_dutycycle(PWM_BACKLIGHT, 100);
-  if (ui_prompt("Brightness test", "Screen is at full brightness. Press is OK if very bright, cancel otherwise", (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt("Brightness test", "Screen is at full brightness. Press is OK if very bright, cancel otherwise", UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x02);
     goto backlight_teardown;
   }

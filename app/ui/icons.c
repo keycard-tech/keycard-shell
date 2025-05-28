@@ -19,11 +19,10 @@ typedef struct {
 } composite_icon_desc_t;
 
 const static composite_icon_desc_t NAV_ICONS[] = {
-    {.base = NAV_CIRCLE_FULL, .top = SYM_RIGHT_CHEVRON, .attr = 1, .base_color = TH_COLOR_ACCENT},
-    {.base = NAV_CIRCLE_EMPTY, .top = SYM_RIGHT_CHEVRON, .attr = (ICON_ATTR_STROKED | 1), .base_color = TH_COLOR_ACCENT},
+    {.base = NAV_CIRCLE_FULL, .top = 0, .attr = ICON_ATTR_NOTOP, .base_color = TH_COLOR_ACCENT},
+    {.base = NAV_CIRCLE_EMPTY, .top = SYM_DOT, .attr = ICON_ATTR_STROKED, .base_color = TH_COLOR_ACCENT},
     {.base = NAV_CIRCLE_EMPTY, .top = SYM_CANCEL, .attr = (ICON_ATTR_STROKED | ICON_ATTR_INHERIT_FG), .base_color = 0},
     {.base = NAV_BACKSPACE_EMPTY, .top = SYM_CANCEL, .attr = (ICON_ATTR_STROKED | ICON_ATTR_INHERIT_FG | 2) , .base_color = 0},
-    {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .attr = (1 << 2), .base_color = TH_COLOR_ACCENT},
     {.base = NAV_CIRCLE_FULL, .top = SYM_CHECKMARK, .attr = (1 << 2), .base_color = TH_COLOR_SUCCESS},
     {.base = NAV_CIRCLE_FULL, .top = SYM_CROSS, .attr = 0, .base_color = TH_COLOR_ERROR},
     {.base = NAV_CIRCLE_EMPTY, .top = 0, .attr = (ICON_ATTR_STROKED | ICON_ATTR_INHERIT_FG | ICON_ATTR_NOTOP), .base_color = 0},

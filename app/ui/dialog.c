@@ -28,10 +28,8 @@ app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
 
   if (opts & UI_INFO_DANGEROUS) {
     right = ICON_NAV_NEXT_HOLD;
-  } else if (opts & UI_INFO_NEXT) {
-    right = ICON_NAV_NEXT;
   } else {
-    right = ICON_NAV_CONFIRM;
+    right = ICON_NAV_NEXT;
   }
 
   dialog_nav_hints(left, right);
@@ -67,7 +65,7 @@ app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
 }
 
 static app_err_t dialog_wait_paged(size_t* page, size_t last_page) {
-  dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_CONFIRM);
+  dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_NEXT);
   dialog_pager(*page, last_page);
 
   switch(ui_wait_keypress(pdMS_TO_TICKS(TX_CONFIRM_TIMEOUT))) {

@@ -15,7 +15,7 @@
 
 void device_auth_run() {
   // Inform the user
-  if (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT), (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
     return;
   }
 

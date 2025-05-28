@@ -139,7 +139,7 @@ static app_err_t input_secret_entry(const char* title, char* out, char* compare,
     ctx.y = start_y;
 
     if (position == secret_len) {
-      dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NAV_CONFIRM);
+      dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NAV_NEXT);
     } else if (position > 0) {
       dialog_nav_hints(ICON_NAV_BACKSPACE, ICON_NONE);
     } else {

@@ -111,7 +111,7 @@ core_evt_t ui_wrong_auth(const char* msg, uint8_t retries) {
   remaining_attempts[0] = retries + '0';
   memcpy(&remaining_attempts[1], LSTR(PIN_LABEL_REMAINING_ATTEMPTS), label_len + 1);
 
-  return ui_info(ICON_INFO_ERROR, msg, remaining_attempts, UI_INFO_NEXT);
+  return ui_info(ICON_INFO_ERROR, msg, remaining_attempts, 0);
 }
 
 core_evt_t ui_devinfo(const char* fw_ver, const char* db_ver, const char* sn) {
@@ -174,7 +174,7 @@ void ui_keycard_ready() {
 
 void ui_keycard_paired(bool default_pass) {
   if (!default_pass) {
-    ui_info(ICON_INFO_SUCCESS, LSTR(INFO_CARD_PAIRED), NULL, UI_INFO_NEXT);
+    ui_info(ICON_INFO_SUCCESS, LSTR(INFO_CARD_PAIRED), NULL, 0);
   }
 }
 
@@ -186,7 +186,7 @@ core_evt_t ui_keycard_pairing_failed(const char* card_name, bool default_pass) {
     return CORE_EVT_UI_OK;
   }
 
-  ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_PAIRING), LSTR(INFO_TRY_AGAIN), UI_INFO_NEXT);
+  ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_PAIRING), LSTR(INFO_TRY_AGAIN), 0);
 
   i18n_str_id_t selected = MENU_PAIR;
   while (ui_menu(card_name, &menu_keycard_pair, &selected, -1, 0) != CORE_EVT_UI_OK) {
@@ -224,7 +224,7 @@ void ui_keycard_wrong_puk(uint8_t retries) {
 }
 
 core_evt_t ui_keycard_not_genuine() {
-  return ui_info(ICON_INFO_WARN, LSTR(INFO_NOT_GENUINE_MSG), LSTR(INFO_NOT_GENUINE_SUB), UI_INFO_CANCELLABLE | UI_INFO_NEXT);
+  return ui_info(ICON_INFO_WARN, LSTR(INFO_NOT_GENUINE_MSG), LSTR(INFO_NOT_GENUINE_SUB), UI_INFO_CANCELLABLE);
 }
 
 core_evt_t ui_prompt_try_puk() {
@@ -341,7 +341,7 @@ core_evt_t ui_display_mnemonic(uint16_t* indexes, uint32_t len) {
 static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
   const char* const* tmp = *i18n_strings;
 
-  if (ui_prompt(LSTR(MNEMO_VERIFY_TITLE), LSTR(MNEMO_VERIFY_PROMPT), (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt(LSTR(MNEMO_VERIFY_TITLE), LSTR(MNEMO_VERIFY_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
   }
 
@@ -427,7 +427,7 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
 }
 
 core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len) {
-  if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), (UI_INFO_CANCELLABLE | UI_INFO_NEXT)) != CORE_EVT_UI_OK) {
+  if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
     return CORE_EVT_UI_CANCELLED;
   };
 
