@@ -1,0 +1,3 @@
+Layer Pairs Export File for PCB: C:\Users\dlebrun\Altyor\P2282-STATUS-KPRO - Documents\General\PROJECT DOCUMENTS\06-R&D\03-Electronic engineering\01-Engineering\KCP-2282-60x-V3.7.7\KCP-2282-602-PAN V3.7.PcbDoc
+LayersSetName=Top_Bot_Thru_Holes|DrillFile=kcp-2282-602-pan v3.7-roundholes.txt|DrillLayers=gtl,g2,g3,gbl
+LayersSetName=Top_Bot_Slot_Holes|DrillFile=kcp-2282-602-pan v3.7-slotholes.txt|DrillLayers=gtl,g2,g3,gbl
