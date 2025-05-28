@@ -506,5 +506,5 @@ core_evt_t core_wait_event(uint32_t timeout, uint8_t accept_usb) {
     return g_ui_cmd.result == ERR_OK ? CORE_EVT_UI_OK : CORE_EVT_UI_CANCELLED;
   }
 
-  return CORE_EVT_NONE;
+  return core_wait_event(timeout, accept_usb);
 }

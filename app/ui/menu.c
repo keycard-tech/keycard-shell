@@ -248,6 +248,7 @@ app_err_t menu_run() {
 
     switch(ui_wait_keypress(portMAX_DELAY)) {
       case KEYPAD_KEY_CANCEL:
+        *g_ui_cmd.params.menu.selected = menu->entries[selected[depth]].label_id;
         return ERR_CANCEL;
       case KEYPAD_KEY_BACK:
         if (depth) {
