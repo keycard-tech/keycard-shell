@@ -88,7 +88,7 @@ const char *const i18n_english_strings[] = {
     // PIN input
     "Keycard PIN",
     "Wrong PIN",
-    "Set Keycard PIN",
+    "Create Keycard PIN",
     " remaining attempt(s)",
     "Repeat Keycard PIN",
     "New PIN saved",
@@ -96,13 +96,13 @@ const char *const i18n_english_strings[] = {
     // PUK input
     "Keycard PUK",
     "Wrong PUK",
-    "Set Keycard PUK",
+    "Create Keycard PUK",
     "Repeat Keycard PUK",
     "New PUK saved",
     "If your Keycard becomes blocked, you can enter your Personal Unlocking Code (PUK) to unblock it. Your PUK can be any 12 digit number. Don't forget to write it down.",
 
     // Duress input
-    "Set duress PIN",
+    "Create duress PIN",
     "Repeat duress PIN",
     "Setup duress PIN?",
     "A duress PIN unlocks a decoy wallet if you're forced to log in under pressure.\nIt looks real but keeps your actual funds and data hidden.\nLearn more: keycard.tech/duress_pin",
