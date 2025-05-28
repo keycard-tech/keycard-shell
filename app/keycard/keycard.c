@@ -450,7 +450,7 @@ void keycard_activate(keycard_t* kc) {
   ui_card_accepted();
 
   if (kc->sc.state != SC_READY) {
-    ui_card_transport_error();
+    ui_card_activation_error();
     return;
   }
 

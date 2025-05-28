@@ -133,6 +133,8 @@ const char *const i18n_english_strings[] = {
     // Info messages
     "Keycard disconnected",
     "Please remove and reinsert it",
+    "Can't read the card",
+    "Make sure it is a Keycard and the chip is facing up",
     "Not a Keycard",
     "Please replace with a Keycard",
     "Keycard may be fake",
@@ -154,6 +156,8 @@ const char *const i18n_english_strings[] = {
     "Missing",
     "Keycard paired",
     "Wrong pairing password",
+    "Can't sign this transaction",
+    "Key pair does not match or transaction type not supported",
 
     // DB Update
     "Downloading database",

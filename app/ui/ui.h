@@ -37,6 +37,7 @@ core_evt_t ui_dbinfo(const char* db_ver);
 
 void ui_card_inserted();
 void ui_card_removed();
+void ui_card_activation_error();
 void ui_card_transport_error();
 void ui_card_accepted();
 void ui_keycard_wrong_card();

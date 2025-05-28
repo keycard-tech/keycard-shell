@@ -604,7 +604,7 @@ static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint
   case ERR_OK:
     break;
   case ERR_MISMATCH:
-    ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_CARD_MSG), LSTR(INFO_WRONG_CARD_SUB), 0);
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_CANNOT_SIGN), LSTR(INFO_CANNOT_SIGN_SUB), 0);
     return ERR_MISMATCH;
   case ERR_DATA:
     ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);

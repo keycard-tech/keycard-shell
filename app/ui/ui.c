@@ -137,6 +137,10 @@ void ui_card_inserted() {
 void ui_card_removed() {
 }
 
+void ui_card_activation_error() {
+  ui_info(ICON_INFO_WARN, LSTR(INFO_CARD_FAIL_MSG), LSTR(INFO_CARD_FAIL_SUB), UI_INFO_UNDISMISSABLE);
+}
+
 void ui_card_transport_error() {
   ui_info(ICON_INFO_WARN, LSTR(INFO_CARD_ERROR_MSG), LSTR(INFO_CARD_ERROR_SUB), UI_INFO_UNDISMISSABLE);
 }
