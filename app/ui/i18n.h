@@ -131,6 +131,8 @@ typedef enum {
   // Factory reset
   FACTORY_RESET_TITLE,
   FACTORY_RESET_WARNING,
+  FACTORY_RESET_SUCCESS,
+  FACTORY_RESET_SUCCESS_SUB,
 
   // Info messages
   INFO_CARD_ERROR_MSG,

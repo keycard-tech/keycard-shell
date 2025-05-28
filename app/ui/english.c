@@ -127,6 +127,8 @@ const char *const i18n_english_strings[] = {
     // Factory reset
     "Card factory reset",
     "Factory reset will permanently erase all keys on your card.\nEnsure you back up your seed phrase. The device will restart after resetting.",
+    "Keycard reset complete",
+    "The key pair has been erased",
 
     // Info messages
     "Keycard disconnected",
