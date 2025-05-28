@@ -40,7 +40,7 @@ app_err_t qrout_display(const char* str, uint16_t max_y) {
 static void qrout_prepare_canvas(const char* title) {
   dialog_title_colors(title, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
   dialog_blank_color(TH_TITLE_HEIGHT, SCREEN_COLOR_WHITE);
-  dialog_nav_hints_colors(ICON_NONE, ICON_NAV_NEXT, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
+  dialog_nav_hints_colors(ICON_NAV_CANCEL, ICON_NAV_NEXT, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
 }
 
 static app_err_t qrout_display_single_ur(ur_out_t* ur) {
@@ -58,6 +58,7 @@ static app_err_t qrout_display_single_ur(ur_out_t* ur) {
     switch(ui_wait_keypress(pdMS_TO_TICKS(QR_DISPLAY_TIMEOUT))) {
     case KEYPAD_KEY_CANCEL:
     case KEYPAD_KEY_INVALID:
+    case KEYPAD_KEY_BACK:
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
     default:
@@ -80,6 +81,7 @@ static app_err_t qrout_display_animated_ur(ur_out_t* ur) {
 
     switch(ui_wait_keypress(QR_FRAME_DURATION)) {
     case KEYPAD_KEY_CANCEL:
+    case KEYPAD_KEY_BACK:
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
     default:
@@ -125,6 +127,7 @@ app_err_t qrout_display_address() {
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:
+    case KEYPAD_KEY_BACK:
     case KEYPAD_KEY_CONFIRM:
       *g_ui_cmd.params.address.index = UINT32_MAX;
       return ERR_OK;
@@ -185,6 +188,7 @@ app_err_t qrout_display_msg() {
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:
+    case KEYPAD_KEY_BACK:
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
     default:
