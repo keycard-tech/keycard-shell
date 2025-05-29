@@ -232,6 +232,12 @@ typedef enum {
   DEVICE_INFO_DB,
   DEVICE_INFO_SN,
 
+  // Prompts
+  PROMPT_MNEMONIC,
+  PROMPT_CARD_NAME,
+  PROMPT_PAIRING,
+  PROMPT_NEW_PAIRING,
+
   INVALID_STR = 0xffff
 } i18n_str_id_t;
 

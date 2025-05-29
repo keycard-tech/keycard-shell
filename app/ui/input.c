@@ -541,7 +541,7 @@ static void input_nav_hints(uint8_t len, bool allow_dismiss, bool valid) {
   }
 }
 
-static void input_render_text_field(const char* str, screen_area_t* field_area, int len, int suggestion_len) {
+static void input_render_text_field(const char* str, const char* prompt, screen_area_t* field_area, int len, int suggestion_len) {
   screen_text_ctx_t ctx = {
       .font = TH_FONT_TEXT,
       .fg = TH_TEXT_FIELD_FG,
@@ -558,13 +558,18 @@ static void input_render_text_field(const char* str, screen_area_t* field_area, 
       .x = ctx.x + (TH_TEXT_FIELD_CURSOR_MARGIN/2),
       .y = field_area->y,
       .width = TH_TEXT_FIELD_CURSOR_WIDTH,
-      .height = field_area->height
+      .height = ctx.font->yAdvance
   };
 
   screen_fill_area(&cursor_area, TH_TEXT_FIELD_CURSOR_COLOR);
   ctx.x += TH_TEXT_FIELD_CURSOR_MARGIN + TH_TEXT_FIELD_CURSOR_WIDTH;
   ctx.fg = TH_TEXT_FIELD_SUGGESTION_FG;
   screen_draw_chars(&ctx, &str[len], suggestion_len);
+
+  if (!len && !suggestion_len) {
+    ctx.x += TH_TEXT_FIELD_CURSOR_MARGIN;
+    screen_draw_string(&ctx, prompt);
+  }
 }
 
 
@@ -579,7 +584,7 @@ static void input_mnemonic_title(uint8_t i) {
   dialog_title(title);
 }
 
-static void input_render_editable_text_field(const char* str, int len, int suggestion_len) {
+static inline void input_render_editable_text_field(const char* str, const char* prompt, int len, int suggestion_len) {
   screen_area_t field_area = {
       .x = TH_TEXT_FIELD_MARGIN,
       .y = TH_TEXT_FIELD_TOP,
@@ -587,7 +592,7 @@ static void input_render_editable_text_field(const char* str, int len, int sugge
       .height = TH_TEXT_FIELD_HEIGHT
   };
 
-  input_render_text_field(str, &field_area, len, suggestion_len);
+  input_render_text_field(str, prompt, &field_area, len, suggestion_len);
 }
 
 static void input_mnemonic_render(const char* word, int len, uint16_t idx) {
@@ -600,7 +605,7 @@ static void input_mnemonic_render(const char* word, int len, uint16_t idx) {
     suggestion_len = 0;
   }
 
-  input_render_editable_text_field(word, len, suggestion_len);
+  input_render_editable_text_field(word, LSTR(PROMPT_MNEMONIC), len, suggestion_len);
 }
 
 static uint16_t input_mnemonic_lookup(char* word, int len, uint16_t idx) {
@@ -760,7 +765,7 @@ app_err_t input_string() {
   input_nav_hints(len, allow_dismiss, valid);
 
   while(1) {
-    input_render_editable_text_field(g_ui_cmd.params.input_string.out, len, 0);
+    input_render_editable_text_field(g_ui_cmd.params.input_string.out, g_ui_cmd.params.input_string.prompt, len, 0);
     char c = input_keyboard(&keyboard);
 
     if (c == KEY_RETURN) {

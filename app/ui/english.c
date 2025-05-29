@@ -227,4 +227,10 @@ const char *const i18n_english_strings[] = {
     "Firmware version",
     "Database version",
     "Serial number",
+
+    // Prompts
+    "Start typing to see suggestions",
+    "Enter new card name",
+    "Enter Keycard pairing pass",
+    "Enter new Keycard pairing pass",
 };

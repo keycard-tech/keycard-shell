@@ -7,7 +7,7 @@ void card_change_name() {
   char name[KEYCARD_NAME_MAX_LEN + 1];
   uint8_t len = KEYCARD_NAME_MAX_LEN;
 
-  if (ui_read_string(LSTR(MENU_CARD_NAME), name, &len, UI_READ_STRING_ALLOW_EMPTY) != CORE_EVT_UI_OK) {
+  if (ui_read_string(LSTR(MENU_CARD_NAME), LSTR(PROMPT_CARD_NAME), name, &len, UI_READ_STRING_ALLOW_EMPTY) != CORE_EVT_UI_OK) {
     return;
   }
 
@@ -64,7 +64,7 @@ void card_change_pairing() {
   SC_BUF(password, KEYCARD_PAIRING_PASS_MAX_LEN);
   uint8_t len = KEYCARD_PAIRING_PASS_MAX_LEN;
 
-  if (ui_read_string(LSTR(PAIRING_CREATE_TITLE), (char *) password, &len, 0) != CORE_EVT_UI_OK) {
+  if (ui_read_string(LSTR(PAIRING_CREATE_TITLE), LSTR(PROMPT_NEW_PAIRING), (char *) password, &len, 0) != CORE_EVT_UI_OK) {
     return;
   }
 

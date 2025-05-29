@@ -66,7 +66,7 @@ core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable);
 core_evt_t ui_read_duress_pin(uint8_t* out);
 core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable);
 core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t* len);
-core_evt_t ui_read_string(const char* title, char* out, uint8_t* len, ui_read_string_opt_t opts);
+core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint8_t* len, ui_read_string_opt_t opts);
 
 core_evt_t ui_read_mnemonic_len(uint32_t* len);
 core_evt_t ui_display_mnemonic(uint16_t* indexes, uint32_t len);

@@ -121,6 +121,7 @@ struct cmd_input_secret {
 
 struct cmd_input_string {
   const char* title;
+  const char* prompt;
   char* out;
   uint8_t* len;
   ui_read_string_opt_t options;
