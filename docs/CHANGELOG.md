@@ -1,5 +1,21 @@
 # Keycard Shell Dev Firmware
 
+## 0.9.15 (2025-05-29)
+
+* [usb] correctly handle command reception when busy
+* [usb] do not reset mainmenu upon receiving a command
+* [keypad] bump long press threshold from 100ms to 200ms
+* [ui] change keyboard layout and navigation
+* [ui] fix cursor positioning in text inputs
+* [ui] add prompt to empty text inputs
+* [ui] add cancel buttons to QR screens
+* [ui] better error message for BTC tx that cannot be signed
+* [ui] better error message when inserting a card in wrong orientation
+* [ui] add step indication to mnemonic backup
+* [ui] add feedback to factory reset flow
+* [ui] align colors to Figma design
+* [ui] use larger font size for titles
+
 ## 0.9.14 (2025-05-15)
 
 * [eth] add ABI database
