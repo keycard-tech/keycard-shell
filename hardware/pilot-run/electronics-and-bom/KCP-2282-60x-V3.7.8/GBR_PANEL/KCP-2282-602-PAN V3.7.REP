@@ -1,0 +1,452 @@
+*************************************************************
+FileName = KCP-2282-602-PAN V3.7.GBR
+AutoAperture = True
+*************************************************************
+Generating : Top (1)
+      File : KCP-2282-602-PAN V3.7.GTL
+
+    Adding Layer      : Top (1)
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D11
+    D12
+    D13
+    D14
+    D15
+    D16
+    D17
+    D18
+    D19
+    D20
+    D21
+    D22
+    D23
+    D24
+    D25
+    D26
+    D27
+    D28
+    D29
+    D30
+    D31
+    D32
+    D33
+    D34
+    D35
+    D36
+    D37
+    D38
+    D39
+    D40
+    D41
+    D42
+    D43
+    D44
+    D45
+    D46
+    D47
+    D48
+    D49
+    D50
+    D51
+    D52
+    D53
+    D54
+    D55
+    D56
+    D57
+    D58
+    D59
+    D60
+    D61
+    D62
+    D63
+    D64
+    D65
+    D66
+    D67
+    D68
+    D69
+    D70
+    D71
+    D72
+    D73
+    D74
+    D75
+    D76
+    D77
+    D78
+    D79
+    D80
+*************************************************************
+
+*************************************************************
+Generating : GND (2)
+      File : KCP-2282-602-PAN V3.7.G1
+
+    Adding Layer      : GND (2)
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D52
+    D76
+    D77
+    D79
+    D80
+*************************************************************
+
+*************************************************************
+Generating : VCC (3)
+      File : KCP-2282-602-PAN V3.7.G2
+
+    Adding Layer      : Mid-Layer 14
+
+    Adding Layer      : Multi-Layer
+
+    Adding Layer      : VCC (3)
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D49
+    D51
+    D52
+    D55
+    D76
+    D77
+    D79
+    D80
+    D81
+    D82
+    D83
+*************************************************************
+
+*************************************************************
+Generating : Bottom (4)
+      File : KCP-2282-602-PAN V3.7.GBL
+
+    Adding Layer      : Bottom (4)
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D11
+    D49
+    D50
+    D51
+    D52
+    D53
+    D55
+    D75
+    D76
+    D77
+    D78
+    D79
+    D80
+    D84
+    D85
+    D86
+    D87
+    D88
+    D89
+    D90
+    D91
+*************************************************************
+
+*************************************************************
+Generating : Top Silkscreen
+      File : KCP-2282-602-PAN V3.7.GTO
+
+    Adding Layer      : Top Silkscreen
+
+
+Used DCodes :
+    D10
+    D49
+    D50
+    D55
+    D92
+    D93
+    D94
+    D95
+    D96
+    D97
+    D98
+    D99
+*************************************************************
+
+*************************************************************
+Generating : Top Paste
+      File : KCP-2282-602-PAN V3.7.GTP
+
+    Adding Layer      : Top Paste
+
+    Adding Layer      : Top (1)
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D11
+    D47
+    D100
+    D101
+    D102
+    D103
+    D104
+    D105
+    D106
+    D107
+    D108
+    D109
+    D110
+    D111
+    D112
+    D113
+    D114
+    D115
+    D116
+    D117
+    D118
+    D119
+    D120
+    D121
+    D122
+    D123
+    D124
+    D125
+    D126
+    D127
+    D128
+    D129
+    D130
+    D131
+    D132
+    D133
+    D134
+    D135
+*************************************************************
+
+*************************************************************
+Generating : Top Solder
+      File : KCP-2282-602-PAN V3.7.GTS
+
+    Adding Layer      : Top Solder
+
+    Adding Layer      : Top (1)
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D47
+    D48
+    D75
+    D136
+    D137
+    D138
+    D139
+    D140
+    D141
+    D142
+    D143
+    D144
+    D145
+    D146
+    D147
+    D148
+    D149
+    D150
+    D151
+    D152
+    D153
+    D154
+    D155
+    D156
+    D157
+    D158
+    D159
+    D160
+    D161
+    D162
+    D163
+    D164
+    D165
+    D166
+    D167
+    D168
+    D169
+    D170
+    D171
+    D172
+    D173
+    D174
+    D175
+    D176
+    D177
+    D178
+    D179
+    D180
+    D181
+    D182
+    D183
+*************************************************************
+
+*************************************************************
+Generating : Bottom Silkscreen
+      File : KCP-2282-602-PAN V3.7.GBS
+
+    Adding Layer      : Bottom Silkscreen
+
+    Adding Layer      : Bottom (4)
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D75
+    D142
+    D178
+    D179
+    D180
+    D181
+    D182
+    D183
+    D184
+    D185
+    D186
+    D187
+    D188
+    D189
+    D190
+*************************************************************
+
+*************************************************************
+Generating : Bottom Paste
+      File : KCP-2282-602-PAN V3.7.GBP
+
+    Adding Layer      : Bottom Paste
+
+    Adding Layer      : Bottom (4)
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D11
+    D191
+    D192
+    D193
+*************************************************************
+
+*************************************************************
+Generating : Bottom Overlay
+      File : KCP-2282-602-PAN V3.7.GBO
+
+    Adding Layer      : Bottom Overlay
+
+
+Used DCodes :
+    D10
+    D49
+    D52
+    D93
+*************************************************************
+
+*************************************************************
+Generating : 02 - Outline
+      File : KCP-2282-602-PAN V3.7.GM2
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+    D93
+    D194
+*************************************************************
+
+*************************************************************
+Generating : 14 - Milling
+      File : KCP-2282-602-PAN V3.7.GM14
+
+    Adding Layer      : 14 - Milling
+
+
+Used DCodes :
+    D51
+*************************************************************
+
+*************************************************************
+Generating : 15 - VCut
+      File : KCP-2282-602-PAN V3.7.GM15
+
+    Adding Layer      : 15 - VCut
+
+
+Used DCodes :
+    D93
+    D195
+*************************************************************
+
+*************************************************************
+Generating : 17 - Panel Cart
+      File : KCP-2282-602-PAN V3.7.GM17
+
+    Adding Layer      : 17 - Panel Cart
+
+
+Used DCodes :
+    D10
+    D50
+    D82
+    D92
+    D93
+    D95
+    D195
+    D196
+    D197
+    D198
+    D199
+*************************************************************
+
+*************************************************************
+Generating : Drill Drawing
+      File : KCP-2282-602-PAN V3.7.GD1
+
+    Adding Drill Pair : Top (1)-Bottom (4)
+
+    Adding Layer      : Drill Drawing
+
+
+Used DCodes :
+    D52
+    D55
+    D197
+    D200
+    D201
+    D202
+*************************************************************
+
+*************************************************************
+Generating : Drill Guide
+      File : KCP-2282-602-PAN V3.7.GG1
+
+    Adding Drill Pair : Top (1)-Bottom (4)
+
+    Adding Layer      : Drill Guide
+
+
+Used DCodes :
+    D200
+*************************************************************
+

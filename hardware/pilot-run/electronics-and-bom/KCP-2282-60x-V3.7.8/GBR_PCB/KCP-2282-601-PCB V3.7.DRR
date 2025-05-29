@@ -1,0 +1,26 @@
+----------------------------------------------------------------------------------------------------------------------------------
+NCDrill File Report For: KCP-2282-601-PCB V3.7.PcbDoc   19/05/2025  10:50:09
+----------------------------------------------------------------------------------------------------------------------------------
+
+Layer Pair : Top (1) to Bottom (4)
+ASCII Plated RoundHoles File : KCP-2282-601-PCB V3.7-RoundHoles-Plated.TXT
+ASCII Non-Plated RoundHoles File : KCP-2282-601-PCB V3.7-RoundHoles-NonPlated.TXT
+ASCII Plated SlotHoles File : KCP-2282-601-PCB V3.7-SlotHoles-Plated.TXT
+ASCII Non-Plated SlotHoles File : KCP-2282-601-PCB V3.7-SlotHoles-NonPlated.TXT
+EIA File   : KCP-2282-601-PCB V3.7.DRL
+
+Tool       Hole Size               Hole Tolerance               Hole Type       Hole Count   Plated         Tool Travel
+----------------------------------------------------------------------------------------------------------------------------------
+T1      0.2mm (8mil)                                              Round             95        PTH        405.38mm (15.96inch)
+T2      0.3mm (12mil)                                             Round             438       PTH        1545.60mm (60.85inch)
+T3      0.6mm (24mil)                                             Slot              4         PTH        42.91mm (1.69inch)
+T4      1mm (39mil)                                               Round             2         PTH        21.50mm (0.85inch)
+T5      0.5mm (20mil)                                             Round             8         NPTH       60.30mm (2.37inch)
+T6      0.8mm (31mil)                                             Round             2         NPTH       1.80mm (0.07inch)
+T7      0.889mm (35mil)                                           Round             3         NPTH       7.21mm (0.28inch)
+T9      3.2mm (126mil)                                            Round             2         NPTH       83.54mm (3.29inch)
+T10     4mm (157mil)                                              Slot              1         NPTH       8.80mm (0.35inch)
+----------------------------------------------------------------------------------------------------------------------------------
+Totals                                                                              555
+
+Total Processing Time (hh:mm:ss) : 00:00:01
