@@ -135,19 +135,21 @@ void menu_render_entry(const menu_entry_t* entry, uint8_t is_selected, uint16_t 
 
   ctx.x = TH_MENU_LEFT_MARGIN;
   ctx.y = yOff;
+  ctx.bg = TH_COLOR_MENU_BG;
+
   menu_draw_func_t menu_draw;
+
+  dialog_begin_line(&ctx, TH_MENU_HEIGHT);
 
   if (is_selected) {
     ctx.bg = TH_COLOR_MENU_SELECTED_BG;
     ctx.fg = TH_COLOR_MENU_SELECTED_FG;
     menu_draw = menu_draw_inverted;
   } else {
-    ctx.bg = TH_COLOR_MENU_BG;
     ctx.fg = TH_COLOR_MENU_FG;
     menu_draw = (menu_draw_func_t) screen_draw_string;
   }
 
-  dialog_begin_line(&ctx, TH_MENU_HEIGHT);
   menu_draw(&ctx, LSTR(entry->label_id));
 
   ctx.x += TH_MENU_CONSTRAST_PADDING;

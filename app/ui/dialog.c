@@ -225,7 +225,7 @@ app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, u
   screen_text_ctx_t ctx = {
       .x = 0,
       .y = TH_NAV_PAGER_TOP,
-      .font = TH_FONT_TITLE,
+      .font = TH_FONT_TEXT,
       .bg = bg,
       .fg = fg,
   };
