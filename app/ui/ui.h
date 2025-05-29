@@ -21,7 +21,7 @@ typedef enum {
 
 core_evt_t ui_qrscan(ur_type_t type, void* out);
 core_evt_t ui_qrscan_tx(ur_type_t* type, void* out);
-core_evt_t ui_menu(const char* title, const menu_t* menu, i18n_str_id_t* selected, i18n_str_id_t marked, uint8_t allow_usb);
+core_evt_t ui_menu(const char* title, const menu_t* menu, i18n_str_id_t* selected, i18n_str_id_t marked, uint8_t allow_usb, ui_menu_opt_t opts, uint8_t current_page, uint8_t last_page);
 core_evt_t ui_display_eth_tx(const uint8_t* address, const txContent_t* tx);
 core_evt_t ui_display_btc_tx(const btc_tx_ctx_t* tx);
 core_evt_t ui_display_msg(addr_type_t addr_type, const uint8_t* address, const uint8_t* msg, uint32_t len);

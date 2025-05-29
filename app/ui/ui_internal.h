@@ -102,6 +102,9 @@ struct cmd_menu {
   const menu_t* menu;
   i18n_str_id_t* selected;
   i18n_str_id_t marked;
+  uint8_t current_page;
+  uint8_t last_page;
+  ui_menu_opt_t options;
 };
 
 struct cmd_qrscan {

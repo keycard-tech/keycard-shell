@@ -85,7 +85,7 @@ void settings_set_off_time() {
     break;
   }
 
-  if (ui_menu(LSTR(AUTO_OFF_TITLE), &menu_autooff, &selected, selected, 0) != CORE_EVT_UI_OK) {
+  if (ui_menu(LSTR(AUTO_OFF_TITLE), &menu_autooff, &selected, selected, 0, UI_MENU_NOCANCEL, 0, 0) != CORE_EVT_UI_OK) {
     return;
   }
 
@@ -115,7 +115,7 @@ void settings_set_off_time() {
 void settings_usb_onoff() {
   i18n_str_id_t selected = g_settings.enable_usb ? MENU_ON : MENU_OFF;
 
-  if (ui_menu(LSTR(USB_ENABLE_TITLE), &menu_onoff, &selected, selected, 0) != CORE_EVT_UI_OK) {
+  if (ui_menu(LSTR(USB_ENABLE_TITLE), &menu_onoff, &selected, selected, 0, UI_MENU_NOCANCEL, 0, 0) != CORE_EVT_UI_OK) {
     return;
   }
 

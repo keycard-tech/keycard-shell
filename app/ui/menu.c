@@ -206,6 +206,14 @@ void menu_render(const menu_t* menu, const char* title, uint8_t selected, enum m
 
   if (mode == MENU_ALL) {
     dialog_blank(yOff);
+
+    if (!(g_ui_cmd.params.menu.options & UI_MENU_NOCANCEL)) {
+      dialog_nav_hints(ICON_NAV_CANCEL, ICON_NONE);
+    }
+
+    if (g_ui_cmd.params.menu.options & UI_MENU_PAGED) {
+      dialog_pager(g_ui_cmd.params.menu.current_page, g_ui_cmd.params.menu.last_page, false);
+    }
   }
 }
 

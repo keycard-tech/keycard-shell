@@ -17,6 +17,11 @@ typedef struct _menu {
   menu_entry_t entries[];
 } menu_t;
 
+typedef enum {
+  UI_MENU_NOCANCEL = 1,
+  UI_MENU_PAGED = 2
+} ui_menu_opt_t;
+
 extern const menu_t menu_mainmenu;
 extern const menu_t menu_mnemonic;
 extern const menu_t menu_mnemonic_import;

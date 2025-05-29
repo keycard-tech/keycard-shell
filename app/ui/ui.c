@@ -23,12 +23,15 @@ core_evt_t ui_qrscan_tx(ur_type_t* type, void* out) {
   return res;
 }
 
-core_evt_t ui_menu(const char* title, const menu_t* menu, i18n_str_id_t* selected, i18n_str_id_t marked, uint8_t allow_usb) {
+core_evt_t ui_menu(const char* title, const menu_t* menu, i18n_str_id_t* selected, i18n_str_id_t marked, uint8_t allow_usb, ui_menu_opt_t opts, uint8_t current_page, uint8_t last_page) {
   g_ui_cmd.type = UI_CMD_MENU;
   g_ui_cmd.params.menu.title = title;
   g_ui_cmd.params.menu.menu = menu;
   g_ui_cmd.params.menu.selected = selected;
   g_ui_cmd.params.menu.marked = marked;
+  g_ui_cmd.params.menu.options = opts;
+  g_ui_cmd.params.menu.current_page = current_page;
+  g_ui_cmd.params.menu.last_page = last_page;
   return ui_signal_wait(allow_usb);
 }
 
@@ -193,7 +196,7 @@ core_evt_t ui_keycard_pairing_failed(const char* card_name, bool default_pass) {
   ui_info(ICON_INFO_ERROR, LSTR(INFO_WRONG_PAIRING), LSTR(INFO_TRY_AGAIN), 0);
 
   i18n_str_id_t selected = MENU_PAIR;
-  while (ui_menu(card_name, &menu_keycard_pair, &selected, -1, 0) != CORE_EVT_UI_OK) {
+  while (ui_menu(card_name, &menu_keycard_pair, &selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) != CORE_EVT_UI_OK) {
     ;
   }
 
@@ -233,7 +236,7 @@ core_evt_t ui_keycard_not_genuine() {
 
 core_evt_t ui_prompt_try_puk() {
   i18n_str_id_t selected = MENU_UNBLOCK_PUK;
-  while (ui_menu(LSTR(INFO_KEYCARD_BLOCKED), &menu_keycard_blocked, &selected, -1, 0) != CORE_EVT_UI_OK) {
+  while (ui_menu(LSTR(INFO_KEYCARD_BLOCKED), &menu_keycard_blocked, &selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) != CORE_EVT_UI_OK) {
     ;
   }
 
@@ -305,7 +308,7 @@ core_evt_t ui_read_mnemonic_len(uint32_t* len) {
   while(1) {
     const menu_t* word_menu;
 
-    if (ui_menu(LSTR(MNEMO_TITLE), &menu_mnemonic, &mode_selected, -1, 0) == CORE_EVT_UI_OK) {
+    if (ui_menu(LSTR(MNEMO_TITLE), &menu_mnemonic, &mode_selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) == CORE_EVT_UI_OK) {
       if (mode_selected == MENU_MNEMO_IMPORT) {
         ret = CORE_EVT_UI_OK;
         word_menu = &menu_mnemonic_import;
@@ -315,7 +318,7 @@ core_evt_t ui_read_mnemonic_len(uint32_t* len) {
       }
 
       i18n_str_id_t selected = MENU_MNEMO_12WORDS;
-      if (ui_menu(LSTR(mode_selected), word_menu, &selected, -1, 0) == CORE_EVT_UI_OK) {
+      if (ui_menu(LSTR(mode_selected), word_menu, &selected, -1, 0, 0, 0, 0) == CORE_EVT_UI_OK) {
         switch(selected) {
         case MENU_MNEMO_12WORDS:
           *len = 12;
@@ -407,7 +410,7 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
       i18n_str_id_t selected = choices->entries[0].label_id;
 
       i18n_set_strings(BIP39_WORDLIST_ENGLISH);
-      core_evt_t err = ui_menu(title, choices, &selected, -1, 0);
+      core_evt_t err = ui_menu(title, choices, &selected, -1, 0, UI_MENU_PAGED, i, (MNEMO_WORDS_TO_CONFIRM - 1));
       i18n_set_strings(tmp);
 
       if (err != CORE_EVT_UI_OK) {

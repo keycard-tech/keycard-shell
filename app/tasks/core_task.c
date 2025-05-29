@@ -96,7 +96,7 @@ void core_task_entry(void* pvParameters) {
   i18n_str_id_t selected = MENU_QRCODE;
 
   while(1) {
-    switch(ui_menu(core_get_device_name(), &menu_mainmenu, &selected, -1, 1)) {
+    switch(ui_menu(core_get_device_name(), &menu_mainmenu, &selected, -1, 1, UI_MENU_NOCANCEL, 0, 0)) {
     case CORE_EVT_USB_CMD:
       core_usb_run();
       break;
