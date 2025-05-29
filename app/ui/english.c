@@ -152,7 +152,7 @@ const char *const i18n_english_strings[] = {
     "Keep your recovery phrase safe",
     "Invalid phrase entered",
     "Try again",
-    "Write it down and keep it safe",
+    "Write down and keep safe",
     "Missing",
     "Keycard paired",
     "Wrong pairing password",
