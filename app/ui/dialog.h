@@ -25,7 +25,7 @@ app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg);
 app_err_t dialog_update_battery();
 app_err_t dialog_blank_color(uint16_t yOff, uint16_t bg);
 app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg, uint16_t fg);
-app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, uint16_t bg, uint16_t fg);
+app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, uint16_t bg, uint16_t fg, bool chevron);
 app_err_t dialog_wait_dismiss(ui_info_opt_t opts);
 
 app_err_t dialog_confirm_eth_tx();
@@ -48,8 +48,8 @@ static inline app_err_t dialog_nav_hints(icon_t left, icon_t right) {
   return dialog_nav_hints_colors(left, right, TH_COLOR_BG, TH_COLOR_FG);
 }
 
-static inline app_err_t dialog_pager(size_t page, size_t last_page) {
-  return dialog_pager_colors(page, last_page, 1, TH_COLOR_BG, TH_COLOR_FG);
+static inline app_err_t dialog_pager(size_t page, size_t last_page, bool chevron) {
+  return dialog_pager_colors(page, last_page, 1, TH_COLOR_BG, TH_COLOR_FG, chevron);
 }
 
 #endif

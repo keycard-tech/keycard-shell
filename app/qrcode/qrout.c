@@ -122,7 +122,7 @@ app_err_t qrout_display_address() {
 
   screen_draw_text(&ctx, (SCREEN_WIDTH - TH_QRCODE_ADDR_MARGIN), SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT, (uint8_t*) g_ui_cmd.params.address.address, strlen(g_ui_cmd.params.address.address), false, true);
 
-  dialog_pager_colors(*g_ui_cmd.params.address.index, UINT32_MAX, 0, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
+  dialog_pager_colors(*g_ui_cmd.params.address.index, UINT32_MAX, 0, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK, true);
 
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {

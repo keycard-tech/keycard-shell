@@ -66,7 +66,7 @@ app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
 
 static app_err_t dialog_wait_paged(size_t* page, size_t last_page) {
   dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_NEXT);
-  dialog_pager(*page, last_page);
+  dialog_pager(*page, last_page, true);
 
   switch(ui_wait_keypress(pdMS_TO_TICKS(TX_CONFIRM_TIMEOUT))) {
   case KEYPAD_KEY_LEFT:
@@ -195,11 +195,14 @@ app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg, uint16
   return ERR_OK;
 }
 
-app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, uint16_t bg, uint16_t fg) {
+app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, uint16_t bg, uint16_t fg, bool chevron) {
   uint8_t page_indicator[(UINT32_STRING_LEN * 2) + 4];
   size_t total_len = 0;
-  page_indicator[total_len++] = SYM_LEFT_CHEVRON;
-  page_indicator[total_len++] = ' ';
+
+  if (chevron) {
+    page_indicator[total_len++] = SYM_LEFT_CHEVRON;
+    page_indicator[total_len++] = ' ';
+  }
 
   uint8_t page_str[UINT32_STRING_LEN];
   uint8_t* p = u32toa(page + base_page, page_str, UINT32_STRING_LEN);
@@ -218,8 +221,11 @@ app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, u
     total_len += p_len;
   }
 
-  page_indicator[total_len++] = ' ';
-  page_indicator[total_len++] = SYM_RIGHT_CHEVRON;
+  if (chevron) {
+    page_indicator[total_len++] = ' ';
+    page_indicator[total_len++] = SYM_RIGHT_CHEVRON;
+  }
+
   page_indicator[total_len] = '\0';
 
   screen_text_ctx_t ctx = {

@@ -717,7 +717,7 @@ app_err_t input_display_mnemonic() {
     dialog_nav_hints(ICON_NAV_CANCEL, page == last_page ? ICON_NAV_NEXT : ICON_NONE);
 
     if (last_page > 0) {
-      dialog_pager(page, last_page);
+      dialog_pager(page, last_page, true);
     }
 
     switch(ui_wait_keypress(pdMS_TO_TICKS(MNEMONIC_BACKUP_REFRESH_MS))) {
