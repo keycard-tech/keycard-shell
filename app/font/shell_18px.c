@@ -227,4 +227,4 @@ const glyph_t shell_18px_glyphs[] = {
   { 1496,   10,    4,   12,    0,    6}, // 0x7e '~'
 };
 
-const font_t shell_18px = { shell_18px_bitmaps, shell_18px_glyphs, 0x20, 0x7e, 7, 24 };
+const font_t shell_18px = { shell_18px_bitmaps, shell_18px_glyphs, 0x20, 0x7e, 3, 20 };
