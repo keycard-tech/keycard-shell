@@ -555,13 +555,14 @@ static void input_render_text_field(const char* str, screen_area_t* field_area, 
   screen_draw_chars(&ctx, str, len);
 
   screen_area_t cursor_area = {
-      .x = ctx.x,
+      .x = ctx.x + (TH_TEXT_FIELD_CURSOR_MARGIN/2),
       .y = field_area->y,
       .width = TH_TEXT_FIELD_CURSOR_WIDTH,
       .height = field_area->height
   };
 
   screen_fill_area(&cursor_area, TH_TEXT_FIELD_CURSOR_COLOR);
+  ctx.x += TH_TEXT_FIELD_CURSOR_MARGIN + TH_TEXT_FIELD_CURSOR_WIDTH;
   ctx.fg = TH_TEXT_FIELD_SUGGESTION_FG;
   screen_draw_chars(&ctx, &str[len], suggestion_len);
 }
