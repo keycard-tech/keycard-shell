@@ -1,7 +1,0 @@
-DRC Rules Export File for PCB: C:\Users\dlebrun\Altyor\P2282-STATUS-KPRO - Documents\General\PROJECT DOCUMENTS\06-R&D\03-Electronic engineering\01-Engineering\KCP-2282-60x-V3.7.8\KCP-2282-601-PCB V3.7.PcbDoc
-RuleKind=Width|RuleName=Width|Scope=Board|Minimum=5.91
-RuleKind=SolderMaskExpansion|RuleName=SolderMaskExpansion|Scope=Board|Minimum=2.95
-RuleKind=ShortCircuit|RuleName=ShortCircuit|Scope=Board|Allowed=0
-RuleKind=Clearance|RuleName=Clearance_DEGRAP|Scope=Board|Minimum=19.69
-RuleKind=Clearance|RuleName=Clearance|Scope=Board|Minimum=4.92
-RuleKind=Clearance|RuleName=Clearance_RF|Scope=Board|Minimum=7.28

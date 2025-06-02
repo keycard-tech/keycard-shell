@@ -1,8 +1,0 @@
-DRC Rules Export File for PCB: C:\Users\dlebrun\Altyor\P2282-STATUS-KPRO - Documents\General\PROJECT DOCUMENTS\06-R&D\03-Electronic engineering\01-Engineering\KCP-2282-60x-V3.7.7\KCP-2282-602-PAN V3.7.PcbDoc
-RuleKind=ShortCircuit|RuleName=ShortCircuit_Pad|Scope=Board|Allowed=1
-RuleKind=MinimumAnnularRing|RuleName=MinimumAnnularRing|Scope=Board|Minimum=8.00
-RuleKind=Clearance|RuleName=Polygone_Clearance|Scope=Board|Minimum=8.00
-RuleKind=ShortCircuit|RuleName=ShortCircuit|Scope=Board|Allowed=0
-RuleKind=Clearance|RuleName=Clearance|Scope=Board|Minimum=5.00
-RuleKind=Width|RuleName=Width|Scope=Board|Minimum=3.94
-RuleKind=SolderMaskExpansion|RuleName=SolderMaskExpansion|Scope=Board|Minimum=3.00
