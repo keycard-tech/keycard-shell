@@ -148,7 +148,9 @@ static app_err_t updater_prompt_version() {
 
 void updater_database_run() {
   const char* addr = "https://keycard.tech/update";
-  ui_display_msg_qr(LSTR(MENU_DB_UPDATE), addr, &addr[8]);
+  if (ui_display_msg_qr(LSTR(MENU_DB_UPDATE), addr, &addr[8]) != CORE_EVT_UI_OK) {
+    return;
+  }
 
   data_t data;
 

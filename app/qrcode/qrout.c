@@ -56,9 +56,10 @@ static app_err_t qrout_display_single_ur(ur_out_t* ur) {
 
   while(1) {
     switch(ui_wait_keypress(pdMS_TO_TICKS(QR_DISPLAY_TIMEOUT))) {
+    case KEYPAD_KEY_BACK:
     case KEYPAD_KEY_CANCEL:
     case KEYPAD_KEY_INVALID:
-    case KEYPAD_KEY_BACK:
+      return ERR_CANCEL;
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
     default:
@@ -82,6 +83,7 @@ static app_err_t qrout_display_animated_ur(ur_out_t* ur) {
     switch(ui_wait_keypress(QR_FRAME_DURATION)) {
     case KEYPAD_KEY_CANCEL:
     case KEYPAD_KEY_BACK:
+      return ERR_CANCEL;
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
     default:
@@ -189,6 +191,8 @@ app_err_t qrout_display_msg() {
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:
     case KEYPAD_KEY_BACK:
+    case KEYPAD_KEY_INVALID:
+      return ERR_CANCEL;
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
     default:

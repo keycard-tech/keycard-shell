@@ -20,7 +20,9 @@ void device_auth_run() {
   }
 
   const char* addr = "https://keycard.tech/verify";
-  ui_display_msg_qr(LSTR(DEV_AUTH_TITLE), addr, &addr[8]);
+  if (ui_display_msg_qr(LSTR(DEV_AUTH_TITLE), addr, &addr[8]) != CORE_EVT_UI_OK) {
+    return;
+  }
 
   struct dev_auth auth;
 
@@ -71,7 +73,9 @@ void device_auth_run() {
 
   cbor_encode_dev_auth(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &auth, &g_core.data.sig.cbor_len);
 
-  ui_display_ur_qr(LSTR(QR_DEVAUTH_TITLE), g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, DEV_AUTH);
+  if (ui_display_ur_qr(LSTR(QR_DEVAUTH_TITLE), g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, DEV_AUTH) != CORE_EVT_UI_OK) {
+    return;
+  }
 
   sha256_Init(&sha256);
   sha256_Update(&sha256, uid, HAL_DEVICE_UID_LEN);
