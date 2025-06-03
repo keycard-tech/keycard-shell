@@ -669,8 +669,6 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
 app_err_t input_mnemonic() {
   dialog_blank(TH_TITLE_HEIGHT);
 
-  memset(g_ui_cmd.params.mnemo.indexes, 0xff, (sizeof(uint16_t) * g_ui_cmd.params.mnemo.len));
-
   int i = 0;
 
   while (i < g_ui_cmd.params.mnemo.len) {

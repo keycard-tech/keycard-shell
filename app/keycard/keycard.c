@@ -289,7 +289,13 @@ static app_err_t keycard_read_mnemonic(keycard_t* kc, uint16_t indexes[BIP39_MAX
 
     err = ui_backup_mnemonic(indexes, *len);
   } else {
+read_mnemonic:
     err = ui_read_mnemonic(indexes, *len);
+
+    if ((err == CORE_EVT_UI_OK) && !mnemonic_check(indexes, *len)) {
+      ui_bad_seed();
+      goto read_mnemonic;
+    }
   }
 
   return err == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
@@ -301,20 +307,17 @@ static app_err_t keycard_init_keys(keycard_t* kc) {
   app_err_t err;
 
   do {
+    memset(indexes, 0xff, (sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN));
     err = keycard_read_mnemonic(kc, indexes, &len);
 
     if (err == ERR_TXRX) {
       return ERR_TXRX;
-    } else if (err == ERR_OK) {
-      if (!mnemonic_check(indexes, len)) {
-        ui_bad_seed();
-        err = ERR_RETRY;
-      }
     }
   } while(err != ERR_OK);
 
   SC_BUF(seed, 64);
   keycard_generate_seed(indexes, len, seed);
+  memset(indexes, 0xff, (sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN));
 
   if(keycard_cmd_load_seed(kc, seed) != ERR_OK) {
     return ERR_TXRX;
