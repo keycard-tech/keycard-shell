@@ -299,16 +299,23 @@ app_err_t updater_usb_db_upgrade(apdu_t* apdu) {
   g_core.data.msg.received += len;
   ui_update_progress(LSTR(DB_UPDATE_TITLE), updater_progress());
 
+
   if (g_core.data.msg.received > g_core.data.msg.len) {
     core_usb_err_sw(apdu, 0x6a, 0x80);
     return ERR_DATA;
   } else if (g_core.data.msg.received == g_core.data.msg.len) {
-    if (updater_database_update(g_mem_heap, g_core.data.msg.len, true) != ERR_OK) {
-      core_usb_err_sw(apdu, 0x6a, 0x80);
-      return ERR_DATA;
-    } else {
+    app_err_t err = updater_database_update(g_mem_heap, g_core.data.msg.len, true);
+
+    switch(err) {
+    case ERR_OK:
       core_usb_err_sw(apdu, 0x90, 0x00);
       return ERR_OK;
+    case ERR_CANCEL:
+      core_usb_err_sw(apdu, 0x69, 0x82);
+      return ERR_CANCEL;
+    default:
+      core_usb_err_sw(apdu, 0x6a, 0x80);
+      return ERR_DATA;
     }
   }
 
