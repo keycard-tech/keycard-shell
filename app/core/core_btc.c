@@ -242,6 +242,9 @@ static app_err_t core_btc_hash_segwit(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
     }
     sha256_Update(&sha256, P2PKH_SCRIPT_POST, sizeof(P2PKH_SCRIPT_POST));
   } else {
+    uint8_t csize[sizeof(uint64_t)];
+    compactsize_write(csize, tx_ctx->input_data[index].witness_script_len);
+    sha256_Update(&sha256, csize, compactsize_length(tx_ctx->input_data[index].witness_script_len));
     sha256_Update(&sha256, tx_ctx->input_data[index].witness_script, tx_ctx->input_data[index].witness_script_len);
   }
 
