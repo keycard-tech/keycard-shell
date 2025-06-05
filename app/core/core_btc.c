@@ -84,9 +84,11 @@ static void core_btc_psbt_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index, psbt_r
     tx_ctx->input_data[index].witness = true;
     break;
   case PSBT_IN_BIP32_DERIVATION:
-    memcpy(&tx_ctx->input_data[index].master_fingerprint, rec->val, sizeof(uint32_t));
-    tx_ctx->input_data[index].bip32_path = &rec->val[4];
-    tx_ctx->input_data[index].bip32_path_len = rec->val_size - 4;
+    if (tx_ctx->input_data[index].master_fingerprint != tx_ctx->mfp) {
+      memcpy(&tx_ctx->input_data[index].master_fingerprint, rec->val, sizeof(uint32_t));
+      tx_ctx->input_data[index].bip32_path = &rec->val[4];
+      tx_ctx->input_data[index].bip32_path_len = rec->val_size - 4;
+    }
     break;
   case PSBT_IN_SIGHASH_TYPE:
     memcpy(&tx_ctx->input_data[index].sighash_flag, rec->val, sizeof(uint32_t));
@@ -473,18 +475,10 @@ static inline bool btc_validate_tx_hash(uint8_t* tx, size_t tx_len, uint8_t expe
 }
 
 static app_err_t core_btc_validate(btc_tx_ctx_t* tx_ctx) {
-  uint32_t mfp;
-
-  if (core_get_fingerprint(g_core.bip44_path, 0, &mfp) != ERR_OK) {
-    return ERR_CRYPTO;
-  }
-
-  mfp = rev32(mfp);
-
   bool can_sign_something = false;
 
   for (int i = 0; i < tx_ctx->input_count; i++) {
-    if (tx_ctx->input_data[i].master_fingerprint == mfp) {
+    if (tx_ctx->input_data[i].master_fingerprint == tx_ctx->mfp) {
       tx_ctx->input_data[i].can_sign = true;
       can_sign_something = true;
     } else {
@@ -592,6 +586,14 @@ static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint
   memset(tx_ctx, 0, sizeof(btc_tx_ctx_t));
   *psbt_out = &g_camera_fb[1][(sizeof(btc_tx_ctx_t) + 3) & ~0x3];
   size_t psbt_out_len = CAMERA_FB_SIZE - ((sizeof(btc_tx_ctx_t) + 3) & ~0x3);
+
+  uint32_t mfp;
+
+  if (core_get_fingerprint(g_core.bip44_path, 0, &mfp) != ERR_OK) {
+    return ERR_CRYPTO;
+  }
+
+  tx_ctx->mfp = rev32(mfp);
 
   psbt_t psbt;
   psbt_init(&psbt, (uint8_t*) psbt_in, psbt_len);

@@ -62,6 +62,7 @@ typedef struct {
   uint8_t hash_sequence[SHA256_DIGEST_LENGTH];
   uint8_t hash_outputs[SHA256_DIGEST_LENGTH];
 
+  uint32_t mfp;
   app_err_t error;
 } btc_tx_ctx_t;
 
