@@ -23,6 +23,9 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_CONNECT_BITCOIN:
     core_display_public_bitcoin_mainnet();
     break;
+  case MENU_CONNECT_BITCOIN_MULTISIG:
+    core_display_public_bitcoin_multisig();
+    break;
   case MENU_CONNECT_BITCOIN_TESTNET:
     core_display_public_bitcoin_testnet();
     break;

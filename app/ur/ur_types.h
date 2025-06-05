@@ -237,12 +237,18 @@ struct crypto_multi_accounts {
 struct crypto_output_r {
 	union {
 		struct hd_key crypto_output_script_hash_m;
+		struct hd_key crypto_output_script_hash_wpkh_m;
+		struct hd_key crypto_output_script_hash_wsh_m;
+		struct hd_key crypto_output_witness_script_hash_m;
 		struct hd_key crypto_output_public_key_hash_m;
 		struct hd_key crypto_output_witness_public_key_hash_m;
 		struct hd_key crypto_output_taproot_m;
 	};
 	enum {
 		crypto_output_script_hash_m_c,
+		crypto_output_script_hash_wpkh_m_c,
+		crypto_output_script_hash_wsh_m_c,
+		crypto_output_witness_script_hash_m_c,
 		crypto_output_public_key_hash_m_c,
 		crypto_output_witness_public_key_hash_m_c,
 		crypto_output_taproot_m_c,

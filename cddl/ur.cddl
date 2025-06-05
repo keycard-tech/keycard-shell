@@ -128,12 +128,18 @@ key-exp = #6.303(hd-key)
 
 crypto-output = (
     script-hash /               ; sh
+    script-hash-wpkh /          ; sh(wpkh)
+    script-hash-wsh /           ; sh(wsh)
+    witness-script-hash /       ; wsh
     public-key-hash /           ; pkh
     witness-public-key-hash /   ; wpkh
     taproot                     ; tr
 )
 
-script-hash = #6.400(witness-public-key-hash)
+script-hash = #6.400(key-exp)
+script-hash-wpkh = #6.400(witness-public-key-hash)
+script-hash-wsh = #6.400(witness-script-hash)
+witness-script-hash= #6.401(key-exp)
 public-key-hash = #6.403(key-exp)
 witness-public-key-hash = #6.404(key-exp)
 taproot = #6.409(key-exp)

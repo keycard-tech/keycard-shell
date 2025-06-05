@@ -45,8 +45,11 @@ static bool encode_repeated_crypto_multi_accounts_device(zcbor_state_t *state, c
 static bool encode_repeated_crypto_multi_accounts_device_id(zcbor_state_t *state, const struct crypto_multi_accounts_device_id *input);
 static bool encode_repeated_crypto_multi_accounts_version(zcbor_state_t *state, const struct crypto_multi_accounts_version *input);
 static bool encode_key_exp(zcbor_state_t *state, const struct hd_key *input);
-static bool encode_witness_public_key_hash(zcbor_state_t *state, const struct hd_key *input);
 static bool encode_script_hash(zcbor_state_t *state, const struct hd_key *input);
+static bool encode_witness_public_key_hash(zcbor_state_t *state, const struct hd_key *input);
+static bool encode_script_hash_wpkh(zcbor_state_t *state, const struct hd_key *input);
+static bool encode_witness_script_hash(zcbor_state_t *state, const struct hd_key *input);
+static bool encode_script_hash_wsh(zcbor_state_t *state, const struct hd_key *input);
 static bool encode_public_key_hash(zcbor_state_t *state, const struct hd_key *input);
 static bool encode_taproot(zcbor_state_t *state, const struct hd_key *input);
 static bool encode_crypto_output(zcbor_state_t *state, const struct crypto_output_r *input);
@@ -607,6 +610,24 @@ static bool encode_key_exp(
 	return tmp_result;
 }
 
+static bool encode_script_hash(
+		zcbor_state_t *state, const struct hd_key *input)
+{
+	zcbor_log("%s\r\n", __func__);
+
+	bool tmp_result = ((zcbor_tag_put(state, 400)
+	&& (encode_key_exp(state, (&(*input))))));
+
+	if (!tmp_result) {
+		zcbor_trace_file(state);
+		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
+	} else {
+		zcbor_log("%s success\r\n", __func__);
+	}
+
+	return tmp_result;
+}
+
 static bool encode_witness_public_key_hash(
 		zcbor_state_t *state, const struct hd_key *input)
 {
@@ -625,13 +646,49 @@ static bool encode_witness_public_key_hash(
 	return tmp_result;
 }
 
-static bool encode_script_hash(
+static bool encode_script_hash_wpkh(
 		zcbor_state_t *state, const struct hd_key *input)
 {
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result = ((zcbor_tag_put(state, 400)
 	&& (encode_witness_public_key_hash(state, (&(*input))))));
+
+	if (!tmp_result) {
+		zcbor_trace_file(state);
+		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
+	} else {
+		zcbor_log("%s success\r\n", __func__);
+	}
+
+	return tmp_result;
+}
+
+static bool encode_witness_script_hash(
+		zcbor_state_t *state, const struct hd_key *input)
+{
+	zcbor_log("%s\r\n", __func__);
+
+	bool tmp_result = ((zcbor_tag_put(state, 401)
+	&& (encode_key_exp(state, (&(*input))))));
+
+	if (!tmp_result) {
+		zcbor_trace_file(state);
+		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
+	} else {
+		zcbor_log("%s success\r\n", __func__);
+	}
+
+	return tmp_result;
+}
+
+static bool encode_script_hash_wsh(
+		zcbor_state_t *state, const struct hd_key *input)
+{
+	zcbor_log("%s\r\n", __func__);
+
+	bool tmp_result = ((zcbor_tag_put(state, 400)
+	&& (encode_witness_script_hash(state, (&(*input))))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);
@@ -685,10 +742,13 @@ static bool encode_crypto_output(
 	zcbor_log("%s\r\n", __func__);
 
 	bool tmp_result = (((((*input).crypto_output_choice == crypto_output_script_hash_m_c) ? ((encode_script_hash(state, (&(*input).crypto_output_script_hash_m))))
+	: (((*input).crypto_output_choice == crypto_output_script_hash_wpkh_m_c) ? ((encode_script_hash_wpkh(state, (&(*input).crypto_output_script_hash_wpkh_m))))
+	: (((*input).crypto_output_choice == crypto_output_script_hash_wsh_m_c) ? ((encode_script_hash_wsh(state, (&(*input).crypto_output_script_hash_wsh_m))))
+	: (((*input).crypto_output_choice == crypto_output_witness_script_hash_m_c) ? ((encode_witness_script_hash(state, (&(*input).crypto_output_witness_script_hash_m))))
 	: (((*input).crypto_output_choice == crypto_output_public_key_hash_m_c) ? ((encode_public_key_hash(state, (&(*input).crypto_output_public_key_hash_m))))
 	: (((*input).crypto_output_choice == crypto_output_witness_public_key_hash_m_c) ? ((encode_witness_public_key_hash(state, (&(*input).crypto_output_witness_public_key_hash_m))))
 	: (((*input).crypto_output_choice == crypto_output_taproot_m_c) ? ((encode_taproot(state, (&(*input).crypto_output_taproot_m))))
-	: false))))));
+	: false)))))))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);

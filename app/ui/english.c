@@ -11,8 +11,9 @@ const char *const i18n_english_strings[] = {
     // Connect menu
     "Ethereum",
     "Bitcoin",
-    "Sparrow Testnet",
-    "Multichain",
+    "Bitcoin MultiSig",
+    "Bitcoin Testnet",
+    "Multiple blockchains",
 
     // Addresses menu
     "Ethereum",
