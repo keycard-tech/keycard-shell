@@ -263,14 +263,14 @@ static app_err_t keycard_authenticate(keycard_t* kc, uint8_t* pin, uint8_t* cach
   return keycard_unblock(kc, pinStatus.puk_retries);
 }
 
-static void keycard_generate_seed(const uint16_t* indexes, uint32_t len, uint8_t* seed) {
+static void keycard_generate_seed(const uint16_t* indexes, uint32_t len, const char* passphrase, uint8_t* seed) {
   char mnemonic[BIP39_MAX_MNEMONIC_LEN * 10];
   mnemonic_from_indexes(mnemonic, indexes, len);
-  mnemonic_to_seed(mnemonic, "\0", seed, NULL);
+  mnemonic_to_seed(mnemonic, passphrase, seed, NULL);
   memset(mnemonic, 0, sizeof(mnemonic));
 }
 
-static app_err_t keycard_read_mnemonic(keycard_t* kc, uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], uint32_t* len) {
+static app_err_t keycard_read_mnemonic(keycard_t* kc, uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], uint32_t* len, char* passphrase) {
   core_evt_t err = ui_read_mnemonic_len(len);
 
   if (err == CORE_EVT_UI_CANCELLED) {
@@ -304,11 +304,13 @@ read_mnemonic:
 static app_err_t keycard_init_keys(keycard_t* kc) {
   uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
   uint32_t len;
+  char passphrase[KEYCARD_BIP39_PASS_MAX_LEN];
   app_err_t err;
 
   do {
+    memset(passphrase, 0x00, KEYCARD_BIP39_PASS_MAX_LEN);
     memset(indexes, 0xff, (sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN));
-    err = keycard_read_mnemonic(kc, indexes, &len);
+    err = keycard_read_mnemonic(kc, indexes, &len, passphrase);
 
     if (err == ERR_TXRX) {
       return ERR_TXRX;
@@ -316,7 +318,7 @@ static app_err_t keycard_init_keys(keycard_t* kc) {
   } while(err != ERR_OK);
 
   SC_BUF(seed, 64);
-  keycard_generate_seed(indexes, len, seed);
+  keycard_generate_seed(indexes, len, passphrase, seed);
   memset(indexes, 0xff, (sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN));
 
   if(keycard_cmd_load_seed(kc, seed) != ERR_OK) {
