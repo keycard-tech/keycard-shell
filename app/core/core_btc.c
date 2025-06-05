@@ -393,22 +393,26 @@ static void core_btc_sign_handler(psbt_elem_t* rec) {
   }
 }
 
-static inline bool core_btc_is_valid_script(uint8_t* hash, uint8_t* redeem_script, size_t redeem_script_len) {
-  uint8_t digest[RIPEMD160_DIGEST_LENGTH];
-  hash160(redeem_script, redeem_script_len, digest);
-
-  return memcmp(digest, hash, RIPEMD160_DIGEST_LENGTH) == 0;
-}
-
 static inline bool core_btc_is_valid_redeem_script(uint8_t* script, size_t script_len, uint8_t* redeem_script, size_t redeem_script_len) {
-  return script_is_p2sh(script, script_len) &&
-         core_btc_is_valid_script(&script[2], redeem_script, redeem_script_len);
+  if (script_is_p2sh(script, script_len)) {
+    uint8_t digest[RIPEMD160_DIGEST_LENGTH];
+    hash160(redeem_script, redeem_script_len, digest);
+
+    return memcmp(digest, &script[2], RIPEMD160_DIGEST_LENGTH) == 0;
+  }
+
+  return false;
 }
 
 static inline bool core_btc_is_valid_witness_script(uint8_t* script, size_t script_len, uint8_t* witness_script, size_t witness_script_len) {
-  return script_is_p2wsh(script, script_len) &&
-         (witness_script != NULL) &&
-         core_btc_is_valid_script(&script[2], witness_script, witness_script_len);
+  if (script_is_p2wsh(script, script_len) && (witness_script != NULL)) {
+    uint8_t digest[SHA256_DIGEST_LENGTH];
+    sha256_Raw(witness_script, witness_script_len, digest);
+
+    return memcmp(digest, &script[2], SHA256_DIGEST_LENGTH) == 0;
+  }
+
+  return false;
 }
 
 static inline bool btc_is_segwit(uint8_t* tx) {
