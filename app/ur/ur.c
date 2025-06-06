@@ -38,10 +38,11 @@ static app_err_t ur_process_simple(ur_t* ur, uint8_t* parts, uint8_t* part_data,
   }
 
   memcpy(&parts[desc_idx * part_len], part_data, part_len);
-  ur->part_desc[desc_idx] = (1 << desc_idx);
-  ur->part_mask |= (1 << desc_idx);
+  ur_desc_t tmp = ((ur_desc_t) 1) << desc_idx;
+  ur->part_desc[desc_idx] = tmp;
+  ur->part_mask |= tmp;
 
-  uint32_t part_count = __builtin_popcount(ur->part_mask);
+  uint32_t part_count = UR_DESC_POPCOUNT(ur->part_mask);
   ur->percent_done = (part_count * 100) / part->ur_part_seqLen;
 
   if (part->ur_part_seqLen == part_count) {
@@ -130,7 +131,7 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
     return ur_process_simple(ur, parts, part_data, part_len, part.ur_part_seqNum - 1, &part);
   }
 
-  uint32_t indexes = fountain_part_indexes(part.ur_part_seqNum, ur->crc, part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases);
+  ur_desc_t indexes = fountain_part_indexes(part.ur_part_seqNum, ur->crc, part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases);
   if ((indexes & (~ur->part_mask)) == 0) {
     return ERR_NEED_MORE_DATA;
   }
@@ -140,8 +141,8 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
 
   // reduce new part by existing
   while(desc_idx < UR_PART_DESC_COUNT) {
-    if (__builtin_popcount(indexes) == 1) {
-      int target_idx = __builtin_ctz(indexes);
+    if (UR_DESC_POPCOUNT(indexes) == 1) {
+      int target_idx = UR_DESC_CTZ(indexes);
       if (ur_process_simple(ur, parts, part_data, part_len, target_idx, &part) == ERR_OK) {
         return ERR_OK;
       } else {
@@ -172,12 +173,12 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
   // all buffers are full, but we don't give up yet. If one of the buffered parts is more mixed
   // then the current part, we overwrite it since parts easier to reduce are better for us
   if (store_idx == -1) {
-    int worst_count = __builtin_popcount(indexes);
+    int worst_count = UR_DESC_POPCOUNT(indexes);
 
     desc_idx = part.ur_part_seqLen;
 
     while(desc_idx < UR_PART_DESC_COUNT) {
-      int count = __builtin_popcount(ur->part_desc[desc_idx]);
+      int count = UR_DESC_POPCOUNT(ur->part_desc[desc_idx]);
 
       if (count > worst_count) {
         store_idx = desc_idx;
@@ -214,8 +215,8 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
         target_part[i] ^= part_data[i];
       }
 
-      if (__builtin_popcount(ur->part_desc[desc_idx]) == 1) {
-        int target_idx = __builtin_ctz(ur->part_desc[desc_idx]);
+      if (UR_DESC_POPCOUNT(ur->part_desc[desc_idx]) == 1) {
+        int target_idx = UR_DESC_CTZ(ur->part_desc[desc_idx]);
         if (ur_process_simple(ur, parts, target_part, part_len, target_idx, &part) == ERR_OK) {
           return ERR_OK;
         }
@@ -305,7 +306,7 @@ app_err_t ur_encode_next(ur_out_t* ur, char* out, size_t max_len) {
     memcpy(part_buf, &ur->data[off], copy_len);
   } else {
     ur->part.ur_part_seqNum++;
-    uint32_t indexes = fountain_part_indexes(ur->part.ur_part_seqNum, ur->part.ur_part_checksum, ur->part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases);
+    ur_desc_t indexes = fountain_part_indexes(ur->part.ur_part_seqNum, ur->part.ur_part_checksum, ur->part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases);
 
     for (int part_num = 0; part_num < ur->part.ur_part_seqLen; part_num++) {
       if (indexes & 1) {

@@ -5,8 +5,18 @@
 #include "error.h"
 #include "ur_decode.h"
 
-#define UR_MAX_PART_COUNT 32
+#define UR_MAX_PART_COUNT 64
 #define UR_PART_DESC_COUNT (UR_MAX_PART_COUNT + 16)
+
+#if UR_MAX_PART_COUNT > 32
+typedef uint64_t ur_desc_t;
+#define UR_DESC_POPCOUNT(__X__) __builtin_popcountll(__X__)
+#define UR_DESC_CTZ(__X__) __builtin_ctzll(__X__)
+#else
+typedef uint32_t ur_desc_t;
+#define UR_DESC_POPCOUNT(__X__) __builtin_popcount(__X__)
+#define UR_DESC_CTZ(__X__) __builtin_ctz(__X__)
+#endif
 
 typedef enum {
   BYTES = 0,
@@ -28,8 +38,8 @@ typedef enum {
 typedef struct {
   ur_type_t type;
   uint32_t crc;
-  uint32_t part_desc[UR_PART_DESC_COUNT];
-  uint32_t part_mask;
+  ur_desc_t part_desc[UR_PART_DESC_COUNT];
+  ur_desc_t part_mask;
   double sampler_probs[UR_MAX_PART_COUNT];
   int sampler_aliases[UR_MAX_PART_COUNT];
   size_t data_max_len;
