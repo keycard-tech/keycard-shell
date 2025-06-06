@@ -1,5 +1,13 @@
 # Keycard Shell Dev Firmware
 
+## 0.9.16 (2025-06-06)
+
+* [btc] fix hashing of WSH
+* [btc] fix validation of Witness Scripts
+* [btc] add support for MultiSig wallets
+* [ui] improved experience when a wrong mnemonic is entered
+* [ui] fix navigation in update ERC20 dialogs
+
 ## 0.9.15 (2025-05-29)
 
 * [usb] correctly handle command reception when busy
