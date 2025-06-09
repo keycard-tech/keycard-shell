@@ -673,7 +673,6 @@ void core_btc_psbt_qr_run(struct zcbor_string* qr_request) {
   qr_out.value = psbt_out;
   qr_out.len = out_len;
 
-  //TODO: this can be optimized by simply prepending the cbor header to the psbt
   cbor_encode_psbt(g_mem_heap, MEM_HEAP_SIZE, &qr_out, &out_len);
   ui_display_ur_qr(LSTR(QR_SCAN_WALLET_TITLE), g_mem_heap, out_len, CRYPTO_PSBT);
 }

@@ -7,8 +7,8 @@
 #include "mem.h"
 #include "bitcoin/psbt.h"
 
-#define BTC_MAX_INPUTS 20
-#define BTC_MAX_OUTPUTS 20
+#define BTC_MAX_INPUTS 40
+#define BTC_MAX_OUTPUTS 40
 
 #define SIGHASH_MASK 0x1f
 

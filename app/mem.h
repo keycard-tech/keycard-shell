@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "hal.h"
 
-#define MEM_HEAP_SIZE (64 * 1024)
+#define MEM_HEAP_SIZE (128 * 1024)
 
 #define BOOTCMD_SWITCH_FW 0x83578007
 
