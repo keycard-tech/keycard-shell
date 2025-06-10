@@ -184,8 +184,9 @@ const char *const i18n_english_strings[] = {
     // Mnemonic input
     "Add key pair",
     "12 words",
-    "18 words",
+    "12 words + pass",
     "24 words",
+    "24 words + pass",
     "Import recovery phrase",
     "Generate new key pair",
     "Enter word #",
@@ -196,6 +197,7 @@ const char *const i18n_english_strings[] = {
     "View phrase again",
     "Confirm recovery phrase",
     "You will now be asked to confirm your recovery phrase. You can go back and write it down if you haven't already.",
+    "Enter passphrase",
 
     // Device verification
     "Verify device",

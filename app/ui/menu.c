@@ -70,18 +70,12 @@ const menu_t menu_mnemonic = {
   }
 };
 
-const menu_t menu_mnemonic_import = {
-  3, {
+const menu_t menu_mnemonic_length = {
+  4, {
     {MENU_MNEMO_12WORDS, NULL},
-    {MENU_MNEMO_18WORDS, NULL},
+    {MENU_MNEMO_12WORDS_PASS, NULL},
     {MENU_MNEMO_24WORDS, NULL},
-  }
-};
-
-const menu_t menu_mnemonic_generate = {
-  2, {
-    {MENU_MNEMO_12WORDS, NULL},
-    {MENU_MNEMO_24WORDS, NULL},
+    {MENU_MNEMO_24WORDS_PASS, NULL},
   }
 };
 

@@ -302,33 +302,37 @@ void ui_bad_seed() {
   ui_info(ICON_INFO_ERROR, LSTR(INFO_KEYCARD_BAD_SEED_MSG), LSTR(INFO_TRY_AGAIN), 0);
 }
 
-core_evt_t ui_read_mnemonic_len(uint32_t* len) {
+core_evt_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
   i18n_str_id_t mode_selected = MENU_MNEMO_IMPORT;
   core_evt_t ret;
 
   while(1) {
-    const menu_t* word_menu;
 
     if (ui_menu(LSTR(MNEMO_TITLE), &menu_mnemonic, &mode_selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) == CORE_EVT_UI_OK) {
       if (mode_selected == MENU_MNEMO_IMPORT) {
         ret = CORE_EVT_UI_OK;
-        word_menu = &menu_mnemonic_import;
       } else {
         ret = CORE_EVT_UI_CANCELLED;
-        word_menu = &menu_mnemonic_generate;
       }
 
       i18n_str_id_t selected = MENU_MNEMO_12WORDS;
-      if (ui_menu(LSTR(mode_selected), word_menu, &selected, -1, 0, 0, 0, 0) == CORE_EVT_UI_OK) {
+      if (ui_menu(LSTR(mode_selected), &menu_mnemonic_length, &selected, -1, 0, 0, 0, 0) == CORE_EVT_UI_OK) {
         switch(selected) {
         case MENU_MNEMO_12WORDS:
+          *has_pass = false;
           *len = 12;
           break;
-        case MENU_MNEMO_18WORDS:
-          *len = 18;
+        case MENU_MNEMO_12WORDS_PASS:
+          *has_pass = true;
+          *len = 12;
           break;
         case MENU_MNEMO_24WORDS:
+          *has_pass = false;
+          *len = 24;
+          break;
+        case MENU_MNEMO_24WORDS_PASS:
         default:
+          *has_pass = true;
           *len = 24;
           break;
         }

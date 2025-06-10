@@ -271,7 +271,8 @@ static void keycard_generate_seed(const uint16_t* indexes, uint32_t len, const c
 }
 
 static app_err_t keycard_read_mnemonic(keycard_t* kc, uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], uint32_t* len, char* passphrase) {
-  core_evt_t err = ui_read_mnemonic_len(len);
+  bool has_pass;
+  core_evt_t err = ui_read_mnemonic_len(len, &has_pass);
 
   if (err == CORE_EVT_UI_CANCELLED) {
     if (keycard_cmd_generate_mnemonic(kc, *len) != ERR_OK) {
@@ -298,7 +299,16 @@ read_mnemonic:
     }
   }
 
-  return err == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
+  if (err == CORE_EVT_UI_OK) {
+    if (has_pass) {
+      uint8_t len = KEYCARD_BIP39_PASS_MAX_LEN;;
+      ui_read_string(LSTR(MNEMO_PASSPHRASE_TITLE), LSTR(MNEMO_PASSPHRASE_TITLE), passphrase, &len, UI_READ_STRING_UNDISMISSABLE);
+    }
+
+    return ERR_OK;
+  } else {
+    return ERR_CANCEL;
+  }
 }
 
 static app_err_t keycard_init_keys(keycard_t* kc) {
