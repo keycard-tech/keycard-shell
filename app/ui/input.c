@@ -22,6 +22,8 @@
 
 #define WORD_MAX_LEN 8
 
+#define KEYBOARD_MNEMONIC_INITIAL_MASK 0x37FFFFF
+
 #define KEYBOARD_ROW0_LEN 9
 #define KEYBOARD_ROW1_LEN 9
 #define KEYBOARD_ROW2_LEN 8
@@ -42,6 +44,8 @@
 #define KEYBOARD_ALPHA_SPACE_IDX 28
 
 #define KEYBOARD_CHAR(k, c) ((k->layout == KEYBOARD_UPPERCASE ? 'A' : 'a') + c)
+#define KEYBOARD_ENABLED(k, c) ((k->keymask & (1 << c)) >> c)
+
 #define KEYBOARD_LINE_WIDTH(__LEN__) ((__LEN__ * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)
 
 #define MNEMONIC_BACKUP_REFRESH_MS 60000
@@ -54,6 +58,7 @@ typedef enum {
 } keyboard_layout_t;
 
 typedef struct {
+  uint32_t keymask;
   uint8_t idx;
   keyboard_layout_t layout;
 } keyboard_state_t;
@@ -66,11 +71,6 @@ typedef struct {
 } secret_spec_t;
 
 const char KEYPAD_TO_DIGIT[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', DIG_INV, '0', DIG_INV, DIG_INV, DIG_INV};
-const char KEYBOARD_QWERTY_MAP[] = {
-    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
-    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
-    'z', 'x', 'c', 'v', 'b', 'n', 'm'
-};
 
 const secret_spec_t SECRET_SPEC[] = {
     {PIN_INPUT_TITLE, PIN_CREATE_TITLE, PIN_LABEL_REPEAT, PIN_LEN},
@@ -201,11 +201,18 @@ app_err_t input_secret() {
   }
 }
 
-static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, bool selected) {
+static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, bool selected, bool enabled) {
   screen_area_t key_area = { .x = x, .y = y, .width = TH_KEYBOARD_KEY_SIZE, .height = TH_KEYBOARD_KEY_SIZE };
   screen_text_ctx_t ctx = { .font = TH_FONT_TEXT };
 
   const glyph_t* glyph = screen_lookup_glyph(ctx.font, (uint32_t) c);
+
+  /* TODO: uncomment when navigation is ready
+  if (!enabled) {
+    ctx.bg = TH_KEYBOARD_KEY_DISABLED_BG;
+    ctx.fg = TH_KEYBOARD_KEY_DISABLED_FG;
+  } else
+  */
 
   if (selected) {
     ctx.bg = TH_KEYBOARD_KEY_SELECTED_BG;
@@ -261,7 +268,7 @@ static inline void input_keyboard_render_spacebar(uint16_t x, uint16_t y, uint16
   x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(__LEN__)) / 2; \
 \
   while (i < __LIMIT__) { \
-    input_keyboard_render_key(__GLYPH__, x, y, keyboard->idx == i); \
+    input_keyboard_render_key(__GLYPH__, x, y, keyboard->idx == i, KEYBOARD_ENABLED(keyboard, i)); \
     x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN; \
     i++; \
   } \
@@ -280,9 +287,9 @@ static void input_keyboard_render_alpha(keyboard_state_t* keyboard) {
 
   if (keyboard->layout != KEYBOARD_MNEMONIC) {
     x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN)) / 2;
-    input_keyboard_render_key(SYM_HASHTAG, x, y, keyboard->idx == i++);
+    input_keyboard_render_key(SYM_HASHTAG, x, y, keyboard->idx == i++, true);
     x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
-    input_keyboard_render_key((keyboard->layout == KEYBOARD_LOWERCASE) ? SYM_UP_ARROW : SYM_DOWN_ARROW, x, y, keyboard->idx == i++);
+    input_keyboard_render_key((keyboard->layout == KEYBOARD_LOWERCASE) ? SYM_UP_ARROW : SYM_DOWN_ARROW, x, y, keyboard->idx == i++, true);
     x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
     input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_ROW2_LEN) - KEYBOARD_LINE_WIDTH(2) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
   }
@@ -299,7 +306,7 @@ static void input_keyboard_render_numeric(keyboard_state_t* keyboard) {
   x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_NUMERIC_LINE_LEN)) / 2;
   y += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
 
-  input_keyboard_render_key('a', x, y, keyboard->idx == i++);
+  input_keyboard_render_key('a', x, y, keyboard->idx == i++, true);
   x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
 
   input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_NUMERIC_LINE_LEN) - KEYBOARD_LINE_WIDTH(1) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
@@ -608,24 +615,52 @@ static void input_mnemonic_render(const char* word, int len, uint16_t idx) {
   input_render_editable_text_field(word, LSTR(PROMPT_MNEMONIC), len, suggestion_len);
 }
 
-static uint16_t input_mnemonic_lookup(char* word, int len, uint16_t idx) {
+static void input_mnemonic_lookup(char* word, int len, uint16_t* idx, uint32_t* keymask, uint16_t *more_res) {
+  *more_res = 0;
+  *keymask = 0;
+
   if (len == 0) {
-    return UINT16_MAX;
+    *keymask = KEYBOARD_MNEMONIC_INITIAL_MASK;
+    *idx = UINT16_MAX;
+    return;
   }
 
-  while (idx < BIP39_WORD_COUNT) {
-    int cmp = strncmp(word, BIP39_WORDLIST_ENGLISH[idx], len);
+  uint16_t i = (*idx == UINT16_MAX) ? 0 : *idx;
+
+  while (i < BIP39_WORD_COUNT) {
+    int cmp = strncmp(word, BIP39_WORDLIST_ENGLISH[i], len);
 
     if (cmp == 0) {
-      return idx;
+      *idx = i;
+
+      if (BIP39_WORDLIST_ENGLISH[i][len] != '\0') {
+        *keymask |= (1 << (BIP39_WORDLIST_ENGLISH[i][len] - 'a'));
+      }
+
+      while(i < BIP39_WORD_COUNT) {
+        if (strncmp(word, BIP39_WORDLIST_ENGLISH[i], len) != 0) {
+          return;
+        }
+
+        if (BIP39_WORDLIST_ENGLISH[i][len] != '\0') {
+          *keymask |= (1 << (BIP39_WORDLIST_ENGLISH[i][len] - 'a'));
+        }
+
+        (*more_res)++;
+
+        i++;
+      }
+      return;
     } else if (cmp < 0) {
-      return UINT16_MAX;
+      *idx = UINT16_MAX;
+      return;
     } else {
-      idx++;
+      i++;
     }
   }
 
-  return UINT16_MAX;
+  *idx = UINT16_MAX;
+  return;
 }
 
 static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
@@ -635,8 +670,10 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
   char word[WORD_MAX_LEN];
   int len = 0;
   keyboard_state_t keyboard;
+  keyboard.keymask = KEYBOARD_MNEMONIC_INITIAL_MASK;
   keyboard.idx = 0;
   keyboard.layout = KEYBOARD_MNEMONIC;
+  uint16_t more_res = 0;
   bool valid = (*idx != UINT16_MAX);
 
   input_nav_hints(len, true, valid);
@@ -652,13 +689,14 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
     } else if (c == KEY_BACKSPACE) {
       if (len > 0) {
         len--;
-        *idx = input_mnemonic_lookup(word, len, 0);
+        *idx = 0;
+        input_mnemonic_lookup(word, len, idx, &keyboard.keymask, &more_res);
       }
     } else if (c == KEY_ESCAPE) {
       return ERR_CANCEL;
     } else if (len < WORD_MAX_LEN) {
       word[len++] = c;
-      *idx = input_mnemonic_lookup(word, len, ((*idx) == UINT16_MAX ? 0 : *idx));
+      input_mnemonic_lookup(word, len, idx, &keyboard.keymask, &more_res);
     }
 
     valid = (*idx != UINT16_MAX);
@@ -754,6 +792,7 @@ app_err_t input_string() {
 
   int len = 0;
   keyboard_state_t keyboard;
+  keyboard.keymask = UINT32_MAX;
   keyboard.idx = 0;
   keyboard.layout = KEYBOARD_LOWERCASE;
   bool allow_dismiss = !(g_ui_cmd.params.input_string.options & UI_READ_STRING_UNDISMISSABLE);
