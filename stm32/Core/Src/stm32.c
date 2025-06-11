@@ -121,6 +121,7 @@ hal_err_t hal_init() {
 
   MX_ICACHE_Init();
 
+  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0);
   __HAL_TIM_ENABLE_IT(&htim2, TIM_IT_UPDATE);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
 
