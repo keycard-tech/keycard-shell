@@ -195,12 +195,12 @@ app_err_t keycard_cmd_export_key(keycard_t* kc, uint8_t export_type, uint8_t* pa
   return securechannel_send_apdu(&kc->sc, &kc->ch, &kc->apdu, path, len);
 }
 
-app_err_t keycard_cmd_sign(keycard_t* kc, uint8_t* path, uint8_t path_len, uint8_t* hash, uint8_t prefer_recoverable) {
+app_err_t keycard_cmd_sign(keycard_t* kc, uint8_t* path, uint8_t path_len, uint8_t* hash) {
   APDU_RESET(&kc->apdu);
   APDU_CLA(&kc->apdu) = 0x80;
   APDU_INS(&kc->apdu) = 0xc0;
   APDU_P1(&kc->apdu) = 1;
-  APDU_P2(&kc->apdu) = prefer_recoverable;
+  APDU_P2(&kc->apdu) = 0;
 
   SC_BUF(data, 72);
 

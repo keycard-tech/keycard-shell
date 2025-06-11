@@ -48,7 +48,7 @@ static app_err_t core_eth_sign(keycard_t* kc, uint8_t* out) {
   uint8_t digest[SHA3_256_DIGEST_LENGTH];
   keccak_Final(&g_core.hash_ctx, digest);
 
-  if ((keycard_cmd_sign(kc, g_core.bip44_path, g_core.bip44_path_len, digest, 1) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+  if ((keycard_cmd_sign(kc, g_core.bip44_path, g_core.bip44_path_len, digest) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
     return ERR_CRYPTO;
   }
 

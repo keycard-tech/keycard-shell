@@ -351,7 +351,7 @@ static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
 
   g_core.bip44_path_len = tx_ctx->input_data[index].bip32_path_len;
 
-  if ((keycard_cmd_sign(kc, g_core.bip44_path, g_core.bip44_path_len, digest, 0) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+  if ((keycard_cmd_sign(kc, g_core.bip44_path, g_core.bip44_path_len, digest) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
     return ERR_CRYPTO;
   }
 
@@ -709,7 +709,7 @@ app_err_t core_btc_sign_msg_run(const uint8_t* msg, size_t msg_len, uint32_t exp
 
   keycard_t *kc = &g_core.keycard;
 
-  if ((keycard_cmd_sign(kc, g_core.bip44_path, g_core.bip44_path_len, digest, 1) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+  if ((keycard_cmd_sign(kc, g_core.bip44_path, g_core.bip44_path_len, digest) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
     ui_card_transport_error();
     return ERR_CRYPTO;
   }
