@@ -212,14 +212,10 @@ static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, boo
 
   const glyph_t* glyph = screen_lookup_glyph(ctx.font, (uint32_t) c);
 
-  /* TODO: uncomment when navigation is ready
   if (!enabled) {
-    ctx.bg = TH_KEYBOARD_KEY_DISABLED_BG;
+    ctx.bg = selected ? TH_KEYBOARD_KEY_DISABLED_SELECTED_BG : TH_KEYBOARD_KEY_DISABLED_BG;
     ctx.fg = TH_KEYBOARD_KEY_DISABLED_FG;
-  } else
-  */
-
-  if (selected) {
+  } else if (selected) {
     ctx.bg = TH_KEYBOARD_KEY_SELECTED_BG;
     ctx.fg = TH_KEYBOARD_KEY_SELECTED_FG;
   } else {
@@ -271,14 +267,10 @@ static inline void input_keyboard_render_suggestion(uint16_t x, uint16_t y, uint
   screen_area_t key_area = { .x = x, .y = y, .width = TH_KEYBOARD_KEY_SUGGESTION_SIZE, .height = TH_KEYBOARD_KEY_SIZE };
   screen_text_ctx_t ctx = { .font = TH_FONT_TEXT };
 
-  /* TODO: uncomment when navigation is ready
   if (!enabled) {
-    ctx.bg = TH_KEYBOARD_KEY_DISABLED_BG;
+    ctx.bg = selected ? TH_KEYBOARD_KEY_DISABLED_SELECTED_BG : TH_KEYBOARD_KEY_DISABLED_BG;
     ctx.fg = TH_KEYBOARD_KEY_DISABLED_FG;
-  } else
-  */
-
-  if (selected) {
+  } else if (selected) {
     ctx.bg = TH_KEYBOARD_KEY_SELECTED_BG;
     ctx.fg = TH_KEYBOARD_KEY_SELECTED_FG;
   } else {
@@ -324,11 +316,11 @@ static void input_keyboard_render_alpha(keyboard_state_t* keyboard, uint16_t sug
     y = TH_KEYBOARD_TOP;
     x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN)) / 2;
 
-    input_keyboard_render_suggestion(x, y, suggestion_idx + 1, keyboard->idx == i++, (keyboard->keymask & (1 << KEYBOARD_MNEMONIC_SUGGESTION1_IDX)) >> KEYBOARD_MNEMONIC_SUGGESTION1_IDX);
+    input_keyboard_render_suggestion(x, y, suggestion_idx + 1, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION1_IDX));
     x += TH_KEYBOARD_KEY_SUGGESTION_SIZE + TH_KEYBOARD_KEY_MARGIN;
-    input_keyboard_render_suggestion(x, y, suggestion_idx + 2, keyboard->idx == i++, (keyboard->keymask & (1 << KEYBOARD_MNEMONIC_SUGGESTION2_IDX)) >> KEYBOARD_MNEMONIC_SUGGESTION2_IDX);
+    input_keyboard_render_suggestion(x, y, suggestion_idx + 2, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION2_IDX));
     x += TH_KEYBOARD_KEY_SUGGESTION_SIZE + TH_KEYBOARD_KEY_MARGIN;
-    input_keyboard_render_suggestion(x, y, suggestion_idx + 3, keyboard->idx == i++, (keyboard->keymask & (1 << KEYBOARD_MNEMONIC_SUGGESTION3_IDX)) >> KEYBOARD_MNEMONIC_SUGGESTION3_IDX);
+    input_keyboard_render_suggestion(x, y, suggestion_idx + 3, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION3_IDX));
   } else {
     x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN)) / 2;
     input_keyboard_render_key(SYM_HASHTAG, x, y, keyboard->idx == i++, true);
@@ -733,7 +725,7 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
       }
     } else if (c == KEY_ACK) {
       uint16_t idx_off = 1 + (keyboard.idx - KEYBOARD_MNEMONIC_SUGGESTION1_IDX);
-      if (valid && (idx_off <= more_res)) {
+      if (KEYBOARD_ENABLED((&keyboard), keyboard.idx)) {
         *idx += idx_off;
         return ERR_OK;
       }
@@ -745,7 +737,7 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
       }
     } else if (c == KEY_ESCAPE) {
       return ERR_CANCEL;
-    } else if (len < WORD_MAX_LEN) {
+    } else if ((len < WORD_MAX_LEN) && KEYBOARD_ENABLED((&keyboard), keyboard.idx)) {
       word[len++] = c;
       input_mnemonic_lookup(word, len, idx, &keyboard.keymask, &more_res);
     }
