@@ -1,5 +1,12 @@
 # Keycard Shell Dev Firmware
 
+## 0.9.17 (2025-06-13)
+
+* [qr] allow scanning QR with up to 64 segments
+* [ui] add ability to enter BIP39 passphrase
+* [ui] add multiple suggestions to BIP39 mnemonic entry
+* [ui] in BIP39 mnemonic entry disable letters that do not bring to valid words
+
 ## 0.9.16 (2025-06-06)
 
 * [btc] fix hashing of WSH
