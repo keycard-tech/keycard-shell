@@ -355,67 +355,177 @@ static void input_keyboard_blank() {
   screen_fill_area(&keyboard_area, TH_COLOR_BG);
 }
 
+static void input_keyboard_navigate_up(keyboard_state_t* keyboard) {
+  if (keyboard->idx >= KEYBOARD_ROW2_LIMIT) {
+    keyboard->idx = KEYBOARD_ROW1_LIMIT + ((keyboard->idx - KEYBOARD_ROW2_LIMIT) * ((keyboard->layout == KEYBOARD_MNEMONIC) ? 3 : 1));
+  } else if (keyboard->idx >= KEYBOARD_ROW1_LIMIT) {
+    keyboard->idx -= KEYBOARD_ROW1_LEN;
+  } else if (keyboard->idx >= KEYBOARD_ROW0_LIMIT) {
+    keyboard->idx -= KEYBOARD_ROW0_LEN;
+  } else {
+    keyboard->idx = KEYBOARD_ROW2_LIMIT + ((keyboard->layout == KEYBOARD_MNEMONIC) ? (keyboard->idx / 3) : APP_MIN(keyboard->idx, (KEYBOARD_ROW_EXTRA_LEN - 1)));
+  }
+}
+
+static void input_keyboard_navigate_down(keyboard_state_t* keyboard) {
+  if (keyboard->idx < KEYBOARD_ROW0_LIMIT) {
+    keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW0_LEN, (KEYBOARD_ROW1_LIMIT - 1));
+  } else if (keyboard->idx < KEYBOARD_ROW1_LIMIT) {
+    keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW1_LEN, (KEYBOARD_ROW2_LIMIT - 1));
+  } else if (keyboard->idx < KEYBOARD_ROW2_LIMIT) {
+    keyboard->idx = KEYBOARD_ROW2_LIMIT + ((keyboard->layout == KEYBOARD_MNEMONIC) ? ((keyboard->idx - KEYBOARD_ROW1_LIMIT) / 3) : APP_MIN((keyboard->idx - KEYBOARD_ROW1_LIMIT), (KEYBOARD_ROW_EXTRA_LEN - 1)));
+  } else {
+    keyboard->idx = (keyboard->idx - KEYBOARD_ROW2_LIMIT) * ((keyboard->layout == KEYBOARD_MNEMONIC) ? 3 : 1);
+  }
+}
+
+static bool input_keyboard_can_go_left(uint8_t idx) {
+  return
+      (idx > KEYBOARD_ROW2_LIMIT) ||
+      (idx > KEYBOARD_ROW1_LIMIT && (idx < KEYBOARD_ROW2_LIMIT)) ||
+      ((idx > KEYBOARD_ROW0_LIMIT) && (idx < KEYBOARD_ROW1_LIMIT)) ||
+      ((idx > 0) && (idx < KEYBOARD_ROW0_LIMIT));
+}
+
+static void input_keyboard_navigate_left(keyboard_state_t* keyboard) {
+  if (input_keyboard_can_go_left(keyboard->idx)) {
+    keyboard->idx--;
+  } else {
+    if (keyboard->idx == KEYBOARD_ROW0_LIMIT) {
+      keyboard->idx = KEYBOARD_ROW1_LIMIT - 1;
+    } else if (keyboard->idx == KEYBOARD_ROW1_LIMIT) {
+      keyboard->idx = KEYBOARD_ROW2_LIMIT - 1;
+    } else if (keyboard->idx == KEYBOARD_ROW2_LIMIT) {
+      keyboard->idx = KEYBOARD_ROW_EXTRA_LIMIT - 1;
+    } else {
+      keyboard->idx = KEYBOARD_ROW0_LIMIT - 1;
+    }
+  }
+}
+
+static bool input_keyboard_can_go_right(uint8_t idx) {
+  return
+      (idx < (KEYBOARD_ROW0_LIMIT - 1)) ||
+      ((idx < (KEYBOARD_ROW1_LIMIT - 1)) && (idx >= KEYBOARD_ROW0_LIMIT)) ||
+      ((idx < (KEYBOARD_ROW2_LIMIT - 1)) && (idx >= KEYBOARD_ROW1_LIMIT)) ||
+      ((idx < (KEYBOARD_ROW_EXTRA_LIMIT - 1)) && (idx >= KEYBOARD_ROW2_LIMIT));
+}
+
+static void input_keyboard_navigate_right(keyboard_state_t* keyboard) {
+  if (input_keyboard_can_go_right(keyboard->idx)) {
+    keyboard->idx++;
+  } else {
+    if (keyboard->idx == KEYBOARD_ROW1_LIMIT - 1) {
+      keyboard->idx = KEYBOARD_ROW0_LIMIT;
+    } else if (keyboard->idx == KEYBOARD_ROW2_LIMIT - 1) {
+      keyboard->idx = KEYBOARD_ROW1_LIMIT;
+    } else if (keyboard->idx == KEYBOARD_ROW_EXTRA_LIMIT - 1) {
+      keyboard->idx = KEYBOARD_ROW2_LIMIT;
+    } else {
+      keyboard->idx = 0;
+    }
+  }
+}
+
+static bool input_keyboard_find_active_in_row(keyboard_state_t* keyboard) {
+  if (KEYBOARD_ENABLED(keyboard, keyboard->idx)) {
+    return true;
+  }
+
+  uint8_t off = 0;
+  bool has_left = true;
+  bool has_right = true;
+
+  while(has_left || has_right) {
+    if (has_left && input_keyboard_can_go_left(keyboard->idx - off)) {
+      if (KEYBOARD_ENABLED(keyboard, (keyboard->idx - (off + 1)))) {
+        keyboard->idx -= (off + 1);
+        return true;
+      }
+    } else {
+      has_left = false;
+    }
+
+    if (has_right && input_keyboard_can_go_right(keyboard->idx + off)) {
+      if (KEYBOARD_ENABLED(keyboard, (keyboard->idx + (off + 1)))) {
+        keyboard->idx += (off + 1);
+        return true;
+      }
+    } else {
+      has_right = false;
+    }
+
+    off++;
+  }
+
+  return false;
+}
+
+static void input_keyboard_find_active_top(keyboard_state_t* keyboard) {
+  uint8_t idx = keyboard->idx;
+  uint8_t count = 4;
+  do {
+    input_keyboard_navigate_up(keyboard);
+    if (input_keyboard_find_active_in_row(keyboard)) {
+      return;
+    }
+  } while(count--);
+
+  keyboard->idx = idx;
+}
+
+static void input_keyboard_find_active_bottom(keyboard_state_t* keyboard) {
+  uint8_t idx = keyboard->idx;
+  uint8_t count = 4;
+  do {
+    input_keyboard_navigate_down(keyboard);
+    if (input_keyboard_find_active_in_row(keyboard)) {
+      return;
+    }
+  } while(count--);
+
+  keyboard->idx = idx;
+}
+
+static void input_keyboard_find_active_left(keyboard_state_t* keyboard) {
+  uint8_t idx = keyboard->idx;
+
+  do {
+    input_keyboard_navigate_left(keyboard);
+
+    if (KEYBOARD_ENABLED(keyboard, keyboard->idx)) {
+      return;
+    }
+  } while(keyboard->idx != idx);
+}
+
+static void input_keyboard_find_active_right(keyboard_state_t* keyboard) {
+  uint8_t idx = keyboard->idx;
+
+  do {
+    input_keyboard_navigate_right(keyboard);
+
+    if (KEYBOARD_ENABLED(keyboard, keyboard->idx)) {
+      return;
+    }
+  } while(keyboard->idx != idx);
+}
+
 static char input_keyboard_navigate_alpha(keyboard_state_t* keyboard) {
   char ret = KEY_NONE;
 
   switch(ui_wait_keypress(portMAX_DELAY)) {
   case KEYPAD_KEY_UP:
-    if (keyboard->idx >= KEYBOARD_ROW2_LIMIT) {
-      keyboard->idx = KEYBOARD_ROW1_LIMIT + ((keyboard->idx - KEYBOARD_ROW2_LIMIT) * ((keyboard->layout == KEYBOARD_MNEMONIC) ? 3 : 1));
-    } else if (keyboard->idx >= KEYBOARD_ROW1_LIMIT) {
-      keyboard->idx -= KEYBOARD_ROW1_LEN;
-    } else if (keyboard->idx >= KEYBOARD_ROW0_LIMIT) {
-      keyboard->idx -= KEYBOARD_ROW0_LEN;
-    } else {
-      keyboard->idx = KEYBOARD_ROW2_LIMIT + ((keyboard->layout == KEYBOARD_MNEMONIC) ? (keyboard->idx / 3) : APP_MIN(keyboard->idx, (KEYBOARD_ROW_EXTRA_LEN - 1)));
-    }
+    input_keyboard_find_active_top(keyboard);
     break;
   case KEYPAD_KEY_LEFT:
-    if ((keyboard->idx > KEYBOARD_ROW2_LIMIT) ||
-        (keyboard->idx > KEYBOARD_ROW1_LIMIT && (keyboard->idx < KEYBOARD_ROW2_LIMIT)) ||
-        ((keyboard->idx > KEYBOARD_ROW0_LIMIT) && (keyboard->idx < KEYBOARD_ROW1_LIMIT)) ||
-        ((keyboard->idx > 0) && (keyboard->idx < KEYBOARD_ROW0_LIMIT))) {
-      keyboard->idx--;
-    } else {
-      if (keyboard->idx == KEYBOARD_ROW0_LIMIT) {
-        keyboard->idx = KEYBOARD_ROW1_LIMIT - 1;
-      } else if (keyboard->idx == KEYBOARD_ROW1_LIMIT) {
-        keyboard->idx = KEYBOARD_ROW2_LIMIT - 1;
-      } else if (keyboard->idx == KEYBOARD_ROW2_LIMIT) {
-        keyboard->idx = KEYBOARD_ROW_EXTRA_LIMIT - 1;
-      } else {
-        keyboard->idx = KEYBOARD_ROW0_LIMIT - 1;
-      }
-    }
+    input_keyboard_find_active_left(keyboard);
     break;
   case KEYPAD_KEY_RIGHT:
-    if ((keyboard->idx < (KEYBOARD_ROW0_LIMIT - 1)) ||
-        ((keyboard->idx < (KEYBOARD_ROW1_LIMIT - 1)) && (keyboard->idx >= KEYBOARD_ROW0_LIMIT)) ||
-        ((keyboard->idx < (KEYBOARD_ROW2_LIMIT - 1)) && (keyboard->idx >= KEYBOARD_ROW1_LIMIT)) ||
-        ((keyboard->idx < (KEYBOARD_ROW_EXTRA_LIMIT - 1)) && (keyboard->idx >= KEYBOARD_ROW2_LIMIT))) {
-      keyboard->idx++;
-    }  else {
-      if (keyboard->idx == KEYBOARD_ROW1_LIMIT - 1) {
-        keyboard->idx = KEYBOARD_ROW0_LIMIT;
-      } else if (keyboard->idx == KEYBOARD_ROW2_LIMIT - 1) {
-        keyboard->idx = KEYBOARD_ROW1_LIMIT;
-      } else if (keyboard->idx == KEYBOARD_ROW_EXTRA_LIMIT - 1) {
-        keyboard->idx = KEYBOARD_ROW2_LIMIT;
-      } else {
-        keyboard->idx = 0;
-      }
-    }
+    input_keyboard_find_active_right(keyboard);
     break;
   case KEYPAD_KEY_DOWN:
-    if (keyboard->idx < KEYBOARD_ROW0_LIMIT) {
-      keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW0_LEN, (KEYBOARD_ROW1_LIMIT - 1));
-    } else if (keyboard->idx < KEYBOARD_ROW1_LIMIT) {
-      keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW1_LEN, (KEYBOARD_ROW2_LIMIT - 1));
-    } else if (keyboard->idx < KEYBOARD_ROW2_LIMIT) {
-      keyboard->idx = KEYBOARD_ROW2_LIMIT + ((keyboard->layout == KEYBOARD_MNEMONIC) ? ((keyboard->idx - KEYBOARD_ROW1_LIMIT) / 3) : APP_MIN((keyboard->idx - KEYBOARD_ROW1_LIMIT), (KEYBOARD_ROW_EXTRA_LEN - 1)));
-    } else {
-      keyboard->idx = (keyboard->idx - KEYBOARD_ROW2_LIMIT) * ((keyboard->layout == KEYBOARD_MNEMONIC) ? 3 : 1);
-    }
+    input_keyboard_find_active_bottom(keyboard);
     break;
   case KEYPAD_KEY_BACK:
     ret = g_ui_ctx.keypad.last_key_long ? KEY_ESCAPE : KEY_BACKSPACE;
