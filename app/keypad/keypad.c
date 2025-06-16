@@ -7,7 +7,7 @@
 #define KEYPAD_GPIO_COL_OFF GPIO_KEYPAD_COL_0
 
 #define KEYPAD_DEBOUNCE_THRESHOLD (10/KEYPAD_POLL_MS)
-#define KEYPAD_LONG_PRESS_THRESHOLD (200/KEYPAD_POLL_MS)
+#define KEYPAD_LONG_PRESS_THRESHOLD (150/KEYPAD_POLL_MS)
 
 static inline void keypad_report_key(keypad_key_t key, bool is_long) {
   g_ui_ctx.keypad.last_key = key;
