@@ -1,0 +1,24 @@
+{
+    "Header": {
+        "Comment": "All values are metric (mm)",
+        "CreationDate": "2025-06-12T14:11:52Z",
+        "GenerationSoftware": {
+            "Application": "EAGLE",
+            "Vendor": "Autodesk",
+            "Version": "9.6.2"
+        },
+        "Part": "Single"
+    },
+    "Overall": {
+        "BoardThickness": 1.536,
+        "LayerNumber": 4,
+        "Name": {
+            "ProjectId": "hard_carte_keycardpro_1"
+        },
+        "Owner": "Audrey Nicolle <audrey.nicolle@cpe.fr>",
+        "Size": {
+            "X": 95,
+            "Y": 130
+        }
+    }
+}
