@@ -316,11 +316,11 @@ static void input_keyboard_render_alpha(keyboard_state_t* keyboard, uint16_t sug
     y = TH_KEYBOARD_TOP;
     x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN)) / 2;
 
-    input_keyboard_render_suggestion(x, y, suggestion_idx + 1, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION1_IDX));
+    input_keyboard_render_suggestion(x, y, suggestion_idx, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION1_IDX));
     x += TH_KEYBOARD_KEY_SUGGESTION_SIZE + TH_KEYBOARD_KEY_MARGIN;
-    input_keyboard_render_suggestion(x, y, suggestion_idx + 2, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION2_IDX));
+    input_keyboard_render_suggestion(x, y, suggestion_idx + 1, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION2_IDX));
     x += TH_KEYBOARD_KEY_SUGGESTION_SIZE + TH_KEYBOARD_KEY_MARGIN;
-    input_keyboard_render_suggestion(x, y, suggestion_idx + 3, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION3_IDX));
+    input_keyboard_render_suggestion(x, y, suggestion_idx + 2, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION3_IDX));
   } else {
     x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN)) / 2;
     input_keyboard_render_key(SYM_HASHTAG, x, y, keyboard->idx == i++, true);
@@ -776,6 +776,8 @@ static void input_mnemonic_lookup(char* word, int len, uint16_t* idx, uint32_t* 
     if (cmp == 0) {
       *idx = i;
 
+      *keymask |= 1 << (('z' - 'a') + 1);
+
       if (BIP39_WORDLIST_ENGLISH[i][len] != '\0') {
         *keymask |= (1 << (BIP39_WORDLIST_ENGLISH[i][len] - 'a'));
       }
@@ -791,7 +793,7 @@ static void input_mnemonic_lookup(char* word, int len, uint16_t* idx, uint32_t* 
 
         (*more_res)++;
 
-        uint8_t tmp = *more_res + ('z' - 'a');
+        uint8_t tmp = (*more_res + ('z' - 'a') + 1);
         // on ARM, the if is redundant but technically without it we enter undefined behavior territory
         if (tmp < (sizeof(uint32_t) * 8)) {
           *keymask |= 1 << tmp;
@@ -834,7 +836,7 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
         return ERR_OK;
       }
     } else if (c == KEY_ACK) {
-      uint16_t idx_off = 1 + (keyboard.idx - KEYBOARD_MNEMONIC_SUGGESTION1_IDX);
+      uint16_t idx_off = (keyboard.idx - KEYBOARD_MNEMONIC_SUGGESTION1_IDX);
       if (KEYBOARD_ENABLED((&keyboard), keyboard.idx)) {
         *idx += idx_off;
         return ERR_OK;
