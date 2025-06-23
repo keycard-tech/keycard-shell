@@ -1,5 +1,13 @@
 # Keycard Shell Dev Firmware
 
+## 0.9.18 (2025-06-23)
+
+* [ui] mnemonic entry keyboard now skips disabled letters
+* [ui] can now enter mnemonic without using long presses
+* [ui] keyboard color and labels aligned to figma design
+* [qr] implement scanning of non-UR QR (no UI yet)
+* [bip39] implement decoding of SeedQR
+
 ## 0.9.17 (2025-06-13)
 
 * [qr] allow scanning QR with up to 64 segments
