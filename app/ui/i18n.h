@@ -241,6 +241,10 @@ typedef enum {
   PROMPT_PAIRING,
   PROMPT_NEW_PAIRING,
 
+  // QR seed scanning
+  QRSEED_INVALID_MSG,
+  QRSEED_INVALID_SUB,
+
   INVALID_STR = 0xffff
 } i18n_str_id_t;
 

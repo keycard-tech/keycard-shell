@@ -72,6 +72,7 @@ core_evt_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass);
 core_evt_t ui_display_mnemonic(uint16_t* indexes, uint32_t len);
 core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len);
 core_evt_t ui_read_mnemonic(uint16_t* indexes, uint32_t len);
+core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len);
 
 core_evt_t ui_confirm_eth_address(const char* address);
 

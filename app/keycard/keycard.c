@@ -266,7 +266,7 @@ static app_err_t keycard_authenticate(keycard_t* kc, uint8_t* pin, uint8_t* cach
 static void keycard_generate_seed(const uint16_t* indexes, uint32_t len, const char* passphrase, uint8_t* seed) {
   char mnemonic[BIP39_MAX_MNEMONIC_LEN * 10];
   mnemonic_from_indexes(mnemonic, indexes, len);
-  mnemonic_to_seed(mnemonic, passphrase, seed, NULL);
+  mnemonic_to_seed(mnemonic, passphrase, seed);
   memset(mnemonic, 0, sizeof(mnemonic));
 }
 

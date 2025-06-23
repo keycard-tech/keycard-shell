@@ -236,4 +236,9 @@ const char *const i18n_english_strings[] = {
     "Enter new card name",
     "Enter Keycard pairing pass",
     "Enter new Keycard pairing pass",
+
+    // QR seed scanning
+    "Invalid QR",
+    "This QR does not contain a valid mnemonic",
+
 };

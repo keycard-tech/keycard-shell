@@ -302,12 +302,43 @@ void ui_bad_seed() {
   ui_info(ICON_INFO_ERROR, LSTR(INFO_KEYCARD_BAD_SEED_MSG), LSTR(INFO_TRY_AGAIN), 0);
 }
 
+core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
+  data_t qr;
+
+  if (ui_qrscan(NO_UR, &qr) != CORE_EVT_UI_OK) {
+    return CORE_EVT_UI_CANCELLED;
+  }
+
+  bool ok;
+  switch ((uint8_t) g_ui_cmd.params.qrscan.type) {
+  case QUIRC_DATA_TYPE_NUMERIC:
+    ok = mnemonic_from_seedqr_standard(indexes, len, (char*) qr.data, qr.len);
+    break;
+  case QUIRC_DATA_TYPE_BYTE:
+    if (qr.len <= 32) {
+      ok = mnemonic_from_data(indexes, len, qr.data, qr.len);
+    } else {
+      ok = mnemonic_from_string(indexes, len, (char*) qr.data);
+    }
+    break;
+  default:
+    ok = false;
+    break;
+  }
+
+  if (ok) {
+    return CORE_EVT_UI_OK;
+  } else {
+    ui_info(ICON_INFO_ERROR, LSTR(QRSEED_INVALID_MSG), LSTR(QRSEED_INVALID_SUB), 0);
+    return CORE_EVT_UI_CANCELLED;
+  }
+}
+
 core_evt_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
   i18n_str_id_t mode_selected = MENU_MNEMO_IMPORT;
   core_evt_t ret;
 
   while(1) {
-
     if (ui_menu(LSTR(MNEMO_TITLE), &menu_mnemonic, &mode_selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) == CORE_EVT_UI_OK) {
       if (mode_selected == MENU_MNEMO_IMPORT) {
         ret = CORE_EVT_UI_OK;

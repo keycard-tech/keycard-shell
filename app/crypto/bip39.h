@@ -35,21 +35,16 @@
 
 extern const char *const BIP39_WORDLIST_ENGLISH[BIP39_WORD_COUNT];
 
-bool mnemonic_generate(char* mnemo, int strength);  // strength in bits
-bool mnemonic_from_data(char* mnemo, const uint8_t *data, int len);
+bool mnemonic_from_data(uint16_t* mnemonic, uint32_t* out_len, const uint8_t *data, int len);
+bool mnemonic_from_string(uint16_t* indexes, uint32_t* out_len, const char *mnemonic);
+
 void mnemonic_from_indexes( char* mnemo, const uint16_t *indexes, int len);
 
 int mnemonic_check(const uint16_t *mnemonic, int len);
-int mnemonic_check_string(const char *mnemonic);
 int mnemonic_to_bits(const uint16_t *mnemonic, int n, uint8_t *bits);
-bool mnemonic_from_seedqr_standard(char* mnemo, char* digits, int len);
+bool mnemonic_from_seedqr_standard(uint16_t* mnemonic, uint32_t* out_len, const char* digits, int len);
 
 // passphrase must be at most 256 characters otherwise it would be truncated
-void mnemonic_to_seed(const char *mnemonic, const char *passphrase,
-                      uint8_t seed[512 / 8],
-                      void (*progress_callback)(uint32_t current,
-                                                uint32_t total));
-
-int mnemonic_to_entropy(const char *mnemonic, uint8_t *entropy);
+void mnemonic_to_seed(const char *mnemonic, const char *passphrase, uint8_t seed[512 / 8]);
 
 #endif
