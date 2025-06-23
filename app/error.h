@@ -16,6 +16,7 @@ typedef enum {
   ERR_MISMATCH,
   ERR_DECODE,
   ERR_SCAN,
+  ERR_QRNOUR,
 } app_err_t;
 
 #endif

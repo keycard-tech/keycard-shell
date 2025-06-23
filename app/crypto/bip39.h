@@ -40,7 +40,9 @@ bool mnemonic_from_data(char* mnemo, const uint8_t *data, int len);
 void mnemonic_from_indexes( char* mnemo, const uint16_t *indexes, int len);
 
 int mnemonic_check(const uint16_t *mnemonic, int len);
+int mnemonic_check_string(const char *mnemonic);
 int mnemonic_to_bits(const uint16_t *mnemonic, int n, uint8_t *bits);
+bool mnemonic_from_seedqr_standard(char* mnemo, char* digits, int len);
 
 // passphrase must be at most 256 characters otherwise it would be truncated
 void mnemonic_to_seed(const char *mnemonic, const char *passphrase,
@@ -48,9 +50,6 @@ void mnemonic_to_seed(const char *mnemonic, const char *passphrase,
                       void (*progress_callback)(uint32_t current,
                                                 uint32_t total));
 
-int mnemonic_find_word(const char *word);
-const char *mnemonic_complete_word(const char *prefix, int len);
-const char *mnemonic_get_word(int index);
-uint32_t mnemonic_word_completion_mask(const char *prefix, int len);
+int mnemonic_to_entropy(const char *mnemonic, uint8_t *entropy);
 
 #endif

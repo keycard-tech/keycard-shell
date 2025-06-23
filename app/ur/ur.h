@@ -32,7 +32,8 @@ typedef enum {
   FS_DATA = 13,
   BTC_SIGN_REQUEST = 14,
   CRYPTO_OUTPUT = 15,
-  UR_ANY_TX = 255
+  UR_ANY_TX = 254,
+  NO_UR = 255,
 } ur_type_t;
 
 typedef struct {

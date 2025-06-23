@@ -33,9 +33,22 @@ app_err_t qrscan_decode(struct quirc *qrctx, ur_t* ur) {
   }
 
   quirc_extract(qrctx, 0, &qrcode);
-  quirc_decode_error_t err = quirc_decode(&qrcode, qrdata);
 
-  return !err ? ur_process_part(ur, qrdata->payload, qrdata->payload_len) : ERR_DECODE;
+  if (!quirc_decode(&qrcode, qrdata)) {
+    if (g_ui_cmd.params.qrscan.type == NO_UR) {
+      data_t* out = g_ui_cmd.params.qrscan.out;
+      out->len = qrdata->payload_len;
+      out->data = ur->data;
+      memcpy(out->data, qrdata->payload, qrdata->payload_len);
+      out->data[out->len] = '\0';
+      g_ui_cmd.params.qrscan.type = qrdata->data_type;
+      return ERR_QRNOUR;
+    } else {
+      return ur_process_part(ur, qrdata->payload, qrdata->payload_len);
+    }
+  }
+
+  return ERR_DECODE;
 }
 
 app_err_t qrscan_deserialize(ur_t* ur) {
@@ -181,6 +194,9 @@ app_err_t qrscan_scan() {
         qrscan_reset_and_draw_indicator(&indicator);
         goto next_scan;
       }
+    } else if (qrerr == ERR_QRNOUR) {
+      screen_wait();
+      goto end;
     } else if (qrerr == ERR_DECODE && indicator.score < QR_SCORE_YELLOW) {
       indicator.score = QR_SCORE_YELLOW;
     } else if (qrerr != ERR_SCAN) {

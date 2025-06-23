@@ -92,6 +92,29 @@ void mnemonic_from_indexes(char* mnemo, const uint16_t *indexes, int len) {
   *(--p) = '\0';
 }
 
+bool mnemonic_from_seedqr_standard(char* mnemo, char* digits, int len) {
+  if (len % 4 || len < 48 || len > 96) {
+    return false;
+  }
+
+  uint16_t idxs[len / 4];
+
+  for (int i = 0; i < len; i += 4) {
+    idxs[i / 4] = ((digits[i] - '0') * 1000) + ((digits[i + 1] - '0') * 100) + ((digits[i + 2] - '0') * 10) + (digits[i + 3] - '0');
+
+    if (idxs[i / 4] >= BIP39_WORD_COUNT) {
+      return false;
+    }
+  }
+
+  if (!mnemonic_check(idxs, len / 4)) {
+    return false;
+  }
+
+  mnemonic_from_indexes(mnemo, idxs, len / 4);
+  return true;
+}
+
 int mnemonic_to_bits(const uint16_t *mnemonic, int n, uint8_t *bits) {
   // check that number of words is valid for BIP-39:
   // (a) between 128 and 256 bits of initial entropy (12 - 24 words)
@@ -127,15 +150,7 @@ int mnemonic_to_bits(const uint16_t *mnemonic, int n, uint8_t *bits) {
   return n * 11;
 }
 
-int mnemonic_check(const uint16_t *mnemonic, int len) {
-  uint8_t bits[32 + 1] = {0};
-  int mnemonic_bits_len = mnemonic_to_bits(mnemonic, len, bits);
-  if (mnemonic_bits_len != (12 * 11) && mnemonic_bits_len != (18 * 11) &&
-      mnemonic_bits_len != (24 * 11)) {
-    return 0;
-  }
-  int words = mnemonic_bits_len / 11;
-
+static int mnemonic_check_bits(uint8_t* bits, int words) {
   uint8_t checksum = bits[words * 4 / 3];
   sha256_Raw(bits, words * 4 / 3, bits);
   if (words == 12) {
@@ -148,6 +163,30 @@ int mnemonic_check(const uint16_t *mnemonic, int len) {
   return 0;
 }
 
+int mnemonic_check(const uint16_t *mnemonic, int len) {
+  uint8_t bits[32 + 1] = {0};
+  int mnemonic_bits_len = mnemonic_to_bits(mnemonic, len, bits);
+  if (mnemonic_bits_len != (12 * 11) && mnemonic_bits_len != (18 * 11) &&
+      mnemonic_bits_len != (24 * 11)) {
+    return 0;
+  }
+
+  int words = mnemonic_bits_len / 11;
+
+  return mnemonic_check_bits(bits, words);
+}
+
+int mnemonic_check_string(const char *mnemonic) {
+  uint8_t bits[32 + 1];
+  int seed_len = mnemonic_to_entropy(mnemonic, bits);
+  if (seed_len != (12 * 11) && seed_len != (18 * 11) && seed_len != (24 * 11)) {
+    return 0;
+  }
+  int words = seed_len / 11;
+
+  return mnemonic_check_bits(bits, words);
+}
+
 // passphrase must be at most 256 characters otherwise it would be truncated
 void mnemonic_to_seed(const char *mnemonic, const char *passphrase,
                       uint8_t seed[512 / 8],
@@ -155,19 +194,7 @@ void mnemonic_to_seed(const char *mnemonic, const char *passphrase,
                                                 uint32_t total)) {
   int mnemoniclen = strlen(mnemonic);
   int passphraselen = strnlen(passphrase, 256);
-#if USE_BIP39_CACHE
-  // check cache
-  if (mnemoniclen < 256 && passphraselen < 64) {
-    for (int i = 0; i < BIP39_CACHE_SIZE; i++) {
-      if (!bip39_cache[i].set) continue;
-      if (strcmp(bip39_cache[i].mnemonic, mnemonic) != 0) continue;
-      if (strcmp(bip39_cache[i].passphrase, passphrase) != 0) continue;
-      // found the correct entry
-      memcpy(seed, bip39_cache[i].seed, 512 / 8);
-      return;
-    }
-  }
-#endif
+
   uint8_t salt[8 + 256] = {0};
   memcpy(salt, "mnemonic", 8);
   memcpy(salt + 8, passphrase, passphraselen);
@@ -184,68 +211,72 @@ void mnemonic_to_seed(const char *mnemonic, const char *passphrase,
                         BIP39_PBKDF2_ROUNDS);
     }
   }
+
   pbkdf2_hmac_sha512_Final(&pctx, seed);
   memzero(salt, sizeof(salt));
-#if USE_BIP39_CACHE
-  // store to cache
-  if (mnemoniclen < 256 && passphraselen < 64) {
-    bip39_cache[bip39_cache_index].set = true;
-    strcpy(bip39_cache[bip39_cache_index].mnemonic, mnemonic);
-    strcpy(bip39_cache[bip39_cache_index].passphrase, passphrase);
-    memcpy(bip39_cache[bip39_cache_index].seed, seed, 512 / 8);
-    bip39_cache_index = (bip39_cache_index + 1) % BIP39_CACHE_SIZE;
-  }
-#endif
 }
 
-// binary search for finding the word in the wordlist
-int mnemonic_find_word(const char *word) {
-  int lo = 0, hi = BIP39_WORD_COUNT - 1;
-  while (lo <= hi) {
-    int mid = lo + (hi - lo) / 2;
-    int cmp = strcmp(word, BIP39_WORDLIST_ENGLISH[mid]);
-    if (cmp == 0) {
-      return mid;
+int mnemonic_to_entropy(const char *mnemonic, uint8_t *entropy) {
+  if (!mnemonic) {
+    return 0;
+  }
+
+  uint32_t i = 0, n = 0;
+
+  while (mnemonic[i]) {
+    if (mnemonic[i] == ' ') {
+      n++;
     }
-    if (cmp > 0) {
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
+    i++;
+  }
+  n++;
+
+  // check number of words
+  if (n != 12 && n != 18 && n != 24) {
+    return 0;
+  }
+
+  char current_word[10];
+  uint32_t j, k, ki, bi = 0;
+  uint8_t bits[32 + 1];
+
+  memzero(bits, sizeof(bits));
+  i = 0;
+  while (mnemonic[i]) {
+    j = 0;
+    while (mnemonic[i] != ' ' && mnemonic[i] != 0) {
+      if (j >= sizeof(current_word) - 1) {
+        return 0;
+      }
+      current_word[j] = mnemonic[i];
+      i++;
+      j++;
+    }
+    current_word[j] = 0;
+    if (mnemonic[i] != 0) {
+      i++;
+    }
+    k = 0;
+    for (;;) {
+      if (!BIP39_WORDLIST_ENGLISH[k]) {  // word not found
+        return 0;
+      }
+      if (strcmp(current_word, BIP39_WORDLIST_ENGLISH[k]) == 0) {  // word found on index k
+        for (ki = 0; ki < 11; ki++) {
+          if (k & (1 << (10 - ki))) {
+            bits[bi / 8] |= 1 << (7 - (bi % 8));
+          }
+          bi++;
+        }
+        break;
+      }
+      k++;
     }
   }
-  return -1;
+  if (bi != n * 11) {
+    return 0;
+  }
+  memcpy(entropy, bits, sizeof(bits));
+  return n * 11;
 }
 
-const char *mnemonic_complete_word(const char *prefix, int len) {
-  // we need to perform linear search,
-  // because we want to return the first match
-  for (int i = 0; i < BIP39_WORD_COUNT; i++) {
-    if (strncmp(BIP39_WORDLIST_ENGLISH[i], prefix, len) == 0) {
-      return BIP39_WORDLIST_ENGLISH[i];
-    }
-  }
-  return NULL;
-}
-
-const char *mnemonic_get_word(int index) {
-  if (index >= 0 && index < BIP39_WORD_COUNT) {
-    return BIP39_WORDLIST_ENGLISH[index];
-  } else {
-    return NULL;
-  }
-}
-
-uint32_t mnemonic_word_completion_mask(const char *prefix, int len) {
-  if (len <= 0) {
-    return 0x3ffffff;  // all letters (bits 1-26 set)
-  }
-  uint32_t res = 0;
-  for (int i = 0; i < BIP39_WORD_COUNT; i++) {
-    const char *word = BIP39_WORDLIST_ENGLISH[i];
-    if (strncmp(word, prefix, len) == 0 && word[len] >= 'a' &&
-        word[len] <= 'z') {
-      res |= 1 << (word[len] - 'a');
-    }
-  }
-  return res;
-}
