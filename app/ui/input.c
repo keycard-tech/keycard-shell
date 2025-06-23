@@ -214,7 +214,7 @@ static inline void input_keyboard_render_key(char c, uint16_t x, uint16_t y, boo
 
   if (!enabled) {
     ctx.bg = selected ? TH_KEYBOARD_KEY_DISABLED_SELECTED_BG : TH_KEYBOARD_KEY_DISABLED_BG;
-    ctx.fg = TH_KEYBOARD_KEY_DISABLED_FG;
+    ctx.fg = TH_KEYBOARD_KEY_DISABLED_SELECTED_FG;
   } else if (selected) {
     ctx.bg = TH_KEYBOARD_KEY_SELECTED_BG;
     ctx.fg = TH_KEYBOARD_KEY_SELECTED_FG;
@@ -269,7 +269,7 @@ static inline void input_keyboard_render_suggestion(uint16_t x, uint16_t y, uint
 
   if (!enabled) {
     ctx.bg = selected ? TH_KEYBOARD_KEY_DISABLED_SELECTED_BG : TH_KEYBOARD_KEY_DISABLED_BG;
-    ctx.fg = TH_KEYBOARD_KEY_DISABLED_FG;
+    ctx.fg = TH_KEYBOARD_KEY_DISABLED_SELECTED_FG;
   } else if (selected) {
     ctx.bg = TH_KEYBOARD_KEY_SELECTED_BG;
     ctx.fg = TH_KEYBOARD_KEY_SELECTED_FG;

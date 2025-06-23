@@ -120,8 +120,8 @@ const char *const i18n_english_strings[] = {
     "Card name saved",
 
     // Input hints
-    "Hold to exit",
-    "Hold to save",
+    "Hold to go back",
+    "Hold to go next",
     "Hold to proceed",
     "Skip",
 
@@ -184,9 +184,9 @@ const char *const i18n_english_strings[] = {
     // Mnemonic input
     "Add key pair",
     "12 words",
-    "12 words + pass",
+    "12 words + passphrase",
     "24 words",
-    "24 words + pass",
+    "24 words + passphrase",
     "Import recovery phrase",
     "Generate new key pair",
     "Enter word #",
