@@ -302,7 +302,7 @@ read_mnemonic:
   if (err == CORE_EVT_UI_OK) {
     if (has_pass) {
       uint8_t len = KEYCARD_BIP39_PASS_MAX_LEN;;
-      ui_read_string(LSTR(MNEMO_PASSPHRASE_TITLE), LSTR(MNEMO_PASSPHRASE_TITLE), passphrase, &len, UI_READ_STRING_UNDISMISSABLE);
+      ui_read_string(LSTR(MNEMO_PASSPHRASE_TITLE), "", passphrase, &len, UI_READ_STRING_UNDISMISSABLE);
     }
 
     return ERR_OK;

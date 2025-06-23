@@ -121,7 +121,7 @@ const char *const i18n_english_strings[] = {
 
     // Input hints
     "Hold to go back",
-    "Hold to go next",
+    "Hold to confirm",
     "Hold to proceed",
     "Skip",
 
