@@ -272,9 +272,10 @@ static void keycard_generate_seed(const uint16_t* indexes, uint32_t len, const c
 
 static app_err_t keycard_read_mnemonic(keycard_t* kc, uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], uint32_t* len, char* passphrase) {
   bool has_pass;
-  core_evt_t err = ui_read_mnemonic_len(len, &has_pass);
+  i18n_str_id_t mode_selected = ui_read_mnemonic_len(len, &has_pass);
+  core_evt_t err;
 
-  if (err == CORE_EVT_UI_CANCELLED) {
+  if (mode_selected == MENU_MNEMO_GENERATE) {
     if (keycard_cmd_generate_mnemonic(kc, *len) != ERR_OK) {
       return ERR_TXRX;
     }
@@ -289,7 +290,7 @@ static app_err_t keycard_read_mnemonic(keycard_t* kc, uint16_t indexes[BIP39_MAX
     memset(data, 0, ((*len) << 1));
 
     err = ui_backup_mnemonic(indexes, *len);
-  } else {
+  } else if (mode_selected == MENU_MNEMO_IMPORT) {
 read_mnemonic:
     err = ui_read_mnemonic(indexes, *len);
 
@@ -297,6 +298,8 @@ read_mnemonic:
       ui_bad_seed();
       goto read_mnemonic;
     }
+  } else {
+    err = ui_scan_mnemonic(indexes, len);
   }
 
   if (err == CORE_EVT_UI_OK) {

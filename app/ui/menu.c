@@ -64,9 +64,10 @@ const menu_t menu_mainmenu = {
 };
 
 const menu_t menu_mnemonic = {
-  2, {
+  3, {
     {MENU_MNEMO_IMPORT, NULL},
     {MENU_MNEMO_GENERATE, NULL},
+    {MENU_MNEMO_SCAN, NULL},
   }
 };
 
@@ -76,6 +77,13 @@ const menu_t menu_mnemonic_length = {
     {MENU_MNEMO_12WORDS_PASS, NULL},
     {MENU_MNEMO_24WORDS, NULL},
     {MENU_MNEMO_24WORDS_PASS, NULL},
+  }
+};
+
+const menu_t menu_mnemonic_has_pass = {
+  2, {
+    {MENU_MNEMO_WITH_PASS, NULL},
+    {MENU_MNEMO_NO_PASS, NULL},
   }
 };
 

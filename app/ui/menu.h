@@ -25,6 +25,7 @@ typedef enum {
 extern const menu_t menu_mainmenu;
 extern const menu_t menu_mnemonic;
 extern const menu_t menu_mnemonic_length;
+extern const menu_t menu_mnemonic_has_pass;
 extern const menu_t menu_autooff;
 extern const menu_t menu_onoff;
 extern const menu_t menu_keycard_blocked;

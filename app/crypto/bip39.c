@@ -34,7 +34,7 @@
 #include "util.h"
 
 bool mnemonic_from_data(uint16_t* mnemonic, uint32_t* out_len, const uint8_t* data, int len) {
-  if (len % 4 || len < 16 || len > 32) {
+  if ((len != 16) && (len != 32)) {
     return false;
   }
 
@@ -78,7 +78,7 @@ void mnemonic_from_indexes(char* mnemo, const uint16_t* indexes, int len) {
 }
 
 bool mnemonic_from_seedqr_standard(uint16_t* mnemonic, uint32_t* out_len, const char* digits, int len) {
-  if (len % 4 || len < 48 || len > 96) {
+  if ((len != 48) && (len != 96)) {
     return false;
   }
 
@@ -192,7 +192,7 @@ bool mnemonic_from_string(uint16_t* indexes, uint32_t* out_len, const char *mnem
   n++;
 
   // check number of words
-  if (n != 12 && n != 18 && n != 24) {
+  if (n != 12 && n != 24) {
     return false;
   }
 

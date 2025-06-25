@@ -326,29 +326,38 @@ core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
     break;
   }
 
-  if (ok) {
+  if (ok && mnemonic_check(indexes, *len)) {
     return CORE_EVT_UI_OK;
   } else {
+    *len = 0;
     ui_info(ICON_INFO_ERROR, LSTR(QRSEED_INVALID_MSG), LSTR(QRSEED_INVALID_SUB), 0);
-    return CORE_EVT_UI_CANCELLED;
+    return ui_scan_mnemonic(indexes, len);
   }
 }
 
-core_evt_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
+i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
   i18n_str_id_t mode_selected = MENU_MNEMO_IMPORT;
-  core_evt_t ret;
 
   while(1) {
     if (ui_menu(LSTR(MNEMO_TITLE), &menu_mnemonic, &mode_selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) == CORE_EVT_UI_OK) {
-      if (mode_selected == MENU_MNEMO_IMPORT) {
-        ret = CORE_EVT_UI_OK;
-      } else {
-        ret = CORE_EVT_UI_CANCELLED;
+      const menu_t* next_menu = &menu_mnemonic_length;
+      i18n_str_id_t selected = MENU_MNEMO_12WORDS;
+
+      if (mode_selected == MENU_MNEMO_SCAN) {
+        next_menu = &menu_mnemonic_has_pass;
+        selected = MENU_MNEMO_WITH_PASS;
       }
 
-      i18n_str_id_t selected = MENU_MNEMO_12WORDS;
-      if (ui_menu(LSTR(mode_selected), &menu_mnemonic_length, &selected, -1, 0, 0, 0, 0) == CORE_EVT_UI_OK) {
+      if (ui_menu(LSTR(mode_selected), next_menu, &selected, -1, 0, 0, 0, 0) == CORE_EVT_UI_OK) {
         switch(selected) {
+        case MENU_MNEMO_WITH_PASS:
+          *len = 0;
+          *has_pass = true;
+          break;
+        case MENU_MNEMO_NO_PASS:
+          *len = 0;
+          *has_pass = false;
+          break;
         case MENU_MNEMO_12WORDS:
           *has_pass = false;
           *len = 12;
@@ -368,7 +377,7 @@ core_evt_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
           break;
         }
 
-        return ret;
+        return mode_selected;
       }
     }
   }
