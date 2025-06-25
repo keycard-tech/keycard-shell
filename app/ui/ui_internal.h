@@ -128,6 +128,7 @@ struct cmd_input_string {
 };
 
 struct cmd_mnemo {
+  const char* title;
   uint16_t* indexes;
   uint32_t len;
 };

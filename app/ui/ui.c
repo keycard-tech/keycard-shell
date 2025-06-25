@@ -327,7 +327,7 @@ core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
   }
 
   if (ok && mnemonic_check(indexes, *len)) {
-    return CORE_EVT_UI_OK;
+    return ui_display_mnemonic(LSTR(MNEMO_VERIFY_TITLE), indexes, *len);
   } else {
     *len = 0;
     ui_info(ICON_INFO_ERROR, LSTR(QRSEED_INVALID_MSG), LSTR(QRSEED_INVALID_SUB), 0);
@@ -382,8 +382,9 @@ i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
     }
   }
 }
-core_evt_t ui_display_mnemonic(uint16_t* indexes, uint32_t len) {
+core_evt_t ui_display_mnemonic(const char* title, uint16_t* indexes, uint32_t len) {
   g_ui_cmd.type = UI_CMD_DISPLAY_MNEMO;
+  g_ui_cmd.params.mnemo.title = title;
   g_ui_cmd.params.mnemo.indexes = indexes;
   g_ui_cmd.params.mnemo.len = len;
 
@@ -484,7 +485,7 @@ core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len) {
   };
 
   do {
-    if (ui_display_mnemonic(indexes, len) == CORE_EVT_UI_CANCELLED) {
+    if (ui_display_mnemonic(LSTR(INFO_WRITE_KEEP_SAFE), indexes, len) == CORE_EVT_UI_CANCELLED) {
       return CORE_EVT_UI_CANCELLED;
     }
   } while(ui_backup_confirm_mnemonic(indexes, len) != ERR_OK);
