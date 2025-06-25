@@ -49,9 +49,16 @@ static app_err_t keycard_init_card(keycard_t* kc, uint8_t* sc_key, uint8_t* pin)
   uint8_t duress_pin[KEYCARD_PIN_LEN];
   bool has_duress = true;
 
-  if (ui_read_duress_pin(duress_pin) != CORE_EVT_UI_OK) {
-    keycard_random_duress(pin, duress_pin);
-    has_duress = false;
+  while (true) {
+    if (ui_read_duress_pin(duress_pin) != CORE_EVT_UI_OK) {
+      keycard_random_duress(pin, duress_pin);
+      has_duress = false;
+    } else if (memcmp(duress_pin, pin, KEYCARD_PIN_LEN) == 0) {
+      ui_info(ICON_INFO_ERROR, LSTR(DURESS_EQ_PIN_MSG), LSTR(DURESS_EQ_PIN_SUB), 0);
+      continue;
+    }
+
+    break;
   }
 
   if (keycard_cmd_init(kc, sc_key, pin, puk, (uint8_t*)KEYCARD_DEFAULT_PSK, KEYCARD_DEF_PIN_RETRIES, KEYCARD_DEF_PUK_RETRIES, duress_pin) != ERR_OK) {

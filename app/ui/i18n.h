@@ -113,6 +113,8 @@ typedef enum {
   DURESS_PROMPT_MSG,
   DURESS_OK_MSG,
   DURESS_OK_SUB,
+  DURESS_EQ_PIN_MSG,
+  DURESS_EQ_PIN_SUB,
 
   // Pairing input
   PAIRING_INPUT_TITLE,

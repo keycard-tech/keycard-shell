@@ -109,6 +109,8 @@ const char *const i18n_english_strings[] = {
     "A duress PIN unlocks a decoy wallet if you're forced to log in under pressure.\nIt looks real but keeps your actual funds and data hidden.\nLearn more: keycard.tech/duress_pin",
     "Both PINs set",
     "Use duress PIN if forced to unlock device",
+    "Invalid duress PIN",
+    "Duress PIN and main PIN should not match.",
 
     // Pairing input
     "Insert your pairing password",
