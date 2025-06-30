@@ -1,5 +1,11 @@
 # Keycard Shell Dev Firmware
 
+## 0.9.19 (2025-06-30)
+
+* [ui] add SeedQR import flow
+* [ui] check that PIN and Duress PIN do not match during onboarding
+* [ui] fix some copy
+
 ## 0.9.18 (2025-06-23)
 
 * [ui] mnemonic entry keyboard now skips disabled letters
