@@ -178,6 +178,8 @@ eip712_data_type_t eip712_recognize(const eip712_ctx_t* ctx) {
     return EIP712_PERMIT;
   } else if (eip712_field_eq(ctx, ctx->index.primary_type, "PermitSingle")) {
     return EIP712_PERMIT_SINGLE;
+  } else if (eip712_field_eq(ctx, ctx->index.primary_type, "SafeTx")) {
+    return EIP712_SAFE_TX;
   }
 
   return EIP712_UNKNOWN;
@@ -372,7 +374,7 @@ static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const u
   return ERR_OK;
 }
 
-app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info* info) {
+app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info_t* info) {
   info->data_str_len = 0;
 
   eth_lookup_chain(tx->chainID, &info->chain, info->_chain_num);
@@ -421,7 +423,7 @@ fallback:
   return ERR_OK;
 }
 
-app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_approve_info* info) {
+app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_approve_info_t* info) {
   const uint8_t* args = &tx->data[sizeof(uint32_t)];
   size_t args_len = tx->dataLength - sizeof(uint32_t);
 
@@ -448,7 +450,7 @@ app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function
   return ERR_OK;
 }
 
-app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info* info) {
+app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info_t* info) {
   if (eip712_extract_domain(ctx, &info->domain) != ERR_OK) {
     return ERR_DATA;
   }
@@ -476,7 +478,7 @@ app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info* info)
   return ERR_OK;
 }
 
-app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info* info) {
+app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info_t* info) {
   if (eip712_extract_domain(ctx, &info->domain) != ERR_OK) {
     return ERR_DATA;
   }

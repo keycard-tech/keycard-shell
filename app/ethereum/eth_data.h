@@ -64,7 +64,8 @@ typedef enum {
 typedef enum {
   EIP712_UNKNOWN,
   EIP712_PERMIT,
-  EIP712_PERMIT_SINGLE
+  EIP712_PERMIT_SINGLE,
+  EIP712_SAFE_TX
 } eip712_data_type_t;
 
 typedef struct __attribute__((packed)) {
@@ -96,7 +97,7 @@ typedef struct {
   bignum256 value;
   bignum256 fees;
   uint8_t _chain_num[11];
-} eth_transfer_info;
+} eth_transfer_info_t;
 
 typedef struct {
   eip712_domain_t domain;
@@ -107,18 +108,38 @@ typedef struct {
   bignum256 fees;
   uint8_t _addr[32];
   uint8_t _chain_num[11];
-} eth_approve_info;
+} eth_approve_info_t;
+
+typedef struct {
+  eip712_domain_t domain;
+  chain_desc_t chain;
+  const uint8_t* safeAddr;
+  const uint8_t* to;
+  const uint8_t* data;
+  bignum256 value;
+  uint8_t operation;
+  bignum256 safeTxGas;
+  bignum256 baseGas;
+  bignum256 gasPrice;
+  const uint8_t* gasToken;
+  const uint8_t* refundReceiver;
+  bignum256 nonce;
+  const uint8_t* signatures;
+
+  uint8_t _addr[32 * 5];
+  uint8_t _chain_num[11];
+} eth_safe_tx_t;
 
 const eth_abi_function_t* eth_data_recognize(const txContent_t* tx);
 eip712_data_type_t eip712_recognize(const eip712_ctx_t* ctx);
 
 app_err_t eip712_extract_domain(const eip712_ctx_t* ctx, eip712_domain_t* out);
 
-app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info* info);
-app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_approve_info* info);
+app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info_t* info);
+app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_approve_info_t* info);
 
-app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info* info);
-app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info* info);
+app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info_t* info);
+app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info_t* info);
 
 app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_t* data, size_t data_len, const uint8_t** out, size_t* out_len);
 

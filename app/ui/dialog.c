@@ -430,7 +430,7 @@ static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint
 }
 
 static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_format) {
-  eth_transfer_info tx_info;
+  eth_transfer_info_t tx_info;
 
   tx_info.data_str = g_camera_fb[0];
 
@@ -509,7 +509,7 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
   return ret;
 }
 
-static app_err_t dialog_confirm_approval(const eth_approve_info* info, const uint8_t* signer, bool has_fees) {
+static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const uint8_t* signer, bool has_fees) {
   screen_text_ctx_t ctx;
 
   dialog_title(LSTR(TX_CONFIRM_APPROVAL));
@@ -544,7 +544,7 @@ app_err_t dialog_confirm_eth_tx() {
 
   if ((abi != NULL)) {
     if ((abi->selector == ETH_DATA_ERC20_APPROVE) && (abi->ext_selector == ETH_DATA_ERC20_APPROVE_EXT_SELECTOR)) {
-      eth_approve_info info;
+      eth_approve_info_t info;
       if (eth_extract_approve_info(g_ui_cmd.params.eth_tx.tx, abi, &info) == ERR_OK) {
         return dialog_confirm_approval(&info, g_ui_cmd.params.eth_tx.addr, true);
       }
@@ -860,15 +860,17 @@ app_err_t dialog_confirm_eip712() {
   eip712_data_type_t type = eip712_recognize(g_ui_cmd.params.eip712.data);
 
   if (type == EIP712_PERMIT) {
-    eth_approve_info info;
+    eth_approve_info_t info;
     if (eip712_extract_permit(g_ui_cmd.params.eip712.data, &info) == ERR_OK) {
       return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, false);
     }
   } else if (type == EIP712_PERMIT_SINGLE) {
-    eth_approve_info info;
+    eth_approve_info_t info;
     if (eip712_extract_permit_single(g_ui_cmd.params.eip712.data, &info) == ERR_OK) {
       return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, false);
     }
+  } else if (type == EIP712_SAFE_TX) {
+
   }
 
   eip712_domain_t domain;
