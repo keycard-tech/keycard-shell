@@ -115,7 +115,8 @@ typedef struct {
   chain_desc_t chain;
   const uint8_t* safeAddr;
   const uint8_t* to;
-  const uint8_t* data;
+  uint8_t* data;
+  uint32_t data_len;
   bignum256 value;
   uint8_t operation;
   bignum256 safeTxGas;
@@ -125,8 +126,8 @@ typedef struct {
   const uint8_t* refundReceiver;
   bignum256 nonce;
   const uint8_t* signatures;
+  uint32_t signatures_len;
 
-  uint8_t _addr[32 * 5];
   uint8_t _chain_num[11];
 } eth_safe_tx_t;
 
@@ -140,6 +141,7 @@ app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function
 
 app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info_t* info);
 app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info_t* info);
+app_err_t eip712_extract_safe_tx(const eip712_ctx_t* ctx, eth_safe_tx_t* info);
 
 app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_t* data, size_t data_len, const uint8_t** out, size_t* out_len);
 

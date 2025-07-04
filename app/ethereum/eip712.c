@@ -188,6 +188,28 @@ static int eip712_find_type(const struct eip712_type types[], int types_count, c
   return -1;
 }
 
+static app_err_t eip712_copy_bytes(int field_index, uint8_t* out, uint32_t* len, const eip712_ctx_t* ctx) {
+  struct eip712_string tmpstr;
+  eip712_string_from_field(&tmpstr, field_index, ctx);
+
+  if ((tmpstr.len >= 2) && (tmpstr.str[0] == '0') && (tmpstr.str[1] == 'x')) {
+    tmpstr.len -= 2;
+    tmpstr.str += 2;
+
+    *len = APP_MIN((tmpstr.len / 2), *len);
+
+    if (!base16_decode(tmpstr.str, out, ((*len) * 2))) {
+      return ERR_DATA;
+    }
+  } else if (tmpstr.len == 0) {
+    *len = 0;
+  } else {
+    return ERR_DATA;
+  }
+
+  return ERR_OK;
+}
+
 static app_err_t eip712_copy_uint(int field_index, bool pad_right, uint8_t out[32], const eip712_ctx_t* ctx) {
   struct eip712_string tmpstr;
   eip712_string_from_field(&tmpstr, field_index, ctx);
@@ -711,6 +733,16 @@ app_err_t eip712_extract_uint256(const eip712_ctx_t* ctx, int parent, const char
   }
 
   return eip712_copy_uint(found, false, out, ctx);
+}
+
+app_err_t eip712_extract_bytes(const eip712_ctx_t* ctx, int parent, const char* key, uint8_t* out, uint32_t* len) {
+  int found = eip712_find_field(ctx, parent, key);
+
+  if (found == -1) {
+    return ERR_DATA;
+  }
+
+  return eip712_copy_bytes(found, out, len, ctx);
 }
 
 int eip712_field_eq(const eip712_ctx_t* ctx, int field, const char* str) {

@@ -4,6 +4,7 @@
 #include "crypto/util.h"
 #include "crypto/address.h"
 #include "eth_data.h"
+#include "mem.h"
 
 struct eth_func_search_ctx {
   uint32_t selector;
@@ -450,6 +451,40 @@ app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function
   return ERR_OK;
 }
 
+static app_err_t eip712_extract_addr(const eip712_ctx_t* ctx, int parent, const char* field, uint8_t* buf, const uint8_t** addr) {
+  if (eip712_extract_uint256(ctx, parent, field, buf) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  *addr = &buf[ETH_ABI_WORD_ADDR_OFF];
+
+  return ERR_OK;
+}
+
+static app_err_t eip712_extract_bignum256(const eip712_ctx_t* ctx, int parent, const char* field, bignum256* num) {
+  uint8_t value[INT256_LENGTH];
+
+  if (eip712_extract_uint256(ctx, parent, field, value) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  bn_read_be(value, num);
+
+  return ERR_OK;
+}
+
+static app_err_t eip712_extract_uint8(const eip712_ctx_t* ctx, int parent, const char* field, uint8_t* num) {
+  uint8_t value[INT256_LENGTH];
+
+  if (eip712_extract_uint256(ctx, parent, field, value) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  *num = value[INT256_LENGTH - 1];
+
+  return ERR_OK;
+}
+
 app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info_t* info) {
   if (eip712_extract_domain(ctx, &info->domain) != ERR_OK) {
     return ERR_DATA;
@@ -460,19 +495,14 @@ app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info_t* inf
     return ERR_DATA;
   }
 
-  if (eip712_extract_uint256(ctx, ctx->index.message, "spender", info->_addr) != ERR_OK) {
+  if (eip712_extract_addr(ctx, ctx->index.message, "spender", info->_addr, &info->spender) != ERR_OK) {
     return ERR_DATA;
   }
 
-  info->spender = &info->_addr[ETH_ABI_WORD_ADDR_OFF];
-
-  uint8_t value[INT256_LENGTH];
-
-  if (eip712_extract_uint256(ctx, ctx->index.message, "value", value) != ERR_OK) {
+  if (eip712_extract_bignum256(ctx, ctx->index.message, "value", &info->value) != ERR_OK) {
     return ERR_DATA;
   }
 
-  bn_read_be(value, &info->value);
   bn_zero(&info->fees);
 
   return ERR_OK;
@@ -485,11 +515,9 @@ app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info
 
   eth_lookup_chain(info->domain.chainID, &info->chain, info->_chain_num);
 
-  if (eip712_extract_uint256(ctx, ctx->index.message, "spender", info->_addr) != ERR_OK) {
+  if (eip712_extract_addr(ctx, ctx->index.message, "spender", info->_addr, &info->spender) != ERR_OK) {
     return ERR_DATA;
   }
-
-  info->spender = &info->_addr[ETH_ABI_WORD_ADDR_OFF];
 
   int details = eip712_find_field(ctx, ctx->index.message, "details");
 
@@ -505,14 +533,71 @@ app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info
     return ERR_DATA;
   }
 
-  uint8_t value[INT256_LENGTH];
-
-  if (eip712_extract_uint256(ctx, details, "amount", value) != ERR_OK) {
+  if (eip712_extract_bignum256(ctx, details, "amount", &info->value) != ERR_OK) {
     return ERR_DATA;
   }
 
-  bn_read_be(value, &info->value);
   bn_zero(&info->fees);
+
+  return ERR_OK;
+}
+
+app_err_t eip712_extract_safe_tx(const eip712_ctx_t* ctx, eth_safe_tx_t* info) {
+  uint8_t* buf = g_camera_fb[1];
+
+  if (eip712_extract_domain(ctx, &info->domain) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  eth_lookup_chain(info->domain.chainID, &info->chain, info->_chain_num);
+
+  info->safeAddr = info->domain.address;
+
+  if (eip712_extract_addr(ctx, ctx->index.message, "to", buf, &info->to) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eip712_extract_bignum256(ctx, ctx->index.message, "value", &info->value) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  info->data = &buf[96];
+  info->data_len = (CAMERA_FB_SIZE - 96);
+
+  if (eip712_extract_bytes(ctx, ctx->index.message, "data", info->data, &info->data_len) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eip712_extract_uint8(ctx, ctx->index.message, "operation", &info->operation) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eip712_extract_bignum256(ctx, ctx->index.message, "safeTxGas", &info->safeTxGas) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eip712_extract_bignum256(ctx, ctx->index.message, "baseGas", &info->baseGas) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eip712_extract_bignum256(ctx, ctx->index.message, "gasPrice", &info->gasPrice) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eip712_extract_addr(ctx, ctx->index.message, "gasToken", &buf[32], &info->gasToken) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eip712_extract_addr(ctx, ctx->index.message, "refundReceiver", &buf[64], &info->refundReceiver) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eip712_extract_bignum256(ctx, ctx->index.message, "nonce", &info->nonce) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  info->signatures = NULL;
+  info->signatures_len = 0;
 
   return ERR_OK;
 }
