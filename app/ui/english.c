@@ -80,6 +80,16 @@ const char *const i18n_english_strings[] = {
     "Contract",
     "Name",
 
+    // Safe Confirmation
+    "Confirm Safe TX",
+    "Safe",
+    "safeGas",
+    "baseGas",
+    "gasPrice",
+    "gasToken",
+    "refundTo",
+    "safeNonce",
+
     // QR output
     "Scan with your wallet",
     "Scan to verify",

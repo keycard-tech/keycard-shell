@@ -15,7 +15,7 @@
 
 #define TX_CONFIRM_TIMEOUT 180000
 #define BIGNUM_STRING_LEN 100
-#define MAX_PAGE_COUNT 50
+#define MAX_PAGE_COUNT 80
 #define MESSAGE_MAX_X (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN)
 #define MESSAGE_MAX_Y (SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - 16)
 #define DATA_FIELD_MAX_LEN 23
@@ -540,7 +540,7 @@ static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const u
 }
 
 app_err_t dialog_confirm_eth_tx() {
-  const eth_abi_function_t* abi = eth_data_recognize(g_ui_cmd.params.eth_tx.tx);
+  const eth_abi_function_t* abi = eth_data_recognize(g_ui_cmd.params.eth_tx.tx->data, g_ui_cmd.params.eth_tx.tx->dataLength, (g_ui_cmd.params.eth_tx.tx->value.length > 0));
 
   if ((abi != NULL)) {
     if ((abi->selector == ETH_DATA_ERC20_APPROVE) && (abi->ext_selector == ETH_DATA_ERC20_APPROVE_EXT_SELECTOR)) {
@@ -856,6 +856,41 @@ app_err_t dialog_confirm_msg() {
   return dialog_confirm_text_based(g_ui_cmd.params.msg.data, g_ui_cmd.params.msg.len, NULL);
 }
 
+static app_err_t dialog_confirm_safetx(eth_safe_tx_t* info, const uint8_t* addr) {
+  const eth_abi_function_t* abi = eth_data_recognize(info->data, info->data_len, !bn_is_zero(&info->value));
+
+  uint8_t* data_str = g_camera_fb[0];
+  size_t data_str_len;
+  eth_data_format(abi, info->data, info->data_len, data_str, &data_str_len);
+
+  screen_text_ctx_t ctx = {
+      .font = TH_FONT_TEXT,
+      .fg = TH_COLOR_TEXT_FG,
+      .bg = TH_COLOR_TEXT_BG,
+  };
+
+  dialog_title(LSTR(TX_SAFE_CONFIRM_TITLE));
+
+  app_err_t ret = ERR_NEED_MORE_DATA;
+  size_t page = 0;
+  size_t last_page = 0;
+
+  while(ret == ERR_NEED_MORE_DATA) {
+    ctx.y = TH_TITLE_HEIGHT;
+
+    if (page == 0) {
+      dialog_address(&ctx, TX_SIGNER, ADDR_ETH, addr);
+      dialog_address(&ctx, TX_SAFE_ADDRESS, ADDR_ETH, info->safeAddr);
+      dialog_chain(&ctx, info->chain.name);
+      dialog_blank(ctx.y);
+    }
+
+    ret = dialog_wait_paged(&page, last_page);
+  }
+
+  return ret;
+}
+
 app_err_t dialog_confirm_eip712() {
   eip712_data_type_t type = eip712_recognize(g_ui_cmd.params.eip712.data);
 
@@ -870,7 +905,10 @@ app_err_t dialog_confirm_eip712() {
       return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, false);
     }
   } else if (type == EIP712_SAFE_TX) {
-
+    eth_safe_tx_t info;
+    if (eip712_extract_safe_tx(g_ui_cmd.params.eip712.data, &info) == ERR_OK) {
+      return dialog_confirm_safetx(&info, g_ui_cmd.params.eip712.addr);
+    }
   }
 
   eip712_domain_t domain;

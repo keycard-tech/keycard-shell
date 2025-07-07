@@ -131,7 +131,8 @@ typedef struct {
   uint8_t _chain_num[11];
 } eth_safe_tx_t;
 
-const eth_abi_function_t* eth_data_recognize(const txContent_t* tx);
+const eth_abi_function_t* eth_data_recognize(const uint8_t* data, uint32_t data_len, bool has_value);
+void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t* out_len);
 eip712_data_type_t eip712_recognize(const eip712_ctx_t* ctx);
 
 app_err_t eip712_extract_domain(const eip712_ctx_t* ctx, eip712_domain_t* out);

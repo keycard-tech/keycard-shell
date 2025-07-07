@@ -154,16 +154,16 @@ fs_action_t eth_data_find_function(void* ctx, fs_entry_t* entry) {
   return FS_ACCEPT;
 }
 
-const eth_abi_function_t* eth_data_recognize(const txContent_t* tx) {
-  if (tx->dataLength < sizeof(uint32_t)) {
+const eth_abi_function_t* eth_data_recognize(const uint8_t* data, uint32_t data_len, bool has_value) {
+  if (data_len < sizeof(uint32_t)) {
     return NULL;
   }
 
   struct eth_func_search_ctx search_ctx;
-  memcpy(&search_ctx.selector, tx->data, sizeof(uint32_t));
-  search_ctx.args = &tx->data[sizeof(uint32_t)];
-  search_ctx.args_len = tx->dataLength - sizeof(uint32_t);
-  search_ctx.has_value = tx->value.length > 0;
+  memcpy(&search_ctx.selector, data, sizeof(uint32_t));
+  search_ctx.args = &data[sizeof(uint32_t)];
+  search_ctx.args_len = data_len - sizeof(uint32_t);
+  search_ctx.has_value = has_value;
 
   fs_entry_t* found = fs_find(eth_data_find_function, &search_ctx);
 
@@ -375,6 +375,17 @@ static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const u
   return ERR_OK;
 }
 
+void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t* out_len) {
+  if (data_len) {
+    if ((abi == NULL) || (eth_data_format_abi_call(abi, data, data_len, out, out_len) != ERR_OK)) {
+      base16_encode(data, (char *) out, data_len);
+      *out_len = data_len * 2;
+    }
+  } else {
+    *out_len = 0;
+  }
+}
+
 app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info_t* info) {
   info->data_str_len = 0;
 
@@ -410,12 +421,7 @@ fallback:
 
     info->to = tx->destination;
 
-    if (tx->dataLength) {
-      if ((abi == NULL) || (eth_data_format_abi_call(abi, tx->data, tx->dataLength, info->data_str, &info->data_str_len) != ERR_OK)) {
-        base16_encode(tx->data, (char *) info->data_str, tx->dataLength);
-        info->data_str_len = tx->dataLength * 2;
-      }
-    }
+    eth_data_format(abi, tx->data, tx->dataLength, info->data_str, &info->data_str_len);
   }
 
   bn_read_compact_be(value, value_len, &info->value);
@@ -551,7 +557,7 @@ app_err_t eip712_extract_safe_tx(const eip712_ctx_t* ctx, eth_safe_tx_t* info) {
 
   eth_lookup_chain(info->domain.chainID, &info->chain, info->_chain_num);
 
-  info->safeAddr = info->domain.address;
+  info->safeAddr = &info->domain.address[ETH_ABI_WORD_ADDR_OFF];
 
   if (eip712_extract_addr(ctx, ctx->index.message, "to", buf, &info->to) != ERR_OK) {
     return ERR_DATA;
