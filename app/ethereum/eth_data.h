@@ -125,10 +125,6 @@ typedef struct {
   const uint8_t* gasToken;
   const uint8_t* refundReceiver;
   bignum256 nonce;
-  const uint8_t* signatures;
-  uint32_t signatures_len;
-
-  uint8_t _chain_num[11];
 } eth_safe_tx_t;
 
 const eth_abi_function_t* eth_data_recognize(const uint8_t* data, uint32_t data_len, bool has_value);

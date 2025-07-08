@@ -841,35 +841,78 @@ app_err_t dialog_confirm_msg() {
 }
 
 static app_err_t dialog_confirm_safetx(eth_safe_tx_t* info, const uint8_t* addr) {
-  const eth_abi_function_t* abi = eth_data_recognize(info->data, info->data_len, !bn_is_zero(&info->value));
-
-  uint8_t* data_str = g_camera_fb[0];
-  size_t data_str_len;
-  eth_data_format(abi, info->data, info->data_len, data_str, &data_str_len);
-
   screen_text_ctx_t ctx = {
       .font = TH_FONT_TEXT,
       .fg = TH_COLOR_TEXT_FG,
       .bg = TH_COLOR_TEXT_BG,
   };
 
+  pager_ctx_t pager = { .page = 0, .last_page = 2 };
+
+  uint8_t* data_str = g_camera_fb[0];
+  size_t data_str_len;
+
+  if (info->data_len > 0) {
+    const eth_abi_function_t* abi = eth_data_recognize(info->data, info->data_len, !bn_is_zero(&info->value));
+    eth_data_format(abi, info->data, info->data_len, data_str, &data_str_len);
+    dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 3, data_str, data_str_len);
+  }
+
   dialog_title(LSTR(TX_SAFE_CONFIRM_TITLE));
 
   app_err_t ret = ERR_NEED_MORE_DATA;
-  uint16_t page = 0;
-  uint16_t last_page = 0;
 
   while(ret == ERR_NEED_MORE_DATA) {
     ctx.y = TH_TITLE_HEIGHT;
 
-    if (page == 0) {
+    if (pager.page == 0) {
       dialog_address(&ctx, TX_SIGNER, ADDR_ETH, addr);
       dialog_address(&ctx, TX_SAFE_ADDRESS, ADDR_ETH, info->safeAddr);
+      dialog_address(&ctx, TX_ADDRESS, ADDR_ETH, info->to);
       dialog_chain(&ctx, info->chain.name);
-      dialog_blank(ctx.y);
+    } else if (pager.page == 1) {
+      dialog_amount(&ctx, TX_AMOUNT, &info->value, 18, info->chain.ticker);
+
+      dialog_label(&ctx, LSTR(TX_SAFE_OP));
+      if (info->operation == 0) {
+        dialog_data(&ctx, LSTR(TX_SAFE_OP_CALL));
+      } else if (info->operation == 1) {
+        dialog_data(&ctx, LSTR(TX_SAFE_OP_DELEGATE));
+      } else {
+        uint8_t b[4];
+        uint8_t* s = u32toa(info->operation, b, 4);
+        dialog_data(&ctx, (char *) s);
+      }
+
+      dialog_amount(&ctx, TX_SAFE_GAS, &info->safeTxGas, 0, "");
+      dialog_amount(&ctx, TX_SAFE_BASEGAS, &info->baseGas, 0, "");
+      dialog_amount(&ctx, TX_SAFE_GAS_PRICE, &info->gasPrice, 0, "");
+      dialog_address(&ctx, TX_SAFE_GAS_TOKEN, ADDR_ETH, info->gasToken);
+    } else if (pager.page == 2) {
+      dialog_address(&ctx, TX_SAFE_REFUND_RX, ADDR_ETH, info->refundReceiver);
+      dialog_amount(&ctx, TX_SAFE_NONCE, &info->nonce, 0, "");
+      //TODO: add tx hash here
+    } else {
+      uint16_t offset = pager.pages[pager.page];
+
+      if (pager.page == 3) {
+        dialog_label_only(&ctx, LSTR(TX_DATA));
+        ctx.font = TH_FONT_TEXT;
+        ctx.fg = TH_COLOR_TEXT_FG;
+        ctx.bg = TH_COLOR_TEXT_BG;
+        ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+        dialog_blank(ctx.y);
+      } else {
+        ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+        ctx.y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN;
+        dialog_blank(TH_TITLE_HEIGHT);
+      }
+
+      screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &data_str[offset], (data_str_len - offset), false, false);
     }
 
-    ret = dialog_wait_paged(&page, last_page);
+    dialog_blank(ctx.y);
+    ret = dialog_wait_paged(&pager.page, pager.last_page);
   }
 
   return ret;

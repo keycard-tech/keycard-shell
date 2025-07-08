@@ -83,12 +83,16 @@ const char *const i18n_english_strings[] = {
     // Safe Confirmation
     "Confirm Safe TX",
     "Safe",
-    "safeGas",
-    "baseGas",
-    "gasPrice",
-    "gasToken",
-    "refundTo",
-    "safeNonce",
+    "SafeGas",
+    "BaseGas",
+    "GasPrice",
+    "GasTkn",
+    "RefundTo",
+    "Nonce",
+    "Op",
+    "Call (0)",
+    "DelegateCall (1)",
+    "Safe TX Hash",
 
     // QR output
     "Scan with your wallet",

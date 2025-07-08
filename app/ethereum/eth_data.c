@@ -555,7 +555,7 @@ app_err_t eip712_extract_safe_tx(const eip712_ctx_t* ctx, eth_safe_tx_t* info) {
     return ERR_DATA;
   }
 
-  eth_lookup_chain(info->domain.chainID, &info->chain, info->_chain_num);
+  eth_lookup_chain(info->domain.chainID, &info->chain, &buf[96]);
 
   info->safeAddr = &info->domain.address[ETH_ABI_WORD_ADDR_OFF];
 
@@ -567,8 +567,8 @@ app_err_t eip712_extract_safe_tx(const eip712_ctx_t* ctx, eth_safe_tx_t* info) {
     return ERR_DATA;
   }
 
-  info->data = &buf[96];
-  info->data_len = (CAMERA_FB_SIZE - 96);
+  info->data = &buf[128];
+  info->data_len = (CAMERA_FB_SIZE - 128);
 
   if (eip712_extract_bytes(ctx, ctx->index.message, "data", info->data, &info->data_len) != ERR_OK) {
     return ERR_DATA;
@@ -601,9 +601,6 @@ app_err_t eip712_extract_safe_tx(const eip712_ctx_t* ctx, eth_safe_tx_t* info) {
   if (eip712_extract_bignum256(ctx, ctx->index.message, "nonce", &info->nonce) != ERR_OK) {
     return ERR_DATA;
   }
-
-  info->signatures = NULL;
-  info->signatures_len = 0;
 
   return ERR_OK;
 }
