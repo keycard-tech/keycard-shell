@@ -15,12 +15,18 @@
 
 #define TX_CONFIRM_TIMEOUT 180000
 #define BIGNUM_STRING_LEN 100
-#define MAX_PAGE_COUNT 80
+#define MAX_PAGE_COUNT 120
 #define MESSAGE_MAX_X (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN)
 #define MESSAGE_MAX_Y (SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - 16)
 #define DATA_FIELD_MAX_LEN 23
 
 #define BTC_DIALOG_PAGE_ITEMS 1
+
+typedef struct {
+  uint16_t page;
+  uint16_t last_page;
+  uint16_t pages[MAX_PAGE_COUNT];
+} pager_ctx_t;
 
 app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
   icon_t left = opts & UI_INFO_CANCELLABLE ? ICON_NAV_CANCEL : ICON_NONE;
@@ -64,7 +70,7 @@ app_err_t dialog_wait_dismiss(ui_info_opt_t opts) {
   }
 }
 
-static app_err_t dialog_wait_paged(size_t* page, size_t last_page) {
+static app_err_t dialog_wait_paged(uint16_t* page, uint16_t last_page) {
   dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_NEXT);
   dialog_pager(*page, last_page, true);
 
@@ -429,6 +435,31 @@ static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint
   dialog_data(ctx, p);
 }
 
+static void dialog_measure_string_in_pages(screen_text_ctx_t* ctx, pager_ctx_t* pager, uint16_t start_y_off, uint16_t start_page, const uint8_t* str, size_t str_len) {
+  pager->last_page = start_page;
+  pager->pages[start_page] = 0;
+
+  while(1) {
+    ctx->x = TH_TEXT_HORIZONTAL_MARGIN;
+
+    if (pager->last_page > start_page) {
+      ctx->y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN;
+    } else {
+      ctx->y = start_y_off;
+    }
+
+    uint16_t offset = pager->pages[pager->last_page];
+    uint16_t to_display = str_len - offset;
+    uint16_t remaining = screen_draw_text(ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &str[offset], to_display, true, false);
+
+    if (!remaining || pager->last_page == (MAX_PAGE_COUNT - 1)) {
+      break;
+    }
+
+    pager->pages[++pager->last_page] = offset + (to_display - remaining);
+  }
+}
+
 static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_format) {
   eth_transfer_info_t tx_info;
 
@@ -438,35 +469,11 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
     return ERR_DATA;
   }
 
-  screen_text_ctx_t ctx;
-  size_t pages[MAX_PAGE_COUNT];
-  size_t page = 0;
-  size_t last_page = 0;
+  screen_text_ctx_t ctx = { .font = TH_FONT_TEXT };
+  pager_ctx_t pager = { .page = 0, .last_page = 0 };
 
   if (tx_info.data_str_len) {
-    last_page = 1;
-    pages[1] = 0;
-    ctx.font = TH_FONT_TEXT;
-
-    while(1) {
-      ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
-
-      if (last_page > 1) {
-        ctx.y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN;
-      } else {
-        ctx.y = TH_TITLE_HEIGHT + TH_LABEL_HEIGHT;
-      }
-
-      size_t offset = pages[last_page];
-      size_t to_display = tx_info.data_str_len - offset;
-      size_t remaining = screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &tx_info.data_str[offset], to_display, true, false);
-
-      if (!remaining || last_page == (MAX_PAGE_COUNT - 1)) {
-        break;
-      }
-
-      pages[++last_page] = offset + (to_display - remaining);
-    }
+    dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 1, tx_info.data_str, tx_info.data_str_len);
   }
 
   dialog_title(LSTR(TX_CONFIRM_TRANSFER));
@@ -476,7 +483,7 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
   while(ret == ERR_NEED_MORE_DATA) {
     ctx.y = TH_TITLE_HEIGHT;
 
-    if (page == 0) {
+    if (pager.page == 0) {
       dialog_address(&ctx, TX_SIGNER, ADDR_ETH, g_ui_cmd.params.eth_tx.addr);
       dialog_address(&ctx, TX_ADDRESS, ADDR_ETH, tx_info.to);
       dialog_chain(&ctx, tx_info.chain.name);
@@ -485,9 +492,9 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
       dialog_amount(&ctx, TX_FEE, &tx_info.fees, 18, tx_info.chain.ticker);
       dialog_blank(ctx.y);
     } else {
-      size_t offset = pages[page];
+      uint16_t offset = pager.pages[pager.page];
 
-      if (page == 1) {
+      if (pager.page == 1) {
         dialog_label_only(&ctx, LSTR(TX_DATA));
         ctx.font = TH_FONT_TEXT;
         ctx.fg = TH_COLOR_TEXT_FG;
@@ -503,7 +510,7 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
       screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &tx_info.data_str[offset], (tx_info.data_str_len - offset), false, false);
     }
 
-    ret = dialog_wait_paged(&page, last_page);
+    ret = dialog_wait_paged(&pager.page, pager.last_page);
   }
 
   return ret;
@@ -514,7 +521,7 @@ static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const u
 
   dialog_title(LSTR(TX_CONFIRM_APPROVAL));
 
-  size_t page = 0;
+  uint16_t page = 0;
   app_err_t ret = ERR_NEED_MORE_DATA;
   while(ret == ERR_NEED_MORE_DATA) {
     ctx.y = TH_TITLE_HEIGHT;
@@ -745,8 +752,8 @@ app_err_t dialog_confirm_btc_tx() {
 
   dialog_title(LSTR(TX_CONFIRM_TRANSFER));
 
-  size_t page = 0;
-  size_t last_page = ((tx->input_count + tx->output_count) + (BTC_DIALOG_PAGE_ITEMS - 1)) / BTC_DIALOG_PAGE_ITEMS;
+  uint16_t page = 0;
+  uint16_t last_page = ((tx->input_count + tx->output_count) + (BTC_DIALOG_PAGE_ITEMS - 1)) / BTC_DIALOG_PAGE_ITEMS;
 
   app_err_t ret = ERR_NEED_MORE_DATA;
 
@@ -766,9 +773,7 @@ app_err_t dialog_confirm_btc_tx() {
 }
 
 app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_domain_t* eip712) {
-  size_t pages[MAX_PAGE_COUNT];
-  size_t last_page = 0;
-  pages[0] = 0;
+  pager_ctx_t pager = { .last_page = 0, .page = 0 };
 
   screen_text_ctx_t ctx = {
       .font = TH_FONT_TEXT,
@@ -776,38 +781,17 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
       .bg = TH_COLOR_TEXT_BG,
   };
 
-  while(1) {
-    ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+  dialog_measure_string_in_pages(&ctx, &pager, eip712 ? (TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 4) + (TH_LABEL_HEIGHT * 4)) : (TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 2) + (TH_LABEL_HEIGHT * 2)), 0, data, len);
 
-    if (last_page > 0) {
-      ctx.y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN;
-    } else if (eip712) {
-      ctx.y = TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 4) + (TH_LABEL_HEIGHT * 4);
-    } else {
-      ctx.y = TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 2) + (TH_LABEL_HEIGHT * 2);
-    }
-
-    size_t offset = pages[last_page];
-    size_t to_display = len - offset;
-    size_t remaining = screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &data[offset], to_display, true, false);
-
-    if (!remaining || last_page == (MAX_PAGE_COUNT - 1)) {
-      break;
-    }
-
-    pages[++last_page] = offset + (to_display - remaining);
-  }
-
-  size_t page = 0;
 
   app_err_t ret = ERR_NEED_MORE_DATA;
 
   while(ret == ERR_NEED_MORE_DATA) {
-    size_t offset = pages[page];
+    uint16_t offset = pager.pages[pager.page];
 
     dialog_title(LSTR(eip712 ? EIP712_CONFIRM_TITLE : MSG_CONFIRM_TITLE));
 
-    if (page == 0) {
+    if (pager.page == 0) {
       ctx.y = TH_TITLE_HEIGHT;
 
       if (eip712) {
@@ -846,7 +830,7 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
     }
 
     screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &data[offset], (len - offset), false, false);
-    ret = dialog_wait_paged(&page, last_page);
+    ret = dialog_wait_paged(&pager.page, pager.last_page);
   }
 
   return ret;
@@ -872,8 +856,8 @@ static app_err_t dialog_confirm_safetx(eth_safe_tx_t* info, const uint8_t* addr)
   dialog_title(LSTR(TX_SAFE_CONFIRM_TITLE));
 
   app_err_t ret = ERR_NEED_MORE_DATA;
-  size_t page = 0;
-  size_t last_page = 0;
+  uint16_t page = 0;
+  uint16_t last_page = 0;
 
   while(ret == ERR_NEED_MORE_DATA) {
     ctx.y = TH_TITLE_HEIGHT;
