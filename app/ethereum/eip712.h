@@ -18,6 +18,7 @@ typedef struct {
   int token_count;
   const jsmntok_t* tokens;
   const char* json;
+  uint8_t hash[SHA3_256_DIGEST_LENGTH];
 } eip712_ctx_t;
 
 app_err_t eip712_hash(eip712_ctx_t *ctx, SHA3_CTX *sha3, uint8_t* heap, size_t heap_size, const char* json, size_t json_len);

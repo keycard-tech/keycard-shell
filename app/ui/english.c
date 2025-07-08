@@ -92,7 +92,7 @@ const char *const i18n_english_strings[] = {
     "Op",
     "Call (0)",
     "DelegateCall (1)",
-    "Safe TX Hash",
+    "Hash",
 
     // QR output
     "Scan with your wallet",

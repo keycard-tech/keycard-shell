@@ -146,6 +146,9 @@ static app_err_t core_eth_process_eip712(const uint8_t* data, uint32_t len) {
     return err;
   }
 
+  SHA3_CTX tmp;
+  memcpy(&tmp, &g_core.hash_ctx, sizeof(SHA3_CTX));
+  keccak_Final(&tmp, g_core.data.eip712.hash);
   return ui_display_eip712(g_core.address, &g_core.data.eip712) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
 }
 

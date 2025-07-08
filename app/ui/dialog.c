@@ -840,7 +840,7 @@ app_err_t dialog_confirm_msg() {
   return dialog_confirm_text_based(g_ui_cmd.params.msg.data, g_ui_cmd.params.msg.len, NULL);
 }
 
-static app_err_t dialog_confirm_safetx(eth_safe_tx_t* info, const uint8_t* addr) {
+static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr, const uint8_t* hash) {
   screen_text_ctx_t ctx = {
       .font = TH_FONT_TEXT,
       .fg = TH_COLOR_TEXT_FG,
@@ -858,6 +858,11 @@ static app_err_t dialog_confirm_safetx(eth_safe_tx_t* info, const uint8_t* addr)
     dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 3, data_str, data_str_len);
   }
 
+  char safetxhash[SHA3_256_DIGEST_LENGTH * 2 + 2 + 1];
+  safetxhash[0] = '0';
+  safetxhash[1] = 'x';
+  base16_encode(hash, &safetxhash[2], SHA3_256_DIGEST_LENGTH);
+
   dialog_title(LSTR(TX_SAFE_CONFIRM_TITLE));
 
   app_err_t ret = ERR_NEED_MORE_DATA;
@@ -870,6 +875,7 @@ static app_err_t dialog_confirm_safetx(eth_safe_tx_t* info, const uint8_t* addr)
       dialog_address(&ctx, TX_SAFE_ADDRESS, ADDR_ETH, info->safeAddr);
       dialog_address(&ctx, TX_ADDRESS, ADDR_ETH, info->to);
       dialog_chain(&ctx, info->chain.name);
+      dialog_blank(ctx.y);
     } else if (pager.page == 1) {
       dialog_amount(&ctx, TX_AMOUNT, &info->value, 18, info->chain.ticker);
 
@@ -888,10 +894,13 @@ static app_err_t dialog_confirm_safetx(eth_safe_tx_t* info, const uint8_t* addr)
       dialog_amount(&ctx, TX_SAFE_BASEGAS, &info->baseGas, 0, "");
       dialog_amount(&ctx, TX_SAFE_GAS_PRICE, &info->gasPrice, 0, "");
       dialog_address(&ctx, TX_SAFE_GAS_TOKEN, ADDR_ETH, info->gasToken);
+      dialog_blank(ctx.y);
     } else if (pager.page == 2) {
       dialog_address(&ctx, TX_SAFE_REFUND_RX, ADDR_ETH, info->refundReceiver);
       dialog_amount(&ctx, TX_SAFE_NONCE, &info->nonce, 0, "");
-      //TODO: add tx hash here
+      dialog_blank(ctx.y);
+      dialog_label_2lines(&ctx, LSTR(TX_SAFE_HASH));
+      dialog_data_2lines(&ctx, safetxhash);
     } else {
       uint16_t offset = pager.pages[pager.page];
 
@@ -911,7 +920,6 @@ static app_err_t dialog_confirm_safetx(eth_safe_tx_t* info, const uint8_t* addr)
       screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &data_str[offset], (data_str_len - offset), false, false);
     }
 
-    dialog_blank(ctx.y);
     ret = dialog_wait_paged(&pager.page, pager.last_page);
   }
 
@@ -934,7 +942,7 @@ app_err_t dialog_confirm_eip712() {
   } else if (type == EIP712_SAFE_TX) {
     eth_safe_tx_t info;
     if (eip712_extract_safe_tx(g_ui_cmd.params.eip712.data, &info) == ERR_OK) {
-      return dialog_confirm_safetx(&info, g_ui_cmd.params.eip712.addr);
+      return dialog_confirm_safe_tx(&info, g_ui_cmd.params.eip712.addr, g_ui_cmd.params.eip712.data->hash);
     }
   }
 
