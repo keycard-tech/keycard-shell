@@ -20,6 +20,12 @@ struct __attribute__((packed)) erc20_raw_desc {
   uint8_t data[];
 };
 
+struct __attribute__((packed)) abi_raw_desc {
+  fs_entry_t _entry;
+  uint64_t full_selector;
+  uint8_t data[];
+};
+
 struct __attribute__((packed)) version_desc {
   fs_entry_t _entry;
   uint32_t version;
@@ -30,14 +36,17 @@ struct __attribute__((packed)) delta_desc {
   uint32_t old_version;
   uint16_t erase_chain_len;
   uint16_t erase_token_len;
+  uint16_t erase_abi_len;
   uint8_t data[];
 };
 
 struct delta_erase_ctx {
   uint8_t* erase_chain;
   uint8_t* erase_token;
+  uint8_t* erase_abi;
   uint16_t erase_chain_len;
   uint16_t erase_token_len;
+  uint16_t erase_abi_len;
 };
 
 fs_action_t _eth_db_match_chain(void* ctx, fs_entry_t* entry) {
@@ -119,6 +128,16 @@ static inline fs_action_t _eth_db_match_erase_token(struct delta_erase_ctx* ctx,
   return FS_ACCEPT;
 }
 
+static inline fs_action_t _eth_db_match_erase_abi(struct delta_erase_ctx* ctx, struct abi_raw_desc* entry) {
+  for (int i = 0; i < ctx->erase_abi_len; i += 8) {
+    if (!memcmp(&entry->full_selector, &ctx->erase_abi[i], 8)) {
+      return FS_REJECT;
+    }
+  }
+
+  return FS_ACCEPT;
+}
+
 fs_action_t _eth_db_match_delta(void* ctx, fs_entry_t* entry) {
   switch(entry->magic) {
   case FS_VERSION_MAGIC:
@@ -127,6 +146,8 @@ fs_action_t _eth_db_match_delta(void* ctx, fs_entry_t* entry) {
     return _eth_db_match_erase_chain((struct delta_erase_ctx*) ctx, (struct chain_raw_desc*) entry);
   case FS_ERC20_MAGIC:
     return _eth_db_match_erase_token((struct delta_erase_ctx*) ctx, (struct erc20_raw_desc*) entry);
+  case FS_ABI_MAGIC:
+    return _eth_db_match_erase_abi((struct delta_erase_ctx*) ctx, (struct abi_raw_desc*) entry);
   default:
     return FS_ACCEPT;
   }
@@ -197,13 +218,15 @@ static app_err_t eth_delta_db_update(struct delta_desc* delta, size_t len) {
   struct delta_erase_ctx erase_ctx = {
       .erase_chain = &delta->data[0],
       .erase_token = &delta->data[delta->erase_chain_len],
+      .erase_abi = &delta->data[delta->erase_chain_len + delta->erase_token_len],
       .erase_chain_len = delta->erase_chain_len,
-      .erase_token_len = delta->erase_token_len
+      .erase_token_len = delta->erase_token_len,
+      .erase_abi_len = delta->erase_abi_len
   };
 
-  fs_entry_t* entries = (fs_entry_t*) &delta->data[delta->erase_chain_len + delta->erase_token_len];
+  fs_entry_t* entries = (fs_entry_t*) &delta->data[delta->erase_chain_len + delta->erase_token_len + delta->erase_abi_len];
 
-  size_t off = sizeof(struct delta_desc) + delta->erase_chain_len + delta->erase_token_len;
+  size_t off = sizeof(struct delta_desc) + delta->erase_chain_len + delta->erase_token_len + delta->erase_abi_len;
 
   if (off > len) {
     return ERR_DATA;
@@ -245,7 +268,7 @@ app_err_t eth_db_extract_version(uint8_t* data, uint32_t* version) {
     break;
   case FS_DELTA_MAGIC:
     delta = (struct delta_desc*) data;
-    ver_data = (struct version_desc*) (&delta->data[delta->erase_chain_len + delta->erase_token_len]);
+    ver_data = (struct version_desc*) (&delta->data[delta->erase_chain_len + delta->erase_token_len + delta->erase_abi_len]);
     break;
   default:
     return ERR_UNSUPPORTED;
