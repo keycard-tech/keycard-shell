@@ -873,10 +873,12 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
     if (pager.page == 0) {
       dialog_address(&ctx, TX_SIGNER, ADDR_ETH, addr);
       dialog_address(&ctx, TX_SAFE_ADDRESS, ADDR_ETH, info->safeAddr);
+      dialog_blank(ctx.y);
+      dialog_label_2lines(&ctx, LSTR(TX_SAFE_HASH));
+      dialog_data_2lines(&ctx, safetxhash);
+    } else if (pager.page == 1) {
       dialog_address(&ctx, TX_ADDRESS, ADDR_ETH, info->to);
       dialog_chain(&ctx, info->chain.name);
-      dialog_blank(ctx.y);
-    } else if (pager.page == 1) {
       dialog_amount(&ctx, TX_AMOUNT, &info->value, 18, info->chain.ticker);
 
       dialog_label(&ctx, LSTR(TX_SAFE_OP));
@@ -890,17 +892,15 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
         dialog_data(&ctx, (char *) s);
       }
 
+      dialog_amount(&ctx, TX_SAFE_NONCE, &info->nonce, 0, "");
+      dialog_blank(ctx.y);
+    } else if (pager.page == 2) {
       dialog_amount(&ctx, TX_SAFE_GAS, &info->safeTxGas, 0, "");
       dialog_amount(&ctx, TX_SAFE_BASEGAS, &info->baseGas, 0, "");
       dialog_amount(&ctx, TX_SAFE_GAS_PRICE, &info->gasPrice, 0, "");
       dialog_address(&ctx, TX_SAFE_GAS_TOKEN, ADDR_ETH, info->gasToken);
-      dialog_blank(ctx.y);
-    } else if (pager.page == 2) {
       dialog_address(&ctx, TX_SAFE_REFUND_RX, ADDR_ETH, info->refundReceiver);
-      dialog_amount(&ctx, TX_SAFE_NONCE, &info->nonce, 0, "");
       dialog_blank(ctx.y);
-      dialog_label_2lines(&ctx, LSTR(TX_SAFE_HASH));
-      dialog_data_2lines(&ctx, safetxhash);
     } else {
       uint16_t offset = pager.pages[pager.page];
 
