@@ -19,10 +19,9 @@ const menu_t menu_keycard = {
 };
 
 const menu_t menu_device = {
-  6, {
+  5, {
     {MENU_INFO, NULL},
     {MENU_DEV_AUTH, NULL},
-    {MENU_DB_UPDATE, NULL},
     {MENU_BRIGHTNESS, NULL},
     {MENU_SET_OFF_TIME, NULL},
     {MENU_USB, NULL},

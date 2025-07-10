@@ -205,7 +205,7 @@ static app_err_t eth_full_db_rewrite(fs_entry_t* entries, size_t len) {
   return fs_write(entries, len);
 }
 
-static app_err_t eth_delta_db_update(struct delta_desc* delta, size_t len) {
+__attribute__((unused)) static app_err_t eth_delta_db_update(struct delta_desc* delta, size_t len) {
   uint32_t version;
   if (eth_db_lookup_version(&version) != ERR_OK) {
     return ERR_HW;
@@ -251,8 +251,6 @@ app_err_t eth_db_update(uint8_t* data, size_t len) {
   switch(eth_db_get_magic(data)) {
   case FS_VERSION_MAGIC:
     return eth_full_db_rewrite((fs_entry_t*) data, len);
-  case FS_DELTA_MAGIC:
-    return eth_delta_db_update((struct delta_desc*) data, len);
   default:
     return ERR_UNSUPPORTED;
   }

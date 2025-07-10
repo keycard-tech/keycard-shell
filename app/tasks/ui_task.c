@@ -96,9 +96,6 @@ void ui_task_entry(void* pvParameters) {
     case UI_CMD_DEVINFO:
       g_ui_cmd.result = settings_ui_devinfo();
       break;
-    case UI_CMD_DBINFO:
-      g_ui_cmd.result = settings_ui_dbinfo();
-      break;
     default:
       g_ui_cmd.result = ERR_CANCEL;
       break;
