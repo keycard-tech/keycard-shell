@@ -1,5 +1,13 @@
 # Keycard Shell Dev Firmware
 
+## 0.9.20 (2025-07-11)
+
+* [db] remove QR-based database upgrade
+* [db] recognize and extract SafeTx EIP712 messages
+* [ui] custom presentation for SafeTx messages
+* [ui] refactor pager code
+* [stm32] more conservative SPI clock
+
 ## 0.9.19 (2025-06-30)
 
 * [ui] add SeedQR import flow
