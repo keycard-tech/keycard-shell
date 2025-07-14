@@ -73,6 +73,7 @@ def main():
     parser.add_argument('-c', '--chain-list', help="the chain list json", default="https://chainid.network/chains.json")
     parser.add_argument('-a', '--abi-list', help="the ABI json")
     parser.add_argument('-s', '--sign-key', help="sign the db with the specified key and exclude padding")
+    parser.add_argument('-d', '--dummy-sign', help="adds a dummy signature. Useful only to reproduce builds", action='store_true')
     parser.add_argument('-v', '--version', help="the version in YYYYMMDD format", default=def_version, type=int)
     parser.add_argument('-o', '--output', help="the output file")
     args = parser.parse_args()
@@ -100,11 +101,16 @@ def main():
         m = hashlib.sha256()
         with open(args.sign_key) as f: 
             db_key = f.read()
+    elif args.dummy_sign:
+        m = hashlib.sha256()
     
     with open(args.output, 'wb') as f:
         serialize_db(f, m, chains, tokens, abis, version)
-        if m != None:
+        if db_key != None:
             f.write(sign(db_key, m.digest()))
+        elif m != None:
+            f.write(m.digest())
+            f.write(bytearray(32))
 
 if __name__ == "__main__":
     main()

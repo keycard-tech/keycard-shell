@@ -37,3 +37,8 @@ def hash_firmware(fw):
     h.update(fw[:FW_IV_SIZE])
     h.update(fw[FW_IV_SIZE+SIG_SIZE:])
     return h.digest()
+
+def hash_db(db):
+    h = hashlib.sha256()
+    h.update(db[:-64])
+    return h.digest()
