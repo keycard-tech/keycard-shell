@@ -91,7 +91,7 @@ def main():
     for token in token_list["tokens"]:
         process_token(tokens, chains, token, chain_list)
     
-    for abi in abi_list:
+    for abi in abi_list["abis"]:
         process_abi(abis, abi)
 
     m = None
