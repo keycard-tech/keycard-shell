@@ -67,4 +67,8 @@ bool shamir_interpolate(uint8_t *result, uint8_t result_index,
                         const uint8_t **share_values, uint8_t share_count,
                         size_t len);
 
+uint8_t* shamir_create_digest(const uint8_t *random_data, uint32_t rdlen, const uint8_t *shared_secret, uint32_t sslen, uint8_t *result);
+int32_t shamir_split_secret(uint8_t threshold, uint8_t share_count, const uint8_t *secret, uint32_t secret_length, uint8_t *result);
+int32_t shamir_recover_secret(uint8_t threshold, const uint8_t *x, const uint8_t **shares, uint32_t share_length, uint8_t *secret);
+
 #endif /* __SHAMIR_H__ */

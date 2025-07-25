@@ -3,6 +3,8 @@
  *
  * Copyright (c) 2017 Daan Sprenkels <hello@dsprenkels.com>
  * Copyright (c) 2019 SatoshiLabs
+ * Copyright © 2020 by Blockchain Commons, LLC
+ *
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the "Software"),
@@ -39,6 +41,23 @@
 #include "shamir.h"
 #include <string.h>
 #include "memzero.h"
+#include "hmac.h"
+#include "rand.h"
+
+#define SHAMIR_MAX_SHARE_COUNT 16
+#define SECRET_INDEX 255
+#define DIGEST_INDEX 254
+
+#define SHAMIR_MIN_SECRET_SIZE 16
+#define SHAMIR_MAX_SECRET_SIZE 32
+
+#define SHAMIR_ERROR_SECRET_TOO_LONG       (-101)
+#define SHAMIR_ERROR_TOO_MANY_SHARES       (-102)
+#define SHAMIR_ERROR_INTERPOLATION_FAILURE (-103)
+#define SHAMIR_ERROR_CHECKSUM_FAILURE      (-104)
+#define SHAMIR_ERROR_SECRET_TOO_SHORT      (-105)
+#define SHAMIR_ERROR_SECRET_NOT_EVEN_LEN   (-106)
+#define SHAMIR_ERROR_INVALID_THRESHOLD     (-107)
 
 static void bitslice(uint32_t r[8], const uint8_t *x, size_t len) {
   size_t bit_idx = 0, arr_idx = 0;
@@ -332,4 +351,132 @@ bool shamir_interpolate(uint8_t *result, uint8_t result_index,
   memzero(tmp, sizeof(tmp));
   memzero(secret, sizeof(secret));
   return ret;
+}
+
+//  Copyright © 2020 by Blockchain Commons, LLC
+//  Licensed under the "BSD-2-Clause Plus Patent License"
+
+uint8_t* shamir_create_digest(const uint8_t *random_data, uint32_t rdlen, const uint8_t *shared_secret, uint32_t sslen, uint8_t *result) {
+  uint8_t buf[32];
+
+  hmac_sha256(random_data, rdlen, shared_secret, sslen, buf);
+
+  for(uint8_t j = 0; j < 4; ++j) {
+    result[j] = buf[j];
+  }
+
+  return result;
+}
+
+static int32_t validate_parameters(uint8_t threshold, uint8_t share_count, uint32_t secret_length) {
+  if(share_count > SHAMIR_MAX_SHARE_COUNT) {
+    return SHAMIR_ERROR_TOO_MANY_SHARES;
+  } else if(threshold < 1 || threshold > share_count) {
+    return SHAMIR_ERROR_INVALID_THRESHOLD;
+  } else if(secret_length > SHAMIR_MAX_SECRET_SIZE) {
+    return SHAMIR_ERROR_SECRET_TOO_LONG;
+  } else if(secret_length < SHAMIR_MIN_SECRET_SIZE) {
+    return SHAMIR_ERROR_SECRET_TOO_SHORT;
+  } else if(secret_length & 1) {
+    return SHAMIR_ERROR_SECRET_NOT_EVEN_LEN;
+  }
+
+  return 0;
+}
+
+int32_t shamir_split_secret(uint8_t threshold, uint8_t share_count, const uint8_t *secret, uint32_t secret_length, uint8_t *result) {
+  int32_t err = validate_parameters(threshold, share_count, secret_length);
+
+  if (err) {
+    return err;
+  }
+
+  if (threshold == 1) {
+    uint8_t *share = result;
+    for(uint8_t i = 0; i < share_count; ++i, share += secret_length) {
+      for(uint8_t j = 0; j < secret_length; ++j) {
+        share[j] = secret[j];
+      }
+    }
+
+    return share_count;
+  } else {
+    uint8_t digest[secret_length];
+    uint8_t x[16];
+    const uint8_t *y[16];
+    uint8_t n = 0;
+    uint8_t *share = result;
+
+    for(uint8_t i=0; i < threshold-2; ++i, share += secret_length) {
+      random_buffer(share, secret_length);
+      x[n] = i;
+      y[n] = share;
+      n+=1;
+    }
+
+    random_buffer(digest + 4, secret_length - 4);
+    shamir_create_digest(digest + 4, secret_length - 4, secret, secret_length, digest);
+    x[n] = DIGEST_INDEX;
+    y[n] = digest;
+    n+=1;
+
+    x[n] = SECRET_INDEX;
+    y[n] = secret;
+    n+=1;
+
+    for(uint8_t i = threshold -2; i < share_count; ++i, share += secret_length) {
+      if(!shamir_interpolate(share, i, x, y, n, secret_length)) {
+        return SHAMIR_ERROR_INTERPOLATION_FAILURE;
+      }
+    }
+
+    memzero(digest, sizeof(digest));
+    memzero(x, sizeof(x));
+    memzero(y, sizeof(y));
+  }
+
+  return share_count;
+}
+
+int32_t shamir_recover_secret(uint8_t threshold, const uint8_t *x, const uint8_t **shares, uint32_t share_length, uint8_t *secret) {
+  int32_t err = validate_parameters(threshold, threshold, share_length);
+  if(err) {
+    return err;
+  }
+
+  uint8_t digest[share_length];
+  uint8_t verify[4];
+  uint8_t valid = 1;
+
+  if(threshold == 1) {
+    for(uint8_t j=0; j<share_length; ++j) {
+      secret[j] = shares[0][j];
+    }
+
+    return share_length;
+  }
+
+  if (!shamir_interpolate(digest, DIGEST_INDEX, x, shares, threshold, share_length) ||
+      !shamir_interpolate(secret, SECRET_INDEX, x, shares, threshold, share_length)) {
+    memzero(secret, sizeof(digest));
+    memzero(digest, sizeof(digest));
+    memzero(verify, sizeof(verify));
+
+    return SHAMIR_ERROR_INTERPOLATION_FAILURE;
+  }
+
+  shamir_create_digest(digest + 4, share_length - 4, secret, share_length, verify);
+
+  for(uint8_t i = 0; i < 4; i++) {
+    valid &= digest[i] == verify[i];
+  }
+
+  memzero(digest, sizeof(digest));
+  memzero(verify, sizeof(verify));
+
+  if(!valid) {
+    return SHAMIR_ERROR_CHECKSUM_FAILURE;
+  }
+
+  return share_length;
 }
