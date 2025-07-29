@@ -44,20 +44,8 @@
 #include "hmac.h"
 #include "rand.h"
 
-#define SHAMIR_MAX_SHARE_COUNT 16
 #define SECRET_INDEX 255
 #define DIGEST_INDEX 254
-
-#define SHAMIR_MIN_SECRET_SIZE 16
-#define SHAMIR_MAX_SECRET_SIZE 32
-
-#define SHAMIR_ERROR_SECRET_TOO_LONG       (-101)
-#define SHAMIR_ERROR_TOO_MANY_SHARES       (-102)
-#define SHAMIR_ERROR_INTERPOLATION_FAILURE (-103)
-#define SHAMIR_ERROR_CHECKSUM_FAILURE      (-104)
-#define SHAMIR_ERROR_SECRET_TOO_SHORT      (-105)
-#define SHAMIR_ERROR_SECRET_NOT_EVEN_LEN   (-106)
-#define SHAMIR_ERROR_INVALID_THRESHOLD     (-107)
 
 static void bitslice(uint32_t r[8], const uint8_t *x, size_t len) {
   size_t bit_idx = 0, arr_idx = 0;
@@ -295,7 +283,7 @@ bool shamir_interpolate(uint8_t *result, uint8_t result_index,
   uint32_t secret[8] = {0};
   bool ret = true;
 
-  if (len > SHAMIR_MAX_LEN) return false;
+  if (len > SHAMIR_MAX_SECRET_SIZE) return false;
 
   /* Collect the x and y values */
   for (i = 0; i < share_count; i++) {

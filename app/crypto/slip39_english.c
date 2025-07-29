@@ -27,7 +27,7 @@
 
 #include "slip39.h"
 
-const char* const slip39_wordlist[SLIP39_WORDS_COUNT] = {
+const char* const SLIP39_WORDLIST[SLIP39_WORDS_COUNT] = {
     "academic", "acid",     "acne",     "acquire",  "acrobat",  "activity",
     "actress",  "adapt",    "adequate", "adjust",   "admit",    "adorn",
     "adult",    "advance",  "advocate", "afraid",   "again",    "agency",
