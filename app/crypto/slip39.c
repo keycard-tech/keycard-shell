@@ -257,7 +257,9 @@ int slip39_decode_mnemonic(const uint16_t *mnemonic, uint32_t mnemonic_length, s
     return ERROR_NOT_ENOUGH_MNEMONIC_WORDS;
   }
 
-  if (!rs1024_verify_checksum(shard->extendable, mnemonic, mnemonic_length) ) {
+  uint8_t ext = mnemonic[1] & 16;
+
+  if (!rs1024_verify_checksum(ext, mnemonic, mnemonic_length) ) {
     return ERROR_INVALID_MNEMONIC_CHECKSUM;
   }
 
@@ -269,7 +271,7 @@ int slip39_decode_mnemonic(const uint16_t *mnemonic, uint32_t mnemonic_length, s
   }
 
   shard->identifier = (mnemonic[0] << 5) | (mnemonic[1] >> 5);
-  shard->extendable = mnemonic[1] & 16;
+  shard->extendable = ext;
   shard->iteration_exponent = mnemonic[1] & 15;
   shard->group_index = mnemonic[2] >> 6;
   shard->group_threshold = group_threshold;
