@@ -29,6 +29,9 @@ extern const char* const SLIP39_WORDLIST[SLIP39_WORDS_COUNT];
 #define SLIP39_EXT 16
 #define SLIP39_ITERATION_DEF 1
 
+#define SLIP39_RADIX_BITS 10
+#define SLIP39_METADATA_LENGTH_WORDS 7
+
 typedef struct {
   uint16_t identifier;
   uint8_t extendable;
@@ -47,6 +50,18 @@ typedef struct group_descriptor_struct {
   uint8_t count;
 } slip39_group_desc_t;
 
+static inline size_t slip39_word_count_for_bytes(size_t bytes) {
+  return (bytes * 8 + SLIP39_RADIX_BITS - 1) / SLIP39_RADIX_BITS;
+}
+
+static inline size_t slip39_byte_count_for_words(size_t words) {
+  return (words * SLIP39_RADIX_BITS) / 8;
+}
+
+static inline size_t slip39_mnemonic_length(size_t secret_len) {
+  return SLIP39_METADATA_LENGTH_WORDS + slip39_word_count_for_bytes(secret_len);
+}
+
 void slip39_encrypt(const uint8_t *input, uint32_t input_length, const char *passphrase, uint8_t ext, uint8_t iteration_exponent, uint16_t identifier, uint8_t *output);
 void slip39_decrypt(const uint8_t *input, uint32_t input_length, const char *passphrase, uint8_t ext, uint8_t iteration_exponent, uint16_t identifier, uint8_t *output);
 
@@ -55,7 +70,7 @@ int slip39_decode_mnemonic(const uint16_t* mnemonic, uint32_t mnemonic_length, s
 
 int slip39_count_shards(uint8_t group_threshold, const slip39_group_desc_t *groups, uint8_t groups_length);
 
-int slip39_generate(uint8_t group_threshold, const slip39_group_desc_t* groups, uint8_t groups_length, const uint8_t* master_secret, uint32_t master_secret_length, const char *passphrase, uint8_t ext, uint8_t iteration_exponent, uint32_t* mnemonic_length, uint16_t* mnemonics, uint32_t buffer_size);
+int slip39_generate(uint8_t threshold, const uint8_t* ms, uint32_t ms_len, uint8_t* ems, slip39_shard_t shards[], uint8_t shard_count);
 int slip39_combine(const uint16_t** mnemonics, uint32_t mnemonics_words, uint32_t mnemonics_shards, const char* passphrase, uint8_t* buffer, uint32_t buffer_length);
 
 #endif

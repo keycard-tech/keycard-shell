@@ -14,12 +14,10 @@
 
 #define FEISTEL_BASE_ITERATION_COUNT 2500
 #define FEISTEL_ROUND_COUNT 4
-#define RADIX_BITS 10
 
 #define CUSTOMIZATION_NON_EXTENDABLE_LEN 6
 #define CUSTOMIZATION_EXTENDABLE_LEN 17
 
-#define METADATA_LENGTH_WORDS 7
 #define MIN_STRENGTH_BYTES 16
 #define MIN_MNEMONIC_LENGTH_WORDS 20
 
@@ -162,14 +160,6 @@ void slip39_decrypt(const uint8_t *input, uint32_t input_length, const char *pas
   feistel(0, input, input_length, passphrase, ext, iteration_exponent, identifier, output);
 }
 
-static inline size_t slip39_word_count_for_bytes(size_t bytes) {
-  return (bytes * 8 + RADIX_BITS - 1) / RADIX_BITS;
-}
-
-static inline size_t slip39_byte_count_for_words(size_t words) {
-  return (words * RADIX_BITS) / 8;
-}
-
 static int32_t slip39_words_for_data(const uint8_t *buffer, uint32_t size, uint16_t *words, uint32_t max) {
   uint32_t byte = 0;
   uint32_t word = 0;
@@ -246,10 +236,10 @@ int slip39_encode_mnemonic(const slip39_shard_t *shard, uint16_t *destination, u
   destination[2] = ((shard->group_index << 6) | (gt << 2) | (gc >> 2)) & 1023;
   destination[3] = ((gc << 8) | (mi << 4) | (mt)) & 1023;
 
-  uint32_t words = slip39_words_for_data(shard->value, shard->value_length, destination+4, destination_length - METADATA_LENGTH_WORDS);
-  rs1024_create_checksum(shard->extendable, destination, words + METADATA_LENGTH_WORDS);
+  uint32_t words = slip39_words_for_data(shard->value, shard->value_length, destination+4, destination_length - SLIP39_METADATA_LENGTH_WORDS);
+  rs1024_create_checksum(shard->extendable, destination, words + SLIP39_METADATA_LENGTH_WORDS);
 
-  return words + METADATA_LENGTH_WORDS;
+  return words + SLIP39_METADATA_LENGTH_WORDS;
 }
 
 int slip39_decode_mnemonic(const uint16_t *mnemonic, uint32_t mnemonic_length, slip39_shard_t *shard) {
@@ -305,13 +295,13 @@ int slip39_count_shards(uint8_t group_threshold, const slip39_group_desc_t *grou
     return ERROR_INVALID_GROUP_THRESHOLD;
   }
 
-  for(uint8_t i=0; i<groups_length; ++i) {
+  for (uint8_t i = 0; i < groups_length; ++i) {
     total_shards += groups[i].count;
     if (groups[i].threshold > groups[i].count) {
       return ERROR_INVALID_MEMBER_THRESHOLD;
     }
 
-    if((groups[i].threshold == 1) && (groups[i].count > 1)) {
+    if ((groups[i].threshold == 1) && (groups[i].count > 1)) {
       return ERROR_INVALID_SINGLETON_MEMBER;
     }
   }
@@ -319,70 +309,43 @@ int slip39_count_shards(uint8_t group_threshold, const slip39_group_desc_t *grou
   return total_shards;
 }
 
-static int generate_shards(uint8_t group_threshold, const slip39_group_desc_t *groups, uint8_t groups_length, const uint8_t *master_secret, uint32_t master_secret_length, const char *passphrase, uint8_t ext, uint8_t iteration_exponent, slip39_shard_t *shards, uint16_t shards_size) {
-  if (master_secret_length % 2 == 1) {
-    return ERROR_INVALID_SECRET_LENGTH;
-  }
-
-  int total_shards = slip39_count_shards(group_threshold, groups, groups_length);
-  if (total_shards < 0) {
-    return total_shards;
-  }
-
+static void slip39_init_shards(uint8_t ext, uint8_t iteration_exponent, slip39_shard_t shards[], uint32_t shard_count) {
   uint16_t identifier = 0;
   random_buffer((uint8_t *)(&identifier), 2);
   identifier = identifier & ((1 << 15) - 1);
 
-  if (shards_size < total_shards) {
-    return ERROR_INSUFFICIENT_SPACE;
+  for (int i = 0; i < shard_count; i++) {
+    shards[i].identifier = identifier;
+    shards[i].extendable = ext;
+    shards[i].iteration_exponent = iteration_exponent;
   }
+}
 
-  if ((master_secret_length % 2) == 1) {
-    return ERROR_INVALID_SECRET_LENGTH;
-  }
-
-  for(const uint8_t *p = (const uint8_t *) passphrase; *p; p++) {
-    if ((*p < 32) || (126 < *p)) {
-      return ERROR_INVALID_PASSPHRASE;
-    }
-  }
-
-  if(group_threshold > groups_length) {
-    return ERROR_INVALID_GROUP_THRESHOLD;
-  }
-
-  uint8_t encrypted_master_secret[master_secret_length];
-
-  slip39_encrypt(master_secret, master_secret_length, passphrase, ext, iteration_exponent, identifier, encrypted_master_secret);
-
-  uint8_t group_shares[master_secret_length * groups_length];
-
-  shamir_split_secret(group_threshold, groups_length, encrypted_master_secret, master_secret_length, group_shares);
+static int generate_shards(uint8_t group_threshold, const slip39_group_desc_t *groups, uint8_t groups_len, const uint8_t *ems, uint32_t ems_len, slip39_shard_t shards[]) {
+  uint8_t group_shares[ems_len * groups_len];
+  shamir_split_secret(group_threshold, groups_len, ems, ems_len, group_shares);
 
   uint8_t *group_share = group_shares;
 
   unsigned int shard_count = 0;
   slip39_shard_t *shard = &shards[shard_count];
 
-  for (uint8_t i = 0; i < groups_length; ++i, group_share += master_secret_length) {
-    uint8_t member_shares[master_secret_length *groups[i].count];
-    shamir_split_secret(groups[i].threshold, groups[i].count, group_share, master_secret_length, member_shares);
+  for (uint8_t i = 0; i < groups_len; ++i, group_share += ems_len) {
+    uint8_t member_shares[ems_len *groups[i].count];
+    shamir_split_secret(groups[i].threshold, groups[i].count, group_share, ems_len, member_shares);
 
     uint8_t *value = member_shares;
-    for (uint8_t j = 0; j < groups[i].count; ++j, value += master_secret_length) {
+    for (uint8_t j = 0; j < groups[i].count; ++j, value += ems_len) {
       shard = &shards[shard_count];
 
-      shard->identifier = identifier;
-      shard->extendable = ext;
-      shard->iteration_exponent = iteration_exponent;
       shard->group_threshold = group_threshold;
-      shard->group_count = groups_length;
-      shard->value_length = master_secret_length;
+      shard->group_count = groups_len;
+      shard->value_length = ems_len;
       shard->group_index = i;
       shard->member_threshold = groups[i].threshold;
       shard->member_index = j;
       memset(shard->value, 0, 32);
-      memcpy(shard->value, value, master_secret_length);
+      memcpy(shard->value, value, ems_len);
 
       shard_count++;
     }
@@ -390,61 +353,30 @@ static int generate_shards(uint8_t group_threshold, const slip39_group_desc_t *g
     memset(member_shares, 0, sizeof(member_shares));
   }
 
-  memset(encrypted_master_secret, 0, sizeof(encrypted_master_secret));
   memset(group_shares, 0, sizeof(group_shares));
 
   return shard_count;
 }
 
-int slip39_generate(uint8_t group_threshold, const slip39_group_desc_t *groups, uint8_t groups_length, const uint8_t *master_secret, uint32_t master_secret_length, const char *passphrase, uint8_t ext, uint8_t iteration_exponent, uint32_t *mnemonic_length, uint16_t *mnemonics, uint32_t buffer_size) {
-  if (master_secret_length < MIN_STRENGTH_BYTES) {
+int slip39_generate(uint8_t threshold, const uint8_t* ms, uint32_t ms_len, uint8_t* ems, slip39_shard_t shards[], uint8_t shard_count) {
+  if (shard_count == 0) {
+    return ERROR_INVALID_SHARD_SET;
+  }
+
+  if (((threshold == 1) && (shard_count > 1)) || (threshold > shard_count)) {
+    return ERROR_INVALID_MEMBER_THRESHOLD;
+  }
+
+  if ((ms_len < MIN_STRENGTH_BYTES)) {
     return ERROR_SECRET_TOO_SHORT;
   }
 
-  int total_shards = slip39_count_shards(group_threshold, groups, groups_length);
-  if (total_shards < 0) {
-    return total_shards;
-  }
-
-  uint32_t shard_length = METADATA_LENGTH_WORDS + slip39_word_count_for_bytes(master_secret_length);
-  if (buffer_size < shard_length * total_shards) {
-    return ERROR_INSUFFICIENT_SPACE;
-  }
-
-  int error = 0;
-
-  slip39_shard_t shards[total_shards];
-
-  total_shards = generate_shards(group_threshold, groups, groups_length, master_secret, master_secret_length, passphrase, ext, iteration_exponent, shards, total_shards);
-
-  if (total_shards < 0) {
-    error = total_shards;
-  }
-
-  uint16_t *mnemonic = mnemonics;
-  unsigned int remaining_buffer = buffer_size;
-  unsigned int word_count = 0;
-
-  for(uint16_t i = 0; !error && i < total_shards ; ++i) {
-    int words = slip39_encode_mnemonic(&shards[i], mnemonic, remaining_buffer);
-    if (words < 0) {
-      error = words;
-      break;
-    }
-    word_count = words;
-    remaining_buffer -= word_count;
-    mnemonic += word_count;
-  }
-
-  memset(shards,0,sizeof(shards));
-  if (error) {
-    memset(mnemonics, 0, buffer_size);
-    return 0;
-  }
-
-  *mnemonic_length = word_count;
-  return total_shards;
+  slip39_init_shards(SLIP39_EXT, SLIP39_ITERATION_DEF, shards, shard_count);
+  slip39_encrypt(ms, ms_len, "", SLIP39_EXT, SLIP39_ITERATION_DEF, shards[0].identifier, ems);
+  slip39_group_desc_t group = { .count = shard_count, .threshold = threshold };
+  return generate_shards(1, &group, 1, ems, ms_len, shards);
 }
+
 
 static int combine_shards(slip39_shard_t *shards, uint16_t shards_count, const char *passphrase, uint8_t *buffer, uint32_t buffer_length) {
   int error = 0;
