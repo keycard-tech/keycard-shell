@@ -24,6 +24,7 @@ extern const char* const SLIP39_WORDLIST[SLIP39_WORDS_COUNT];
 #define ERROR_INVALID_PADDING                 (-14)
 #define ERROR_NOT_ENOUGH_GROUPS               (-15)
 #define ERROR_INVALID_SHARD_BUFFER            (-16)
+#define ERROR_WRONG_GROUP             (-17)
 
 #define SLIP39_NOEXT 0
 #define SLIP39_EXT 16
@@ -50,6 +51,13 @@ typedef struct group_descriptor_struct {
   uint8_t count;
 } slip39_group_desc_t;
 
+typedef struct {
+  uint8_t group_index;
+  uint8_t group_threshold;
+  uint8_t value_length;
+  uint8_t value[32];
+} slip39_group_t;
+
 static inline size_t slip39_word_count_for_bytes(size_t bytes) {
   return (bytes * 8 + SLIP39_RADIX_BITS - 1) / SLIP39_RADIX_BITS;
 }
@@ -70,7 +78,14 @@ int slip39_decode_mnemonic(const uint16_t* mnemonic, uint32_t mnemonic_length, s
 
 int slip39_count_shards(uint8_t group_threshold, const slip39_group_desc_t *groups, uint8_t groups_length);
 
+int slip39_validate_shard_in_set(const slip39_shard_t* shard, const slip39_shard_t shards[], uint8_t shard_count);
+int slip39_validate_shard_in_group(const slip39_shard_t* shard, const slip39_shard_t shards[], uint8_t shard_count);
+
 int slip39_generate(uint8_t threshold, const uint8_t* ms, uint32_t ms_len, uint8_t* ems, slip39_shard_t shards[], uint8_t shard_count);
-int slip39_combine(const uint16_t** mnemonics, uint32_t mnemonics_words, uint32_t mnemonics_shards, const char* passphrase, uint8_t* buffer, uint32_t buffer_length);
+
+int slip39_combine_shards(const slip39_shard_t shards[], uint8_t shard_count, slip39_group_t* group);
+int slip39_comebine_groups(slip39_group_t groups[], uint8_t group_count, uint8_t* secret, int secret_len);
+
+int slip39_combine(const slip39_shard_t shards[], uint8_t shard_count, const char* passphrase, uint8_t* secret, int secret_len);
 
 #endif

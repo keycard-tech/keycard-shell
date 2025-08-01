@@ -21,14 +21,6 @@
 #define MIN_STRENGTH_BYTES 16
 #define MIN_MNEMONIC_LENGTH_WORDS 20
 
-typedef struct {
-  uint8_t group_index;
-  uint8_t member_threshold;
-  uint8_t count;
-  uint8_t member_index[16];
-  const uint8_t *value[16];
-} slip39_group_t;
-
 static const uint32_t RS1024_GEN[] = {
     0x00E0E040,
     0x01C1C080,
@@ -377,155 +369,103 @@ int slip39_generate(uint8_t threshold, const uint8_t* ms, uint32_t ms_len, uint8
   return generate_shards(1, &group, 1, ems, ms_len, shards);
 }
 
-
-static int combine_shards(slip39_shard_t *shards, uint16_t shards_count, const char *passphrase, uint8_t *buffer, uint32_t buffer_length) {
-  int error = 0;
-  uint16_t identifier = 0;
-  uint8_t ext = 0;
-  uint8_t iteration_exponent = 0;
-  uint8_t group_threshold = 0;
-  uint8_t group_count = 0;
-
-  if(shards_count == 0) {
-    return ERROR_EMPTY_MNEMONIC_SET;
+int slip39_validate_shard_in_set(const slip39_shard_t* shard, const slip39_shard_t shards[], uint8_t shard_count) {
+  if (shard_count == 0) {
+    return 0;
   }
 
-  uint8_t next_group = 0;
-  slip39_group_t groups[16];
-  uint8_t secret_length = 0;
-
-  for (unsigned int i = 0; !error && i < shards_count; ++i) {
-    slip39_shard_t *shard = &shards[i];
-
-    if (i == 0) {
-      identifier = shard->identifier;
-      ext = shard->extendable;
-      iteration_exponent = shard->iteration_exponent;
-      group_count = shard->group_count;
-      group_threshold = shard->group_threshold;
-      secret_length = shard->value_length;
-    } else {
-      if(shard->identifier != identifier ||
-         shard->extendable != ext ||
-         shard->iteration_exponent != iteration_exponent ||
-         shard->group_threshold != group_threshold ||
-         shard->group_count != group_count ||
-         shard->value_length != secret_length
-      ) {
-        return ERROR_INVALID_SHARD_SET;
-      }
-    }
-
-    uint8_t group_found = 0;
-    for (uint8_t j = 0; j < next_group; ++j) {
-      if (shard->group_index == groups[j].group_index) {
-        group_found = 1;
-        if (shard->member_threshold != groups[j].member_threshold) {
-          return ERROR_INVALID_MEMBER_THRESHOLD;
-        }
-
-        for (uint8_t k=0; k<groups[j].count; ++k) {
-          if (shard->member_index == groups[j].member_index[k]) {
-            return ERROR_DUPLICATE_MEMBER_INDEX;
-          }
-        }
-
-        groups[j].member_index[groups[j].count] = shard->member_index;
-        groups[j].value[groups[j].count] = shard->value;
-        groups[j].count++;
-      }
-    }
-
-    if(!group_found) {
-      groups[next_group].group_index = shard->group_index;
-      groups[next_group].member_threshold = shard->member_threshold;
-      groups[next_group].count = 1;
-      groups[next_group].member_index[0] = shard->member_index;
-      groups[next_group].value[0] = shard->value;
-      next_group++;
-    }
+  if (shard->identifier != shards[0].identifier ||
+      shard->extendable !=  shards[0].extendable ||
+      shard->iteration_exponent !=  shards[0].iteration_exponent ||
+      shard->group_threshold !=  shards[0].group_threshold ||
+      shard->group_count !=  shards[0].group_count ||
+      shard->value_length !=  shards[0].value_length) {
+    return ERROR_INVALID_SHARD_SET;
   }
 
-  if(buffer_length < secret_length) {
-    error = ERROR_INSUFFICIENT_SPACE;
-  } else if(next_group < group_threshold) {
-    error = ERROR_NOT_ENOUGH_GROUPS;
-  }
-
-  uint8_t gx[16];
-  const uint8_t *gy[16];
-
-  uint8_t group_shares[secret_length * (group_threshold + 1)];
-  uint8_t *group_share = group_shares;
-
-  for(uint8_t i = 0; !error && i < next_group; ++i) {
-    gx[i] = groups[i].group_index;
-    if(groups[i].count < groups[i].member_threshold) {
-      error = ERROR_NOT_ENOUGH_MEMBER_SHARDS;
-      break;
-    }
-
-    int recovery = shamir_recover_secret(groups[i].member_threshold, groups[i].member_index, groups[i].value, secret_length, group_share);
-
-    if (recovery < 0) {
-      error = recovery;
-      break;
-    }
-
-    gy[i] = group_share;
-
-    group_share += recovery;
-  }
-
-  int recovery = 0;
-  if(!error) {
-    recovery = shamir_recover_secret(group_threshold, gx, gy, secret_length, group_share);
-  }
-
-  if(recovery < 0) {
-    error = recovery;
-  }
-
-  if (!error) {
-    slip39_decrypt(group_share, secret_length, passphrase, ext, iteration_exponent, identifier, buffer);
-  }
-
-  memset(group_shares,0,sizeof(group_shares));
-  memset(gx,0,sizeof(gx));
-  memset(gy,0,sizeof(gy));
-  memset(groups,0,sizeof(groups));
-
-  if(error) {
-    return error;
-  }
-
-  return secret_length;
+  return 0;
 }
 
-int slip39_combine(const uint16_t **mnemonics, uint32_t mnemonics_words, uint32_t mnemonics_shards, const char *passphrase, uint8_t *buffer, uint32_t buffer_length) {
-  int result = 0;
+int slip39_validate_shard_in_group(const slip39_shard_t* shard, const slip39_shard_t shards[], uint8_t shard_count) {
+  int err = slip39_validate_shard_in_set(shard, shards, shard_count);
 
-  if(mnemonics_shards == 0) {
-    return ERROR_EMPTY_MNEMONIC_SET;
+  if (err < 0) {
+    return err;
   }
 
-  slip39_shard_t shards[mnemonics_shards];
+  if ((shard->group_index != shards[0].group_index) || (shard->member_threshold != shards[0].member_threshold)) {
+    return ERROR_WRONG_GROUP;
+  }
 
-  for (unsigned int i = 0; !result && (i < mnemonics_shards); ++i) {
-    shards[i].value_length = 32;
-
-    int32_t bytes = slip39_decode_mnemonic(mnemonics[i], mnemonics_words, &shards[i]);
-
-    if(bytes < 0) {
-      result = bytes;
+  for (int i = 0; i < shard_count; i++) {
+    if (shard->member_index == shards[i].member_index) {
+      return ERROR_DUPLICATE_MEMBER_INDEX;
     }
   }
 
-  if (!result) {
-    result = combine_shards(shards, mnemonics_shards, passphrase, buffer, buffer_length);
+  return 0;
+}
+
+int slip39_combine_shards(const slip39_shard_t shards[], uint8_t shard_count, slip39_group_t* group) {
+  if ((shard_count == 0) || (shard_count < shards[0].member_threshold)) {
+    return ERROR_NOT_ENOUGH_MEMBER_SHARDS;
   }
 
-  memset(shards, 0, sizeof(shards));
+  uint8_t share_indexes[shard_count];
+  const uint8_t* share_values[shard_count];
 
-  return result;
+  for (int i = 0; i < shard_count; i++) {
+    share_indexes[i] = shards[i].member_index;
+    share_values[i] = shards[i].value;
+  }
+
+  group->group_index = shards[0].group_index;
+  group->group_threshold = shards[0].group_threshold;
+  group->value_length = shards[0].value_length;
+  return shamir_recover_secret(shards[0].member_threshold, share_indexes, share_values, shards[0].value_length, group->value);
+}
+
+int slip39_combine_groups(slip39_group_t groups[], uint8_t group_count, uint8_t* secret, int secret_len) {
+  if ((group_count == 0) || (group_count < groups[0].group_threshold)) {
+    return ERROR_NOT_ENOUGH_GROUPS;
+  }
+
+  if (secret_len < groups[0].value_length) {
+    return ERROR_INSUFFICIENT_SPACE;
+  }
+
+  uint8_t group_indexes[group_count];
+  const uint8_t* group_values[group_count];
+
+  for (int i = 0; i < group_count; i++) {
+    group_indexes[i] = groups[i].group_index;
+    group_values[i] = groups[i].value;
+  }
+
+  return shamir_recover_secret(groups[0].group_threshold, group_indexes, group_values, groups[0].value_length, secret);
+}
+
+int slip39_combine(const slip39_shard_t shards[], uint8_t shard_count, const char* passphrase, uint8_t* secret, int secret_len) {
+  if ((shard_count == 0) || (shard_count < shards[0].member_threshold)) {
+    return ERROR_NOT_ENOUGH_MEMBER_SHARDS;
+  }
+
+  if (shards[0].group_threshold != 1) {
+    return ERROR_INVALID_GROUP_THRESHOLD;
+  }
+
+  if (shards[0].value_length > secret_len) {
+    return ERROR_INSUFFICIENT_SPACE;
+  }
+
+  slip39_group_t group;
+  int err = slip39_combine_shards(shards, shard_count, &group);
+
+  if (err < 0) {
+    return err;
+  }
+
+  slip39_decrypt(group.value, group.value_length, passphrase, shards[0].extendable, shards[0].iteration_exponent, shards[0].identifier, secret);
+
+  return group.value_length;
 }
