@@ -887,6 +887,7 @@ static void input_render_mnemonic_word(int word_num, const char* str, screen_are
 app_err_t input_display_mnemonic() {
   dialog_title(g_ui_cmd.params.mnemo.title);
   int page = 0;
+  int page_len = g_ui_cmd.params.mnemo.len == 20 ? 10 : 12;
   int last_page = g_ui_cmd.params.mnemo.len == 12 ? 0 : 1;
 
   while(1) {
@@ -901,8 +902,8 @@ app_err_t input_display_mnemonic() {
     for (int i = 0; i < 6; i++) {
       field_area.x = TH_MNEMONIC_LEFT_MARGIN;
 
-      for (int j = 0; j < 7; j += 6) {
-        int word_num = (page * 12) + (i + j);
+      for (int j = 0; j < ((page_len / 2) + 1); j += (page_len / 2)) {
+        int word_num = (page * page_len) + (i + j);
         const char* word = g_ui_cmd.params.mnemo.wordlist[g_ui_cmd.params.mnemo.indexes[word_num]];
         input_render_mnemonic_word(word_num + 1, word, &field_area);
         field_area.x += TH_MNEMONIC_FIELD_WIDTH + TH_MNEMONIC_LEFT_MARGIN;
