@@ -387,6 +387,8 @@ core_evt_t ui_display_mnemonic(const char* title, uint16_t* indexes, uint32_t le
   g_ui_cmd.params.mnemo.title = title;
   g_ui_cmd.params.mnemo.indexes = indexes;
   g_ui_cmd.params.mnemo.len = len;
+  g_ui_cmd.params.mnemo.wordlist = BIP39_WORDLIST_ENGLISH;
+  g_ui_cmd.params.mnemo.wordlist_len = BIP39_WORD_COUNT;
 
   return ui_signal_wait(0);
 }
@@ -497,6 +499,8 @@ core_evt_t ui_read_mnemonic(uint16_t* indexes, uint32_t len) {
   g_ui_cmd.type = UI_CMD_INPUT_MNEMO;
   g_ui_cmd.params.mnemo.indexes = indexes;
   g_ui_cmd.params.mnemo.len = len;
+  g_ui_cmd.params.mnemo.wordlist = BIP39_WORDLIST_ENGLISH;
+  g_ui_cmd.params.mnemo.wordlist_len = BIP39_WORD_COUNT;
 
   return ui_signal_wait(0);
 }

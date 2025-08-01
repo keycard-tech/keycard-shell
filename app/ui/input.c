@@ -281,7 +281,7 @@ static inline void input_keyboard_render_suggestion(uint16_t x, uint16_t y, uint
   screen_fill_area(&key_area, ctx.bg);
 
   if (enabled) {
-    const char* str = BIP39_WORDLIST_ENGLISH[idx];
+    const char* str = g_ui_cmd.params.mnemo.wordlist[idx];
     size_t label_width = screen_string_width(&ctx, str);
     ctx.x = x + ((TH_KEYBOARD_KEY_SUGGESTION_SIZE - label_width) / 2);
     ctx.y = y + ((TH_KEYBOARD_KEY_SIZE - ctx.font->yAdvance) / 2);
@@ -749,7 +749,7 @@ static void input_mnemonic_render(const char* word, int len, uint16_t idx) {
   int suggestion_len;
 
   if (idx != UINT16_MAX) {
-    word = BIP39_WORDLIST_ENGLISH[idx];
+    word = g_ui_cmd.params.mnemo.wordlist[idx];
     suggestion_len = strlen(word) - len;
   } else {
     suggestion_len = 0;
@@ -770,25 +770,25 @@ static void input_mnemonic_lookup(char* word, int len, uint16_t* idx, uint32_t* 
 
   uint16_t i = 0;
 
-  while (i < BIP39_WORD_COUNT) {
-    int cmp = strncmp(word, BIP39_WORDLIST_ENGLISH[i], len);
+  while (i < g_ui_cmd.params.mnemo.wordlist_len) {
+    int cmp = strncmp(word, g_ui_cmd.params.mnemo.wordlist[i], len);
 
     if (cmp == 0) {
       *idx = i;
 
       *keymask |= 1 << (('z' - 'a') + 1);
 
-      if (BIP39_WORDLIST_ENGLISH[i][len] != '\0') {
-        *keymask |= (1 << (BIP39_WORDLIST_ENGLISH[i][len] - 'a'));
+      if (g_ui_cmd.params.mnemo.wordlist[i][len] != '\0') {
+        *keymask |= (1 << (g_ui_cmd.params.mnemo.wordlist[i][len] - 'a'));
       }
 
-      while(++i < BIP39_WORD_COUNT) {
-        if (strncmp(word, BIP39_WORDLIST_ENGLISH[i], len) != 0) {
+      while(++i < g_ui_cmd.params.mnemo.wordlist_len) {
+        if (strncmp(word, g_ui_cmd.params.mnemo.wordlist[i], len) != 0) {
           return;
         }
 
-        if (BIP39_WORDLIST_ENGLISH[i][len] != '\0') {
-          *keymask |= (1 << (BIP39_WORDLIST_ENGLISH[i][len] - 'a'));
+        if (g_ui_cmd.params.mnemo.wordlist[i][len] != '\0') {
+          *keymask |= (1 << (g_ui_cmd.params.mnemo.wordlist[i][len] - 'a'));
         }
 
         (*more_res)++;
@@ -903,7 +903,7 @@ app_err_t input_display_mnemonic() {
 
       for (int j = 0; j < 7; j += 6) {
         int word_num = (page * 12) + (i + j);
-        const char* word = BIP39_WORDLIST_ENGLISH[g_ui_cmd.params.mnemo.indexes[word_num]];
+        const char* word = g_ui_cmd.params.mnemo.wordlist[g_ui_cmd.params.mnemo.indexes[word_num]];
         input_render_mnemonic_word(word_num + 1, word, &field_area);
         field_area.x += TH_MNEMONIC_FIELD_WIDTH + TH_MNEMONIC_LEFT_MARGIN;
       }
