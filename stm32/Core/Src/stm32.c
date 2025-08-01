@@ -156,6 +156,13 @@ hal_err_t hal_init_bootloader() {
 }
 
 hal_err_t hal_teardown_bootloader() {
+  __HAL_RCC_SBS_CLK_ENABLE();
+
+  HAL_SBS_IncrementHDPLValue();
+  HAL_SBS_IncrementHDPLValue();
+
+  __HAL_RCC_SBS_CLK_DISABLE();
+
   HAL_PKA_DeInit(&hpka);
   HAL_HASH_DeInit(&hhash);
   HAL_RNG_DeInit(&hrng);
