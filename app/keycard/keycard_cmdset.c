@@ -185,6 +185,16 @@ app_err_t keycard_cmd_load_seed(keycard_t* kc, uint8_t* seed) {
   return securechannel_send_apdu(&kc->sc, &kc->ch, &kc->apdu, seed, 64);
 }
 
+app_err_t keycard_cmd_load_key(keycard_t* kc, uint8_t* key_template, uint8_t len) {
+  APDU_RESET(&kc->apdu);
+  APDU_CLA(&kc->apdu) = 0x80;
+  APDU_INS(&kc->apdu) = 0xd0;
+  APDU_P1(&kc->apdu) = 2;
+  APDU_P2(&kc->apdu) = 0;
+
+  return securechannel_send_apdu(&kc->sc, &kc->ch, &kc->apdu, key_template, len);
+}
+
 app_err_t keycard_cmd_export_key(keycard_t* kc, uint8_t export_type, uint8_t* path, uint8_t len) {
   APDU_RESET(&kc->apdu);
   APDU_CLA(&kc->apdu) = 0x80;

@@ -10,8 +10,10 @@
 #include "common.h"
 #include "crypto/rand.h"
 #include "crypto/sha2.h"
+#include "crypto/hmac.h"
 #include "crypto/pbkdf2.h"
 #include "crypto/bip39.h"
+#include "crypto/slip39.h"
 #include "crypto/secp256k1.h"
 #include "storage/keys.h"
 
@@ -270,43 +272,114 @@ static app_err_t keycard_authenticate(keycard_t* kc, uint8_t* pin, uint8_t* cach
   return keycard_unblock(kc, pinStatus.puk_retries);
 }
 
-static void keycard_generate_seed(const uint16_t* indexes, uint32_t len, const char* passphrase, uint8_t* seed) {
+static void keycard_generate_bip39_seed(const uint16_t* indexes, uint32_t len, const char* passphrase, uint8_t* seed) {
   char mnemonic[BIP39_MAX_MNEMONIC_LEN * 10];
   mnemonic_from_indexes(mnemonic, indexes, len);
   mnemonic_to_seed(mnemonic, passphrase, seed);
   memset(mnemonic, 0, sizeof(mnemonic));
 }
 
-static app_err_t keycard_read_mnemonic(keycard_t* kc, uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], uint32_t* len, char* passphrase) {
+static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* seed_len) {
+  uint8_t* slip39_ems = &seed[16];
+  uint8_t* slip39_tmp = &seed[32];
+  slip39_shard_t shards[16];
+
+  uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
+  uint32_t len;
+  char passphrase[KEYCARD_BIP39_PASS_MAX_LEN];
+
+  memset(passphrase, 0x00, KEYCARD_BIP39_PASS_MAX_LEN);
+  memset(indexes, 0xff, sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN);
+
   bool has_pass;
-  i18n_str_id_t mode_selected = ui_read_mnemonic_len(len, &has_pass);
+  i18n_str_id_t mode_selected = ui_read_mnemonic_len(&len, &has_pass);
+  bool slip39;
+  const char* const* wordlist;
+  size_t wordlist_count;
+
+  if (len == 20) {
+    slip39 = 1;
+    wordlist = SLIP39_WORDLIST;
+    wordlist_count = SLIP39_WORDS_COUNT;
+  } else {
+    slip39 = 0;
+    wordlist = BIP39_WORDLIST_ENGLISH;
+    wordlist_count = BIP39_WORD_COUNT;
+  }
+
   core_evt_t err;
 
   if (mode_selected == MENU_MNEMO_GENERATE) {
-    if (keycard_cmd_generate_mnemonic(kc, *len) != ERR_OK) {
-      return ERR_TXRX;
+    if (keycard_cmd_generate_mnemonic(kc, len) != ERR_OK) {
+      err = ERR_TXRX;
+      goto cleanup;
     }
 
     APDU_ASSERT_OK(&kc->apdu);
     uint8_t* data = APDU_RESP(&kc->apdu);
 
-    for (int i = 0; i < ((*len) << 1); i += 2) {
-      indexes[(i >> 1)] = ((data[i] << 8) | data[i+1]);
+    if (slip39) {
+      sha256_Raw(data, len * 2, slip39_tmp);
+      int shard_count = 1;
+      int threshold = 1;
+      //TODO: prompt for threshold and count
+
+      slip39_generate(threshold, slip39_tmp, 16, slip39_ems, shards, shard_count);
+      slip39_encode_mnemonic(&shards[0], indexes, len);
+
+      err = ui_backup_mnemonic(indexes, len, wordlist, wordlist_count);
+
+    } else {
+      for (int i = 0; i < (len * 2); i += 2) {
+        indexes[i / 2] = ((data[i] << 8) | data[i+1]);
+      }
+
+      err = ui_backup_mnemonic(indexes, len, wordlist, wordlist_count);
     }
 
-    memset(data, 0, ((*len) << 1));
+    memset(data, 0, len * 2);
 
-    err = ui_backup_mnemonic(indexes, *len);
   } else if (mode_selected == MENU_MNEMO_IMPORT) {
-read_mnemonic:
-    err = ui_read_mnemonic(indexes, *len);
+    uint8_t shard_idx = 0;
+    uint8_t shard_count = 1;
 
-    if ((err == CORE_EVT_UI_OK) && !mnemonic_check(indexes, *len)) {
-      ui_bad_seed();
-      goto read_mnemonic;
+    while(shard_idx < shard_count) {
+      err = ui_read_mnemonic(indexes, len, wordlist, wordlist_count);
+
+      if (err == CORE_EVT_UI_OK) {
+        if (slip39) {
+          if (slip39_decode_mnemonic(indexes, len, &shards[shard_idx]) < 0) {
+            ui_bad_seed();
+          }
+
+          if ((shards[0].identifier != shards[shard_idx].identifier) || (shards[0].group_index != shards[shard_idx].group_index)) {
+            ui_bad_seed(); //TODO: change with correct error
+          }
+
+          if (shards[0].group_threshold != 1) {
+            ui_bad_seed(); //TODO: change with correct error
+          }
+
+          shard_count = shards[0].member_threshold;
+          shard_idx++;
+          memset(&indexes[3], 0xff, sizeof(uint16_t) * (BIP39_MAX_MNEMONIC_LEN - 3));
+        } else {
+          if (!mnemonic_check(indexes, len)) {
+            ui_bad_seed();
+          } else {
+            shard_idx++;
+          }
+        }
+      } else {
+        goto cleanup;
+      }
+    }
+
+    if (slip39) {
+      slip39_combine(shards, shard_count, slip39_ems, 16);
     }
   } else {
-    err = ui_scan_mnemonic(indexes, len);
+    err = ui_scan_mnemonic(indexes, &len);
   }
 
   if (err == CORE_EVT_UI_OK) {
@@ -315,34 +388,65 @@ read_mnemonic:
       ui_read_string(LSTR(MNEMO_PASSPHRASE_TITLE), "", passphrase, &len, UI_READ_STRING_UNDISMISSABLE);
     }
 
-    return ERR_OK;
+    if (slip39) {
+      slip39_decrypt(slip39_ems, 16, passphrase, shards[0].extendable, shards[0].iteration_exponent, shards[0].identifier, seed);
+      *seed_len = 16;
+    } else {
+      keycard_generate_bip39_seed(indexes, len, passphrase, seed);
+      *seed_len = 64;
+    }
+
+    err = ERR_OK;
   } else {
-    return ERR_CANCEL;
+    err = ERR_CANCEL;
   }
+
+cleanup:
+  memset(indexes, 0xff, sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN);
+  memset(shards, 0, sizeof(slip39_shard_t) * 16);
+  memset(passphrase, 0, KEYCARD_BIP39_PASS_MAX_LEN);
+  return err;
+}
+
+static uint32_t keycard_generate_key_template(uint8_t* seed, uint32_t seed_len, uint8_t* out) {
+  uint8_t tmp[64];
+  hmac_sha512((uint8_t*) "Bitcoin seed", 12, seed, seed_len, tmp);
+  out[0] = 0xa1;
+  out[1] = 0x44;
+  out[2] = 0x81;
+  out[3] = 0x20;
+  memcpy(&out[4], tmp, 32);
+  out[36] = 0x82;
+  out[37] = 0x20;
+  memcpy(&out[38], &tmp[32], 32);
+  memset(tmp, 0, 64);
+  return 70;
 }
 
 static app_err_t keycard_init_keys(keycard_t* kc) {
-  uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
-  uint32_t len;
-  char passphrase[KEYCARD_BIP39_PASS_MAX_LEN];
   app_err_t err;
+  uint32_t seed_len = 0;
+
+  SC_BUF(seed, 70);
 
   do {
-    memset(passphrase, 0x00, KEYCARD_BIP39_PASS_MAX_LEN);
-    memset(indexes, 0xff, (sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN));
-    err = keycard_read_mnemonic(kc, indexes, &len, passphrase);
+    err = keycard_get_seed(kc, seed, &seed_len);
 
     if (err == ERR_TXRX) {
       return ERR_TXRX;
     }
   } while(err != ERR_OK);
 
-  SC_BUF(seed, 64);
-  keycard_generate_seed(indexes, len, passphrase, seed);
-  memset(indexes, 0xff, (sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN));
+  if (seed_len == 64) {
+    if (keycard_cmd_load_seed(kc, seed) != ERR_OK) {
+      return ERR_TXRX;
+    }
+  } else {
+    seed_len = keycard_generate_key_template(seed, seed_len, seed);
 
-  if(keycard_cmd_load_seed(kc, seed) != ERR_OK) {
-    return ERR_TXRX;
+    if (keycard_cmd_load_key(kc, seed, seed_len) != ERR_OK) {
+      return ERR_TXRX;
+    }
   }
 
   APDU_ASSERT_OK(&kc->apdu);

@@ -203,6 +203,8 @@ const char *const i18n_english_strings[] = {
     "12 words + passphrase",
     "24 words",
     "24 words + passphrase",
+    "SLIP39",
+    "SLIP39 + passphrase",
     "Add passphrase",
     "No passphrase",
     "Import recovery phrase",

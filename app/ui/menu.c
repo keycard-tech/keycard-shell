@@ -71,11 +71,13 @@ const menu_t menu_mnemonic = {
 };
 
 const menu_t menu_mnemonic_length = {
-  4, {
+  6, {
     {MENU_MNEMO_12WORDS, NULL},
     {MENU_MNEMO_12WORDS_PASS, NULL},
     {MENU_MNEMO_24WORDS, NULL},
     {MENU_MNEMO_24WORDS_PASS, NULL},
+    {MENU_MNEMO_SLIP39, NULL},
+    {MENU_MNEMO_SLIP39_PASS, NULL},
   }
 };
 

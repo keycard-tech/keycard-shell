@@ -327,7 +327,7 @@ core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
   }
 
   if (ok && mnemonic_check(indexes, *len)) {
-    return ui_display_mnemonic(LSTR(MNEMO_VERIFY_TITLE), indexes, *len);
+    return ui_display_mnemonic(LSTR(MNEMO_VERIFY_TITLE), indexes, *len, BIP39_WORDLIST_ENGLISH, BIP39_WORD_COUNT);
   } else {
     *len = 0;
     ui_info(ICON_INFO_ERROR, LSTR(QRSEED_INVALID_MSG), LSTR(QRSEED_INVALID_SUB), 0);
@@ -348,7 +348,7 @@ i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
         selected = MENU_MNEMO_WITH_PASS;
       }
 
-      if (ui_menu(LSTR(mode_selected), next_menu, &selected, -1, 0, 0, 0, 0) == CORE_EVT_UI_OK) {
+      if (ui_menu(LSTR(mode_selected), next_menu, &selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) == CORE_EVT_UI_OK) {
         switch(selected) {
         case MENU_MNEMO_WITH_PASS:
           *len = 0;
@@ -371,9 +371,17 @@ i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
           *len = 24;
           break;
         case MENU_MNEMO_24WORDS_PASS:
-        default:
           *has_pass = true;
           *len = 24;
+          break;
+        case MENU_MNEMO_SLIP39:
+          *has_pass = false;
+          *len = 20;
+          break;
+        case MENU_MNEMO_SLIP39_PASS:
+        default:
+          *has_pass = true;
+          *len = 20;
           break;
         }
 
@@ -382,18 +390,18 @@ i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
     }
   }
 }
-core_evt_t ui_display_mnemonic(const char* title, uint16_t* indexes, uint32_t len) {
+core_evt_t ui_display_mnemonic(const char* title, uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount) {
   g_ui_cmd.type = UI_CMD_DISPLAY_MNEMO;
   g_ui_cmd.params.mnemo.title = title;
   g_ui_cmd.params.mnemo.indexes = indexes;
   g_ui_cmd.params.mnemo.len = len;
-  g_ui_cmd.params.mnemo.wordlist = BIP39_WORDLIST_ENGLISH;
-  g_ui_cmd.params.mnemo.wordlist_len = BIP39_WORD_COUNT;
+  g_ui_cmd.params.mnemo.wordlist = wordlist;
+  g_ui_cmd.params.mnemo.wordlist_len = wordcount;
 
   return ui_signal_wait(0);
 }
 
-static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
+static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount) {
   const char* const* tmp = *i18n_strings;
 
   if (ui_prompt(LSTR(MNEMO_VERIFY_TITLE), LSTR(MNEMO_VERIFY_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
@@ -434,7 +442,7 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
 
       do {
         duplicate = false;
-        choices->entries[j].label_id = random_uniform(BIP39_WORD_COUNT);
+        choices->entries[j].label_id = random_uniform(wordcount);
         for(int k = 0; k < j; k++) {
           if (choices->entries[j].label_id == choices->entries[k].label_id) {
             duplicate = true;
@@ -457,7 +465,7 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
     do {
       i18n_str_id_t selected = choices->entries[0].label_id;
 
-      i18n_set_strings(BIP39_WORDLIST_ENGLISH);
+      i18n_set_strings(wordlist);
       core_evt_t err = ui_menu(title, choices, &selected, -1, 0, UI_MENU_PAGED, i, (MNEMO_WORDS_TO_CONFIRM - 1));
       i18n_set_strings(tmp);
 
@@ -481,26 +489,26 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len) {
   return ERR_OK;
 }
 
-core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len) {
+core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount) {
   if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
     return CORE_EVT_UI_CANCELLED;
   };
 
   do {
-    if (ui_display_mnemonic(LSTR(INFO_WRITE_KEEP_SAFE), indexes, len) == CORE_EVT_UI_CANCELLED) {
+    if (ui_display_mnemonic(LSTR(INFO_WRITE_KEEP_SAFE), indexes, len, wordlist, wordcount) == CORE_EVT_UI_CANCELLED) {
       return CORE_EVT_UI_CANCELLED;
     }
-  } while(ui_backup_confirm_mnemonic(indexes, len) != ERR_OK);
+  } while(ui_backup_confirm_mnemonic(indexes, len, wordlist, wordcount) != ERR_OK);
 
   return CORE_EVT_UI_OK;
 }
 
-core_evt_t ui_read_mnemonic(uint16_t* indexes, uint32_t len) {
+core_evt_t ui_read_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount) {
   g_ui_cmd.type = UI_CMD_INPUT_MNEMO;
   g_ui_cmd.params.mnemo.indexes = indexes;
   g_ui_cmd.params.mnemo.len = len;
-  g_ui_cmd.params.mnemo.wordlist = BIP39_WORDLIST_ENGLISH;
-  g_ui_cmd.params.mnemo.wordlist_len = BIP39_WORD_COUNT;
+  g_ui_cmd.params.mnemo.wordlist = wordlist;
+  g_ui_cmd.params.mnemo.wordlist_len = wordcount;
 
   return ui_signal_wait(0);
 }

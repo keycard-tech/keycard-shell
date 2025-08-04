@@ -69,9 +69,9 @@ core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t* len);
 core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint8_t* len, ui_read_string_opt_t opts);
 
 i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass);
-core_evt_t ui_display_mnemonic(const char* title, uint16_t* indexes, uint32_t len);
-core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len);
-core_evt_t ui_read_mnemonic(uint16_t* indexes, uint32_t len);
+core_evt_t ui_display_mnemonic(const char* title, uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount);
+core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount);
+core_evt_t ui_read_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount);
 core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len);
 
 core_evt_t ui_confirm_eth_address(const char* address);
