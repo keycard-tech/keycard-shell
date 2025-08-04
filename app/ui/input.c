@@ -899,7 +899,7 @@ app_err_t input_display_mnemonic() {
         .height = TH_TEXT_FIELD_HEIGHT
     };
 
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < (page_len / 2); i++) {
       field_area.x = TH_MNEMONIC_LEFT_MARGIN;
 
       for (int j = 0; j < ((page_len / 2) + 1); j += (page_len / 2)) {
