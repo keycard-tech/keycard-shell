@@ -86,6 +86,6 @@ int slip39_generate(uint8_t threshold, const uint8_t* ms, uint32_t ms_len, uint8
 int slip39_combine_shards(const slip39_shard_t shards[], uint8_t shard_count, slip39_group_t* group);
 int slip39_comebine_groups(slip39_group_t groups[], uint8_t group_count, uint8_t* secret, int secret_len);
 
-int slip39_combine(const slip39_shard_t shards[], uint8_t shard_count, const char* passphrase, uint8_t* secret, int secret_len);
+int slip39_combine(const slip39_shard_t shards[], uint8_t shard_count, uint8_t* secret, int secret_len);
 
 #endif

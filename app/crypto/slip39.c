@@ -445,7 +445,7 @@ int slip39_combine_groups(slip39_group_t groups[], uint8_t group_count, uint8_t*
   return shamir_recover_secret(groups[0].group_threshold, group_indexes, group_values, groups[0].value_length, secret);
 }
 
-int slip39_combine(const slip39_shard_t shards[], uint8_t shard_count, const char* passphrase, uint8_t* secret, int secret_len) {
+int slip39_combine(const slip39_shard_t shards[], uint8_t shard_count, uint8_t* secret, int secret_len) {
   if ((shard_count == 0) || (shard_count < shards[0].member_threshold)) {
     return ERROR_NOT_ENOUGH_MEMBER_SHARDS;
   }
@@ -465,7 +465,10 @@ int slip39_combine(const slip39_shard_t shards[], uint8_t shard_count, const cha
     return err;
   }
 
-  slip39_decrypt(group.value, group.value_length, passphrase, shards[0].extendable, shards[0].iteration_exponent, shards[0].identifier, secret);
+  memcpy(secret, group.value, group.value_length);
 
-  return group.value_length;
+  int ret = group.value_length;
+  memset(&group, 0, sizeof(slip39_group_t));
+
+  return ret;
 }
