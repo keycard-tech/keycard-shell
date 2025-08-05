@@ -23,7 +23,7 @@ Some commands useful during development
 ## Product state Locked
 
 ```shell
-.\STM32_Programmer_CLI.exe -c port=SWD -ob product_state=0x5c
+.\STM32_Programmer_CLI.exe -c port=SWD ap=1 mode=Hotplug -ob product_state=0x5c
 ```
 
 ## Swap banks
