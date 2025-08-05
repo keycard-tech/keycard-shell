@@ -375,19 +375,19 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
         if (slip39) {
           if (slip39_decode_mnemonic(indexes, len, &shards[shard_idx]) < 0) {
             ui_bad_seed();
-          }
+          }else if ((shards[0].identifier != shards[shard_idx].identifier) || (shards[0].group_index != shards[shard_idx].group_index)) {
+            ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_MISMATCH_MSG), LSTR(INFO_SLIP39_MISMATCH_SUB), 0);
+          } else if (shards[0].group_threshold != 1) {
+            ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_UNSUPPORTED_MSG), LSTR(INFO_SLIP39_UNSUPPORTED_SUB), 0);
+          } else {
+            shard_count = shards[0].member_threshold;
+            shard_idx++;
+            memset(&indexes[3], 0xff, sizeof(uint16_t) * (BIP39_MAX_MNEMONIC_LEN - 3));
 
-          if ((shards[0].identifier != shards[shard_idx].identifier) || (shards[0].group_index != shards[shard_idx].group_index)) {
-            ui_bad_seed(); //TODO: change with correct error
+            if (shard_idx < shard_count) {
+              ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_PART_OK_MSG), LSTR(INFO_SLIP39_PART_OK_SUB), 0);
+            }
           }
-
-          if (shards[0].group_threshold != 1) {
-            ui_bad_seed(); //TODO: change with correct error
-          }
-
-          shard_count = shards[0].member_threshold;
-          shard_idx++;
-          memset(&indexes[3], 0xff, sizeof(uint16_t) * (BIP39_MAX_MNEMONIC_LEN - 3));
         } else {
           if (!mnemonic_check(indexes, len)) {
             ui_bad_seed();

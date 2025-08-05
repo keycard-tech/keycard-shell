@@ -175,6 +175,12 @@ const char *const i18n_english_strings[] = {
     "Wrong pairing password",
     "Can't sign this transaction",
     "Key pair does not match or transaction type not supported",
+    "Wrong part",
+    "Part doesn't match this key pair",
+    "Unsupported part format",
+    "Multi-group SLIP39 not supported yet",
+    "Part entered correctly",
+    "Proceed to the next part.",
 
     // DB Update
     "Downloading database",
