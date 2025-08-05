@@ -335,6 +335,7 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
         }
 
         if (shard_count == 1) {
+          err = CORE_EVT_UI_OK;
           threshold = 1;
         } else {
           err = ui_read_number(LSTR(MNEMO_SLIP39_THRESHOLD_TITLE), 2, shard_count, &threshold, true);

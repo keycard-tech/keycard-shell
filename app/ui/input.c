@@ -894,7 +894,7 @@ app_err_t input_display_mnemonic() {
     dialog_blank(TH_TITLE_HEIGHT);
 
     screen_area_t field_area = {
-        .y = TH_TITLE_HEIGHT + TH_MNEMONIC_TOP_MARGIN + TH_TEXT_VERTICAL_MARGIN,
+        .y = TH_TITLE_HEIGHT + TH_MNEMONIC_TOP_MARGIN + (page_len == 10 ? TH_MNEMONIC_10WORDS_TOP_MARGIN : TH_TEXT_VERTICAL_MARGIN),
         .width = TH_MNEMONIC_FIELD_WIDTH,
         .height = TH_TEXT_FIELD_HEIGHT
     };
