@@ -32,6 +32,7 @@ enum cmd_type {
   UI_CMD_QRSCAN,
   UI_CMD_INPUT_SECRET,
   UI_CMD_INPUT_STRING,
+  UI_CMD_INPUT_NUMBER,
   UI_CMD_INPUT_MNEMO,
   UI_CMD_DISPLAY_MNEMO,
   UI_CMD_LCD_BRIGHTNESS,
@@ -150,6 +151,14 @@ struct cmd_devinfo {
   const char* sn;
 };
 
+struct cmd_input_number {
+  const char* title;
+  uint32_t min;
+  uint32_t max;
+  uint32_t* num;
+  bool show_max;
+};
+
 union cmd_params {
   struct cmd_info info;
   struct cmd_prompt prompt;
@@ -164,6 +173,7 @@ union cmd_params {
   struct cmd_qrscan qrscan;
   struct cmd_input_secret input_secret;
   struct cmd_input_string input_string;
+  struct cmd_input_number input_number;
   struct cmd_mnemo mnemo;
   struct cmd_brightness lcd;
   struct cmd_progress progress;

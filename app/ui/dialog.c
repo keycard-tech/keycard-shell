@@ -201,7 +201,7 @@ app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg, uint16
   return ERR_OK;
 }
 
-app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, uint16_t bg, uint16_t fg, bool chevron) {
+static app_err_t dialog_pager_internal(size_t page, size_t last_page, size_t base_page, uint16_t bg, uint16_t fg, bool chevron, uint16_t top, const font_t* font) {
   uint8_t page_indicator[(UINT32_STRING_LEN * 2) + 4];
   size_t total_len = 0;
 
@@ -236,14 +236,22 @@ app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, u
 
   screen_text_ctx_t ctx = {
       .x = 0,
-      .y = TH_NAV_PAGER_TOP,
-      .font = TH_FONT_TEXT,
+      .y = top,
+      .font = font,
       .bg = bg,
       .fg = fg,
   };
 
   screen_draw_centered_string(&ctx, (char*) page_indicator);
   return ERR_OK;
+}
+
+app_err_t dialog_pager_colors(size_t page, size_t last_page, size_t base_page, uint16_t bg, uint16_t fg, bool chevron) {
+  return dialog_pager_internal(page, last_page, base_page, bg, fg, chevron, TH_NAV_PAGER_TOP, TH_FONT_TEXT);
+}
+
+app_err_t dialog_number_picker(uint32_t num, uint32_t max) {
+  return dialog_pager_internal(num, max, 0, TH_COLOR_BG, TH_COLOR_FG, true, TH_NUM_PICKER_TOP, TH_NUM_PICKER_FONT);
 }
 
 uint16_t dialog_ordered_point(uint16_t x, uint16_t y, uint8_t index, const char* msg) {

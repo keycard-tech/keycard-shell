@@ -294,6 +294,17 @@ core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint
   return ui_signal_wait(0);
 }
 
+core_evt_t ui_read_number(const char* title, uint32_t min, uint32_t max, uint32_t* num, bool show_max) {
+  g_ui_cmd.type = UI_CMD_INPUT_NUMBER;
+  g_ui_cmd.params.input_number.title = title;
+  g_ui_cmd.params.input_number.min = min;
+  g_ui_cmd.params.input_number.max = max;
+  g_ui_cmd.params.input_number.num = num;
+  g_ui_cmd.params.input_number.show_max = show_max;
+
+  return ui_signal_wait(0);
+}
+
 void ui_seed_loaded() {
   ui_info(ICON_INFO_SUCCESS, LSTR(INFO_KEYCARD_LOADED_MSG), LSTR(INFO_KEYCARD_LOADED_SUB), 0);
 }

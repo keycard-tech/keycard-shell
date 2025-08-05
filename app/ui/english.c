@@ -13,7 +13,7 @@ const char *const i18n_english_strings[] = {
     "Bitcoin",
     "Bitcoin MultiSig",
     "Bitcoin Testnet",
-    "Multiple blockchains",
+    "Bitget",
 
     // Addresses menu
     "Ethereum",
@@ -219,6 +219,8 @@ const char *const i18n_english_strings[] = {
     "Confirm recovery phrase",
     "You will now be asked to confirm your recovery phrase. You can go back and write it down if you haven't already.",
     "Enter passphrase",
+    "Select number of parts",
+    "Select threshold",
 
     // Device verification
     "Verify device",

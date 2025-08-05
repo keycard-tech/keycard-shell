@@ -21,5 +21,6 @@ app_err_t input_secret();
 app_err_t input_mnemonic();
 app_err_t input_display_mnemonic();
 app_err_t input_string();
+app_err_t input_number();
 
 #endif

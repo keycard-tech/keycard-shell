@@ -983,3 +983,36 @@ app_err_t input_string() {
     input_nav_hints(len, allow_dismiss, valid);
   }
 }
+
+app_err_t input_number() {
+  dialog_title(g_ui_cmd.params.input_number.title);
+  dialog_blank(TH_TITLE_HEIGHT);
+
+  while(1) {
+    screen_area_t area = { 0, (TH_NUM_PICKER_TOP - 10), SCREEN_WIDTH, ((TH_NUM_PICKER_FONT)->yAdvance + 10) };
+    screen_fill_area(&area, TH_COLOR_BG);
+
+    dialog_number_picker(*g_ui_cmd.params.input_number.num, g_ui_cmd.params.input_number.show_max ? g_ui_cmd.params.input_number.max : UINT32_MAX);
+    dialog_nav_hints(ICON_NAV_CANCEL, ICON_NAV_NEXT);
+
+    switch(ui_wait_keypress(portMAX_DELAY)) {
+    case KEYPAD_KEY_LEFT:
+      if (*g_ui_cmd.params.input_number.num > g_ui_cmd.params.input_number.min) {
+        (*g_ui_cmd.params.input_number.num)--;
+      }
+      break;
+    case KEYPAD_KEY_RIGHT:
+      if (*g_ui_cmd.params.input_number.num < g_ui_cmd.params.input_number.max) {
+        (*g_ui_cmd.params.input_number.num)++;
+      }
+      break;
+    case KEYPAD_KEY_CANCEL:
+    case KEYPAD_KEY_BACK:
+      return ERR_CANCEL;
+    case KEYPAD_KEY_CONFIRM:
+      return ERR_OK;
+    default:
+      break;
+    }
+  }
+}

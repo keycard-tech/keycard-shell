@@ -320,15 +320,34 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
 
     if (slip39) {
       sha256_Raw(data, len * 2, slip39_tmp);
-      int shard_count = 1;
-      int threshold = 1;
-      //TODO: prompt for threshold and count
+      uint32_t shard_count = 1;
+      uint32_t threshold = 2;
+
+      do {
+        err = ui_read_number(LSTR(MNEMO_SLIP39_COUNT_TITLE), 1, 16, &shard_count, false);
+
+        if (err != CORE_EVT_UI_OK) {
+          err = ERR_CANCEL;
+          goto cleanup;
+        }
+
+        if (shard_count == 1) {
+          threshold = 1;
+        } else {
+          err = ui_read_number(LSTR(MNEMO_SLIP39_THRESHOLD_TITLE), 2, shard_count, &threshold, true);
+        }
+      } while(err != CORE_EVT_UI_OK);
 
       slip39_generate(threshold, slip39_tmp, 16, slip39_ems, shards, shard_count);
-      slip39_encode_mnemonic(&shards[0], indexes, len);
 
-      err = ui_backup_mnemonic(indexes, len, wordlist, wordlist_count);
-
+      for (int i = 0; i < shard_count; i++) {
+        slip39_encode_mnemonic(&shards[i], indexes, len);
+        err = ui_backup_mnemonic(indexes, len, wordlist, wordlist_count);
+        if (err != CORE_EVT_UI_OK) {
+          err = ERR_CANCEL;
+          goto cleanup;
+        }
+      }
     } else {
       for (int i = 0; i < (len * 2); i += 2) {
         indexes[i / 2] = ((data[i] << 8) | data[i+1]);
@@ -338,7 +357,6 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
     }
 
     memset(data, 0, len * 2);
-
   } else if (mode_selected == MENU_MNEMO_IMPORT) {
     uint8_t shard_idx = 0;
     uint8_t shard_count = 1;
@@ -371,6 +389,7 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
           }
         }
       } else {
+        err = ERR_CANCEL;
         goto cleanup;
       }
     }
