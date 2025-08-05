@@ -412,10 +412,10 @@ core_evt_t ui_display_mnemonic(const char* title, uint16_t* indexes, uint32_t le
   return ui_signal_wait(0);
 }
 
-static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount) {
+static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount, bool prompt) {
   const char* const* tmp = *i18n_strings;
 
-  if (ui_prompt(LSTR(MNEMO_VERIFY_TITLE), LSTR(MNEMO_VERIFY_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+  if (prompt && (ui_prompt(LSTR(MNEMO_VERIFY_TITLE), LSTR(MNEMO_VERIFY_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return ERR_CANCEL;
   }
 
@@ -500,16 +500,12 @@ static app_err_t ui_backup_confirm_mnemonic(uint16_t* indexes, uint32_t len, con
   return ERR_OK;
 }
 
-core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount) {
-  if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
-    return CORE_EVT_UI_CANCELLED;
-  };
-
+core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount, bool prompt_confirm) {
   do {
     if (ui_display_mnemonic(LSTR(INFO_WRITE_KEEP_SAFE), indexes, len, wordlist, wordcount) == CORE_EVT_UI_CANCELLED) {
       return CORE_EVT_UI_CANCELLED;
     }
-  } while(ui_backup_confirm_mnemonic(indexes, len, wordlist, wordcount) != ERR_OK);
+  } while(ui_backup_confirm_mnemonic(indexes, len, wordlist, wordcount, prompt_confirm) != ERR_OK);
 
   return CORE_EVT_UI_OK;
 }

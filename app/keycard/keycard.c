@@ -319,14 +319,17 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
     uint8_t* data = APDU_RESP(&kc->apdu);
 
     if (slip39) {
+      if (ui_prompt(LSTR(MENU_MNEMO_SLIP39), LSTR(MNEMO_BACKUP_SLIP39_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+        err = ERR_CANCEL;
+        goto cleanup;
+      }
+
       sha256_Raw(data, len * 2, slip39_tmp);
       uint32_t shard_count = 1;
       uint32_t threshold = 2;
 
       do {
-        err = ui_read_number(LSTR(MNEMO_SLIP39_COUNT_TITLE), 1, 16, &shard_count, false);
-
-        if (err != CORE_EVT_UI_OK) {
+        if (ui_read_number(LSTR(MNEMO_SLIP39_COUNT_TITLE), 1, 16, &shard_count, false) != CORE_EVT_UI_OK) {
           err = ERR_CANCEL;
           goto cleanup;
         }
@@ -342,18 +345,22 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
 
       for (int i = 0; i < shard_count; i++) {
         slip39_encode_mnemonic(&shards[i], indexes, len);
-        err = ui_backup_mnemonic(indexes, len, wordlist, wordlist_count);
-        if (err != CORE_EVT_UI_OK) {
+        if (ui_backup_mnemonic(indexes, len, wordlist, wordlist_count, false) != CORE_EVT_UI_OK) {
           err = ERR_CANCEL;
           goto cleanup;
         }
       }
     } else {
+      if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+        err = ERR_CANCEL;
+        goto cleanup;
+      }
+
       for (int i = 0; i < (len * 2); i += 2) {
         indexes[i / 2] = ((data[i] << 8) | data[i+1]);
       }
 
-      err = ui_backup_mnemonic(indexes, len, wordlist, wordlist_count);
+      err = ui_backup_mnemonic(indexes, len, wordlist, wordlist_count, true);
     }
 
     memset(data, 0, len * 2);

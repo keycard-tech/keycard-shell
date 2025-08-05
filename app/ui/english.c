@@ -221,6 +221,7 @@ const char *const i18n_english_strings[] = {
     "Enter passphrase",
     "Select number of parts",
     "Select threshold",
+    "SLIP39 standard allows aditional security and recovery options. Only proceed if you familiar with this standard.\nLearn more: keycard.tech/slip39",
 
     // Device verification
     "Verify device",
