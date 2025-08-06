@@ -279,9 +279,103 @@ static void keycard_generate_bip39_seed(const uint16_t* indexes, uint32_t len, c
   memset(mnemonic, 0, sizeof(mnemonic));
 }
 
+static app_err_t keycard_generate_slip39(const uint8_t* seed, const size_t seed_len, slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN], uint8_t ems[SLIP39_SEED_STRENGTH]) {
+  if (ui_prompt(LSTR(MENU_MNEMO_SLIP39), LSTR(MNEMO_BACKUP_SLIP39_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+    return ERR_CANCEL;
+  }
+
+  uint8_t slip39_tmp[SHA256_DIGEST_LENGTH];
+  sha256_Raw(seed, seed_len, slip39_tmp);
+  uint32_t shard_count = 1;
+  uint32_t threshold = 2;
+
+  core_evt_t err;
+
+  do {
+    if (ui_read_number(LSTR(MNEMO_SLIP39_COUNT_TITLE), 1, 16, &shard_count, false) != CORE_EVT_UI_OK) {
+      return ERR_CANCEL;
+    }
+
+    if (shard_count == 1) {
+      err = CORE_EVT_UI_OK;
+      threshold = 1;
+    } else {
+      err = ui_read_number(LSTR(MNEMO_SLIP39_THRESHOLD_TITLE), 2, shard_count, &threshold, true);
+    }
+  } while(err != CORE_EVT_UI_OK);
+
+  slip39_generate(threshold, slip39_tmp, SLIP39_SEED_STRENGTH, ems, shards, shard_count);
+
+  for (int i = 0; i < shard_count; i++) {
+    slip39_encode_mnemonic(&shards[i], indexes, SLIP39_MNEMO_LEN);
+    if (ui_backup_mnemonic(indexes, SLIP39_MNEMO_LEN, SLIP39_WORDLIST, SLIP39_WORDS_COUNT, false) != CORE_EVT_UI_OK) {
+      return ERR_CANCEL;
+    }
+  }
+
+  memset(slip39_tmp, 0, SHA256_DIGEST_LENGTH);
+  return ERR_OK;
+}
+
+static app_err_t keycard_generate_bip39(const uint8_t* raw_mnemo, uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len) {
+  if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+    return ERR_CANCEL;
+  }
+
+  for (int i = 0; i < (mnemo_len * 2); i += 2) {
+    indexes[i / 2] = ((raw_mnemo[i] << 8) | raw_mnemo[i+1]);
+  }
+
+  return ui_backup_mnemonic(indexes, mnemo_len, BIP39_WORDLIST_ENGLISH, BIP39_WORD_COUNT, true) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
+}
+
+static app_err_t keycard_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len) {
+  while (1) {
+    if (ui_read_mnemonic(indexes, mnemo_len, BIP39_WORDLIST_ENGLISH, BIP39_WORD_COUNT) != CORE_EVT_UI_OK) {
+      return ERR_CANCEL;
+    }
+
+    if (!mnemonic_check(indexes, mnemo_len)) {
+      ui_bad_seed();
+    } else {
+      return ERR_OK;
+    }
+  }
+}
+
+static app_err_t keycard_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN], uint8_t ems[SLIP39_SEED_STRENGTH]) {
+  uint8_t shard_idx = 0;
+  uint8_t shard_count = 1;
+
+  while(shard_idx < shard_count) {
+    if (ui_read_mnemonic(indexes, SLIP39_MNEMO_LEN, SLIP39_WORDLIST, SLIP39_WORDS_COUNT) != CORE_EVT_UI_OK) {
+      return ERR_CANCEL;
+    }
+
+    if (slip39_decode_mnemonic(indexes, SLIP39_MNEMO_LEN, &shards[shard_idx]) < 0) {
+      ui_bad_seed();
+    } else if ((shards[0].identifier != shards[shard_idx].identifier) || (shards[0].group_index != shards[shard_idx].group_index)) {
+      ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_MISMATCH_MSG), LSTR(INFO_SLIP39_MISMATCH_SUB), 0);
+    } else if (shards[0].group_threshold != 1) {
+      ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_UNSUPPORTED_MSG), LSTR(INFO_SLIP39_UNSUPPORTED_SUB), 0);
+    } else {
+      shard_count = shards[0].member_threshold;
+      shard_idx++;
+      memset(&indexes[3], 0xff, sizeof(uint16_t) * (SLIP39_MNEMO_LEN - 3));
+
+      if (shard_idx < shard_count) {
+        ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_PART_OK_MSG), LSTR(INFO_SLIP39_PART_OK_SUB), 0);
+      }
+    }
+  }
+
+  slip39_combine(shards, shard_count, ems, SLIP39_SEED_STRENGTH);
+
+  return ERR_OK;
+}
+
 static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* seed_len) {
   uint8_t* slip39_ems = &seed[16];
-  uint8_t* slip39_tmp = &seed[32];
   slip39_shard_t shards[16];
 
   uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
@@ -293,123 +387,36 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
 
   bool has_pass;
   i18n_str_id_t mode_selected = ui_read_mnemonic_len(&len, &has_pass);
-  bool slip39;
-  const char* const* wordlist;
-  size_t wordlist_count;
+  bool slip39 = len == SLIP39_MNEMO_LEN;
 
-  if (len == 20) {
-    slip39 = 1;
-    wordlist = SLIP39_WORDLIST;
-    wordlist_count = SLIP39_WORDS_COUNT;
-  } else {
-    slip39 = 0;
-    wordlist = BIP39_WORDLIST_ENGLISH;
-    wordlist_count = BIP39_WORD_COUNT;
-  }
-
-  core_evt_t err;
+  app_err_t err;
 
   if (mode_selected == MENU_MNEMO_GENERATE) {
-    if (keycard_cmd_generate_mnemonic(kc, len) != ERR_OK) {
-      err = ERR_TXRX;
-      goto cleanup;
-    }
-
-    APDU_ASSERT_OK(&kc->apdu);
     uint8_t* data = APDU_RESP(&kc->apdu);
 
-    if (slip39) {
-      if (ui_prompt(LSTR(MENU_MNEMO_SLIP39), LSTR(MNEMO_BACKUP_SLIP39_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
-        err = ERR_CANCEL;
-        goto cleanup;
-      }
-
-      sha256_Raw(data, len * 2, slip39_tmp);
-      uint32_t shard_count = 1;
-      uint32_t threshold = 2;
-
-      do {
-        if (ui_read_number(LSTR(MNEMO_SLIP39_COUNT_TITLE), 1, 16, &shard_count, false) != CORE_EVT_UI_OK) {
-          err = ERR_CANCEL;
-          goto cleanup;
-        }
-
-        if (shard_count == 1) {
-          err = CORE_EVT_UI_OK;
-          threshold = 1;
-        } else {
-          err = ui_read_number(LSTR(MNEMO_SLIP39_THRESHOLD_TITLE), 2, shard_count, &threshold, true);
-        }
-      } while(err != CORE_EVT_UI_OK);
-
-      slip39_generate(threshold, slip39_tmp, 16, slip39_ems, shards, shard_count);
-
-      for (int i = 0; i < shard_count; i++) {
-        slip39_encode_mnemonic(&shards[i], indexes, len);
-        if (ui_backup_mnemonic(indexes, len, wordlist, wordlist_count, false) != CORE_EVT_UI_OK) {
-          err = ERR_CANCEL;
-          goto cleanup;
-        }
-      }
+    if ((keycard_cmd_generate_mnemonic(kc, len) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+      err = ERR_TXRX;
     } else {
-      if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
-        err = ERR_CANCEL;
-        goto cleanup;
+      if (slip39) {
+        // in practice the card will generate 36 bytes and not 40, but that is still well within the APDU buffer size and the extra bytes make no difference
+        err = keycard_generate_slip39(data, len * 2, shards, indexes, slip39_ems);
+      } else {
+        err = keycard_generate_bip39(data, indexes, len);
       }
-
-      for (int i = 0; i < (len * 2); i += 2) {
-        indexes[i / 2] = ((data[i] << 8) | data[i+1]);
-      }
-
-      err = ui_backup_mnemonic(indexes, len, wordlist, wordlist_count, true);
     }
 
     memset(data, 0, len * 2);
   } else if (mode_selected == MENU_MNEMO_IMPORT) {
-    uint8_t shard_idx = 0;
-    uint8_t shard_count = 1;
-
-    while(shard_idx < shard_count) {
-      err = ui_read_mnemonic(indexes, len, wordlist, wordlist_count);
-
-      if (err == CORE_EVT_UI_OK) {
-        if (slip39) {
-          if (slip39_decode_mnemonic(indexes, len, &shards[shard_idx]) < 0) {
-            ui_bad_seed();
-          }else if ((shards[0].identifier != shards[shard_idx].identifier) || (shards[0].group_index != shards[shard_idx].group_index)) {
-            ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_MISMATCH_MSG), LSTR(INFO_SLIP39_MISMATCH_SUB), 0);
-          } else if (shards[0].group_threshold != 1) {
-            ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_UNSUPPORTED_MSG), LSTR(INFO_SLIP39_UNSUPPORTED_SUB), 0);
-          } else {
-            shard_count = shards[0].member_threshold;
-            shard_idx++;
-            memset(&indexes[3], 0xff, sizeof(uint16_t) * (BIP39_MAX_MNEMONIC_LEN - 3));
-
-            if (shard_idx < shard_count) {
-              ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_PART_OK_MSG), LSTR(INFO_SLIP39_PART_OK_SUB), 0);
-            }
-          }
-        } else {
-          if (!mnemonic_check(indexes, len)) {
-            ui_bad_seed();
-          } else {
-            shard_idx++;
-          }
-        }
-      } else {
-        err = ERR_CANCEL;
-        goto cleanup;
-      }
-    }
-
     if (slip39) {
-      slip39_combine(shards, shard_count, slip39_ems, 16);
+      err = keycard_read_slip39(shards, indexes, slip39_ems);
+    } else {
+      err = keycard_read_bip39(indexes, len);
     }
   } else {
-    err = ui_scan_mnemonic(indexes, &len);
+    err = ui_scan_mnemonic(indexes, &len) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
   }
 
-  if (err == CORE_EVT_UI_OK) {
+  if (err == ERR_OK) {
     if (has_pass) {
       uint8_t len = KEYCARD_BIP39_PASS_MAX_LEN;;
       ui_read_string(LSTR(MNEMO_PASSPHRASE_TITLE), "", passphrase, &len, UI_READ_STRING_UNDISMISSABLE);
@@ -428,7 +435,6 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
     err = ERR_CANCEL;
   }
 
-cleanup:
   memset(indexes, 0xff, sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN);
   memset(shards, 0, sizeof(slip39_shard_t) * 16);
   memset(passphrase, 0, KEYCARD_BIP39_PASS_MAX_LEN);

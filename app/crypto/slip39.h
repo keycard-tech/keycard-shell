@@ -33,6 +33,13 @@ extern const char* const SLIP39_WORDLIST[SLIP39_WORDS_COUNT];
 #define SLIP39_RADIX_BITS 10
 #define SLIP39_METADATA_LENGTH_WORDS 7
 
+#define SLIP39_SEED_STRENGTH 16
+#define SLIP39_MNEMO_LEN 20
+
+#define SLIP39_MAX_MEMBERS 16
+#define SLIP39_MAX_GROUPS 16
+
+
 typedef struct {
   uint16_t identifier;
   uint8_t extendable;
