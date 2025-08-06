@@ -431,8 +431,8 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
 
   if (err == ERR_OK) {
     if (has_pass) {
-      uint8_t len = KEYCARD_BIP39_PASS_MAX_LEN;;
-      ui_read_string(LSTR(MNEMO_PASSPHRASE_TITLE), "", passphrase, &len, UI_READ_STRING_UNDISMISSABLE);
+      uint8_t pass_len = KEYCARD_BIP39_PASS_MAX_LEN;;
+      ui_read_string(LSTR(MNEMO_PASSPHRASE_TITLE), "", passphrase, &pass_len, UI_READ_STRING_UNDISMISSABLE);
     }
 
     if (slip39) {
