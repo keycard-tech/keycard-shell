@@ -157,7 +157,7 @@ const char *const i18n_english_strings[] = {
     "Keycard may be fake",
     "Do not press OK unless you loaded a custom Keycard",
     "Old applet detected",
-    "This Keycard is too old. Please replace with a newer one.",
+    "Your keycard is too old. Please reach to our support team for help.",
     "No free pairing slots on card.",
     "Use Keycard with a previous device or factory reset",
     "Wrong key pair",
