@@ -1,5 +1,12 @@
 # Keycard Shell Dev Firmware
 
+## 0.10.0 (2025-08-06)
+
+* [slip39] add support for SLIP39 seed generation
+* [slip39] add support for SLIP39 import
+* [core] increase stack size
+* [stm32] run the firmware in HDPL3
+
 ## 0.9.20 (2025-07-11)
 
 * [db] remove QR-based database upgrade

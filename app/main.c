@@ -21,8 +21,8 @@ APP_DEF_TASK(core, CORE_STACK_SIZE);
 APP_DEF_TASK(ui, UI_STACK_SIZE);
 
 #define FW_MAJOR 0
-#define FW_MINOR 9
-#define FW_PATCH 20
+#define FW_MINOR 10
+#define FW_PATCH 0
 
 __attribute__((section(".fw_signature"))) __attribute__((__used__)) const uint8_t FW_SIGNATURE[64];
 __attribute__((section(".fw_version"))) __attribute__((__used__)) const uint8_t FW_VERSION[4] = { FW_MAJOR, FW_MINOR, FW_PATCH, 0};
