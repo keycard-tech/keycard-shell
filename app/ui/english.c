@@ -180,7 +180,7 @@ const char *const i18n_english_strings[] = {
     "Unsupported part format",
     "Multi-group SLIP39 not supported yet",
     "Part entered correctly",
-    "Proceed to the next part.",
+    " more part(s) to enter",
 
     // DB Update
     "Downloading database",

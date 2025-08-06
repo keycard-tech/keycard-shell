@@ -346,6 +346,10 @@ static app_err_t keycard_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], si
 static app_err_t keycard_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN], uint8_t ems[SLIP39_SEED_STRENGTH]) {
   uint8_t shard_idx = 0;
   uint8_t shard_count = 1;
+  const char* part_success = LSTR(INFO_SLIP39_PART_OK_SUB);
+  size_t part_success_len = strlen(part_success);
+  char part_counter_msg[part_success_len + 3];
+  memcpy(&part_counter_msg[2], part_success, part_success_len + 1);
 
   while(shard_idx < shard_count) {
     if (ui_read_mnemonic(indexes, SLIP39_MNEMO_LEN, SLIP39_WORDLIST, SLIP39_WORDS_COUNT) != CORE_EVT_UI_OK) {
@@ -359,12 +363,21 @@ static app_err_t keycard_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], 
     } else if (shards[0].group_threshold != 1) {
       ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_UNSUPPORTED_MSG), LSTR(INFO_SLIP39_UNSUPPORTED_SUB), 0);
     } else {
-      shard_count = shards[0].member_threshold;
-      shard_idx++;
       memset(&indexes[3], 0xff, sizeof(uint16_t) * (SLIP39_MNEMO_LEN - 3));
 
-      if (shard_idx < shard_count) {
-        ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_PART_OK_MSG), LSTR(INFO_SLIP39_PART_OK_SUB), 0);
+      shard_count = shards[0].member_threshold;
+      shard_idx++;
+
+      uint8_t parts_left = shard_count - shard_idx;
+
+      if (parts_left) {
+        int off = 1;
+        part_counter_msg[off--] = '0' + (parts_left % 9);
+        if (parts_left > 9) {
+          part_counter_msg[off--] = '1';
+        }
+
+        ui_info(ICON_INFO_SUCCESS, LSTR(INFO_SLIP39_PART_OK_MSG), &part_counter_msg[off + 1], 0);
       }
     }
   }
