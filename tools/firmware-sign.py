@@ -5,16 +5,19 @@ import tempfile
 import pathlib
 
 from common import *
+from keycardsign import *
 
 def main():
     parser = argparse.ArgumentParser(description='Sign the firmware and convert ELF to bin')
     parser.add_argument('-s', '--secret-key', help="the secret key file")
+    parser.add_argument('-k', '--keycard', help="sign with Keycard", action='store_true')
     parser.add_argument('-e', '--elf', help="the firmware ELF file")
     parser.add_argument('-o', '--output', help="the output binary file")
     args = parser.parse_args()
     
-    with open(args.secret_key) as f: 
-        sign_key = f.read()
+    if not args.keycard:
+        with open(args.secret_key) as f: 
+            sign_key = f.read()
 
     fw = bytearray(b'\xff') * FW_SIZE
     tmp_bin = tempfile.mktemp()
@@ -26,7 +29,10 @@ def main():
     pathlib.Path.unlink(tmp_bin)
 
     m = hash_firmware(fw)
-    signature = sign(sign_key, m)
+    if args.keycard:
+        signature = keycard_sign(m)
+    else:
+        signature = sign(sign_key, m)
 
     with tempfile.NamedTemporaryFile('wb', delete=False) as f:
         f.write(signature)
