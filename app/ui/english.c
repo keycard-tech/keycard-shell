@@ -39,6 +39,7 @@ const char *const i18n_english_strings[] = {
     "Set brightness",
     "Auto-off time",
     "USB-data",
+    "Regulatory label",
 
     // Help menu
     "View help documentation",
@@ -260,6 +261,7 @@ const char *const i18n_english_strings[] = {
     "Firmware version",
     "Database version",
     "Serial number",
+    "Brand: Keycard\nModel: Shell\nInput: 5V DC, 1A\nManufacturer: Status Research and Development, Baarerstrasse 10, 6302 Zug, Switzerland\nMade in China\nSerial number: ",
 
     // Prompts
     "Start typing to see suggestions",

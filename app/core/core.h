@@ -101,6 +101,7 @@ void core_addresses_bitcoin();
 void updater_database_run();
 void device_auth_run();
 void device_info();
+void device_elabel();
 void device_help();
 
 app_err_t updater_usb_fw_upgrade(command_t* cmd, apdu_t* apdu);

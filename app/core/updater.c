@@ -18,6 +18,7 @@
 #define FW_UPGRADE_REBOOT_DELAY 150
 
 #define MAX_INFO_SIZE 64
+#define MAX_ELABEL_SIZE 240
 
 static char* append_fw_version(char* dst, const uint8_t* version) {
   uint8_t tmp[4];
@@ -82,6 +83,18 @@ void device_info() {
   append_sn(sn, device_uid);
 
   ui_devinfo(fw, db, sn);
+}
+
+void device_elabel() {
+  const char* template = LSTR(DEVICE_INFO_ELABEL);
+  int len = strlen(template);
+  char elabel[MAX_ELABEL_SIZE];
+  memcpy(elabel, template, len);
+
+  uint8_t device_uid[HAL_DEVICE_UID_LEN];
+  hal_device_uid(device_uid);
+  append_sn(&elabel[len], device_uid);
+  ui_prompt(LSTR(MENU_ELABEL), elabel, UI_INFO_CANCELLABLE);
 }
 
 void device_help() {

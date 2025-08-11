@@ -43,6 +43,7 @@ typedef enum {
   MENU_BRIGHTNESS,
   MENU_SET_OFF_TIME,
   MENU_USB,
+  MENU_ELABEL,
 
   // Help menu
   HELP_TITLE,
@@ -264,6 +265,7 @@ typedef enum {
   DEVICE_INFO_FW,
   DEVICE_INFO_DB,
   DEVICE_INFO_SN,
+  DEVICE_INFO_ELABEL,
 
   // Prompts
   PROMPT_MNEMONIC,

@@ -19,12 +19,13 @@ const menu_t menu_keycard = {
 };
 
 const menu_t menu_device = {
-  5, {
+  6, {
     {MENU_INFO, NULL},
     {MENU_DEV_AUTH, NULL},
     {MENU_BRIGHTNESS, NULL},
     {MENU_SET_OFF_TIME, NULL},
     {MENU_USB, NULL},
+    {MENU_ELABEL, NULL},
   }
 };
 
@@ -48,7 +49,7 @@ const menu_t menu_addresses = {
 const menu_t menu_settings = {
   2, {
     {MENU_KEYCARD, &menu_keycard},
-    {MENU_DEVICE, &menu_device},
+    {MENU_DEVICE, &menu_device}
   }
 };
 
