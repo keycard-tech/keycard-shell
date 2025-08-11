@@ -131,6 +131,15 @@ psbt_result_t psbt_btc_tx_parse(uint8_t *data, uint32_t data_size, void *user_da
   p += 4;
 
   ASSERT_SPACE(1);
+
+  if (*p == 0) {
+    p++;
+    ASSERT_SPACE(1);
+    flag = *p;
+    p++;
+    ASSERT_SPACE(1);
+  }
+
   size_len = compactsize_peek_length(*p);
 
   ASSERT_SPACE(size_len);
