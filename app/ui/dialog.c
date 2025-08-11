@@ -599,7 +599,7 @@ void dialog_confirm_btc_summary(const btc_tx_ctx_t* tx) {
     uint64_t t;
     memcpy(&t, tx->outputs[i].amount, sizeof(uint64_t));
     total_output += t;
-    if (tx->output_is_change[i]) {
+    if (tx->output_data[i].change) {
       change += t;
     } else {
       if (dest_idx == -1) {
@@ -718,7 +718,7 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
     dialog_btc_amount(&ctx, TX_AMOUNT, t);
 
     dialog_label(&ctx, LSTR(TX_CHANGE));
-    dialog_data(&ctx, tx->output_is_change[i] ? LSTR(TX_YES) : LSTR(TX_NO));
+    dialog_data(&ctx, tx->output_data[i].change ? LSTR(TX_YES) : LSTR(TX_NO));
 
     i++;
     displayed++;

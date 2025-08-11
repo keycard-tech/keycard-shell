@@ -44,10 +44,8 @@ static void core_btc_utxo_handler(psbt_txelem_t* elem) {
   utxo_ctx->tx_ctx->input_data[utxo_ctx->input_index].script_pubkey_len = tx_out->script_len;
 }
 
-static void core_btc_psbt_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index, psbt_record_t* rec) {
-  if (rec->scope != PSBT_SCOPE_INPUTS) {
-    return;
-  } else if (index >= tx_ctx->input_count) {
+static void core_btc_psbt_input_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index, psbt_record_t* rec) {
+  if (index >= tx_ctx->input_count) {
     tx_ctx->error = ERR_DATA;
     return;
   }
@@ -96,6 +94,21 @@ static void core_btc_psbt_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index, psbt_r
   }
 }
 
+static void core_btc_psbt_output_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index, psbt_record_t* rec) {
+  if (index >= tx_ctx->output_count) {
+    tx_ctx->error = ERR_DATA;
+    return;
+  }
+
+  if (rec->type == PSBT_OUT_BIP32_DERIVATION) {
+    if (tx_ctx->output_data[index].master_fingerprint != tx_ctx->mfp) {
+      memcpy(&tx_ctx->output_data[index].master_fingerprint, rec->val, sizeof(uint32_t));
+      tx_ctx->output_data[index].bip32_path = &rec->val[4];
+      tx_ctx->output_data[index].bip32_path_len = rec->val_size - 4;
+    }
+  }
+}
+
 static void core_btc_txelem_handler(btc_tx_ctx_t* tx_ctx, psbt_txelem_t* elem) {
   switch (elem->elem_type) {
   case PSBT_TXELEM_TX:
@@ -124,7 +137,16 @@ static void core_btc_parser_cb(psbt_elem_t* rec) {
   btc_tx_ctx_t* tx_ctx = (btc_tx_ctx_t*) rec->user_data;
 
   if (rec->type == PSBT_ELEM_RECORD) {
-    core_btc_psbt_rec_handler(tx_ctx, rec->index, rec->elem.rec);
+    switch (rec->elem.rec->scope) {
+    case PSBT_SCOPE_INPUTS:
+      core_btc_psbt_input_rec_handler(tx_ctx, rec->index, rec->elem.rec);
+      break;
+    case PSBT_SCOPE_OUTPUTS:
+      core_btc_psbt_output_rec_handler(tx_ctx, rec->index, rec->elem.rec);
+      break;
+    default:
+      break;
+    }
   } else if (rec->type == PSBT_ELEM_TXELEM) {
     core_btc_txelem_handler(tx_ctx, rec->elem.txelem);
   }
@@ -314,6 +336,17 @@ static app_err_t core_btc_read_signature(uint8_t* data, uint8_t sighash, psbt_re
   return ERR_OK;
 }
 
+static void core_btc_set_path(uint8_t* btc_bip32_path, uint32_t btc_bip32_path_len) {
+  for (int i = 0; i < btc_bip32_path_len; i += 4) {
+    g_core.bip44_path[i + 3] = btc_bip32_path[i];
+    g_core.bip44_path[i + 2] = btc_bip32_path[i + 1];
+    g_core.bip44_path[i + 1] = btc_bip32_path[i + 2];
+    g_core.bip44_path[i] = btc_bip32_path[i + 3];
+  }
+
+  g_core.bip44_path_len = btc_bip32_path_len;
+}
+
 static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
   if (!tx_ctx->input_data[index].can_sign) {
     return ERR_OK;
@@ -342,14 +375,7 @@ static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
 
   keycard_t *kc = &g_core.keycard;
 
-  for (int i = 0; i < tx_ctx->input_data[index].bip32_path_len; i += 4) {
-    g_core.bip44_path[i + 3] = tx_ctx->input_data[index].bip32_path[i];
-    g_core.bip44_path[i + 2] = tx_ctx->input_data[index].bip32_path[i + 1];
-    g_core.bip44_path[i + 1] = tx_ctx->input_data[index].bip32_path[i + 2];
-    g_core.bip44_path[i] = tx_ctx->input_data[index].bip32_path[i + 3];
-  }
-
-  g_core.bip44_path_len = tx_ctx->input_data[index].bip32_path_len;
+  core_btc_set_path(tx_ctx->input_data[index].bip32_path, tx_ctx->input_data[index].bip32_path_len);
 
   if ((keycard_cmd_sign(kc, g_core.bip44_path, g_core.bip44_path_len, digest) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
     return ERR_CRYPTO;
@@ -477,6 +503,23 @@ static inline bool btc_validate_tx_hash(uint8_t* tx, size_t tx_len, uint8_t expe
   return memcmp(expected_hash, digest, SHA256_DIGEST_LENGTH) == 0;
 }
 
+static bool core_btc_pubkey_matches_output(const uint8_t* pubkey, const psbt_txout_t* out) {
+  uint8_t off;
+
+  if (script_is_p2pkh(out->script, out->script_len)) {
+    off = 3;
+  } else if (script_is_p2wpkh(out->script, out->script_len)) {
+    off = 2;
+  } else {
+    return false;
+  }
+
+  uint8_t tmp[RIPEMD160_DIGEST_LENGTH];
+  hash160(pubkey, PUBKEY_COMPRESSED_LEN, tmp);
+
+  return memcmp(tmp, &out->script[off], RIPEMD160_DIGEST_LENGTH) == 0;
+}
+
 static app_err_t core_btc_validate(btc_tx_ctx_t* tx_ctx) {
   bool can_sign_something = false;
 
@@ -535,13 +578,14 @@ static app_err_t core_btc_validate(btc_tx_ctx_t* tx_ctx) {
   }
 
   for (int i = 0; i < tx_ctx->output_count; i++) {
-    for (int j = 0; j < tx_ctx->input_count; j++) {
-      if (tx_ctx->input_data[j].can_sign &&
-          (tx_ctx->input_data[j].script_pubkey_len == tx_ctx->outputs[i].script_len) &&
-          !memcmp(tx_ctx->input_data[j].script_pubkey, tx_ctx->outputs[i].script, tx_ctx->outputs[i].script_len)) {
-        tx_ctx->output_is_change[i] = true;
-        break;
+    if (tx_ctx->output_data[i].master_fingerprint == tx_ctx->mfp) {
+      uint8_t pub[PUBKEY_LEN];
+      core_btc_set_path(tx_ctx->output_data[i].bip32_path, tx_ctx->output_data[i].bip32_path_len);
+      if (core_export_public(pub, NULL, NULL, NULL) != ERR_OK) {
+        return ERR_HW;
       }
+
+      tx_ctx->output_data[i].change = core_btc_pubkey_matches_output(pub, &tx_ctx->outputs[i]);
     }
   }
 

@@ -47,11 +47,18 @@ typedef struct {
 } psbt_input_data_t;
 
 typedef struct {
+  uint8_t* bip32_path;
+  uint32_t bip32_path_len;
+  uint32_t master_fingerprint;
+  bool change;
+} psbt_output_data_t;
+
+typedef struct {
   psbt_tx_t tx;
   psbt_txin_t inputs[BTC_MAX_INPUTS];
   psbt_txout_t outputs[BTC_MAX_OUTPUTS];
   psbt_input_data_t input_data[BTC_MAX_INPUTS];
-  bool output_is_change[BTC_MAX_OUTPUTS];
+  psbt_output_data_t output_data[BTC_MAX_OUTPUTS];
   size_t input_count;
   size_t output_count;
 
