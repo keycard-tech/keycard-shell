@@ -72,12 +72,14 @@ void pwr_inactivity_timer_elapsed() {
 }
 
 uint8_t pwr_battery_level() {
+  if (usb_connected()) {
+    return PWR_BATTERY_CHARGING;
+  }
+
   uint32_t vbat;
   hal_adc_read(ADC_VBAT, &vbat);
 
-  if (vbat > VBAT_USB) {
-    return PWR_BATTERY_CHARGING;
-  } else if (vbat > VBAT_MAX) {
+  if (vbat > VBAT_MAX) {
     vbat = VBAT_MAX;
   } else if (vbat < VBAT_MIN) {
     vbat = VBAT_MIN;
