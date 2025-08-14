@@ -1,5 +1,12 @@
 # Keycard Shell Dev Firmware
 
+## 0.10.1 (2025-08-14)
+
+* [btc] better change output detection
+* [btc] handle transactions with marker/flag fields
+* [ui] add regulatory label screen
+* [usb] detect charging status from VUSB_OK signal
+
 ## 0.10.0 (2025-08-06)
 
 * [slip39] add support for SLIP39 seed generation
