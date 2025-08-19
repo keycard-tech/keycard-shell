@@ -80,7 +80,6 @@ core_evt_t core_wait_event(uint32_t timeout, uint8_t accept_usb);
 
 void core_usb_run();
 app_err_t core_usb_get_response(command_t* cmd);
-app_err_t core_eth_usb_get_address(keycard_t* kc, apdu_t* cmd);
 app_err_t core_eth_usb_sign_tx(keycard_t* kc, apdu_t* cmd);
 app_err_t core_eth_usb_sign_message(keycard_t* kc, apdu_t* cmd);
 app_err_t core_eth_usb_sign_eip712(keycard_t* kc, apdu_t* cmd);

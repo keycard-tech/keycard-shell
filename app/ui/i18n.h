@@ -277,6 +277,10 @@ typedef enum {
   QRSEED_INVALID_MSG,
   QRSEED_INVALID_SUB,
 
+  // Export public key
+  PUBKEY_EXPORT_TITLE,
+  PUBKEY_EXPORT_MSG,
+
   INVALID_STR = 0xffff
 } i18n_str_id_t;
 

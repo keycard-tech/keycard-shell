@@ -520,8 +520,8 @@ core_evt_t ui_read_mnemonic(uint16_t* indexes, uint32_t len, const char* const* 
   return ui_signal_wait(0);
 }
 
-core_evt_t ui_confirm_eth_address(const char* address) {
-  return CORE_EVT_UI_OK;
+core_evt_t ui_confirm_export_key() {
+  return ui_prompt(LSTR(PUBKEY_EXPORT_TITLE), LSTR(PUBKEY_EXPORT_MSG), UI_INFO_CANCELLABLE);
 }
 
 core_evt_t ui_device_auth(uint32_t first_auth, uint32_t auth_time, uint32_t auth_count) {

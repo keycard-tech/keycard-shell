@@ -177,6 +177,66 @@ app_err_t core_set_derivation_path(struct crypto_keypath* derivation_path) {
   return ERR_OK;
 }
 
+static app_err_t core_usb_get_public(keycard_t* kc, apdu_t* cmd) {
+  uint8_t* data = APDU_DATA(cmd);
+  uint16_t len = data[0] * 4;
+  if (len > BIP44_MAX_PATH_LEN) {
+    core_usb_err_sw(cmd, 0x6a, 0x80);
+    return ERR_DATA;
+  }
+
+  uint8_t* out = APDU_RESP(cmd);
+  uint8_t extended = APDU_P2(cmd) == 1;
+
+  if (ui_confirm_export_key("") != CORE_EVT_UI_OK) {
+    core_usb_err_sw(cmd, 0x69, 0x82);
+    return ERR_CANCEL;
+  }
+
+  SC_BUF(path, BIP44_MAX_PATH_LEN);
+
+  uint32_t mfp;
+  app_err_t err = core_get_fingerprint(path, 0, &mfp);
+
+  if (err == ERR_OK) {
+    mfp = rev32(mfp);
+
+    memcpy(path, &data[1], len);
+    err = core_export_key(kc, path, len, &out[6], (extended ? &out[72] : NULL));
+  }
+
+  switch (err) {
+  case ERR_OK:
+    break;
+  case ERR_CRYPTO:
+    core_usb_err_sw(cmd, 0x69, 0x82);
+    return ERR_DATA;
+  default:
+    core_usb_err_sw(cmd, 0x6f, 0x00);
+    return ERR_DATA;
+  }
+
+  out[0] = 4;
+  memcpy(&out[1], &mfp, 4);
+
+  out[5] = 65;
+
+  if (extended) {
+    out[71] = 32;
+    len = 104;
+  } else {
+    out[71] = 0;
+    len = 72;
+  }
+
+  out[len++] = 0x90;
+  out[len++] = 0x00;
+
+  cmd->lr = len;
+
+  return ERR_OK;
+}
+
 TEST_APP_ACCESSIBLE app_err_t core_usb_get_app_config(apdu_t* cmd) {
   uint8_t* data = APDU_RESP(cmd);
   data[0] = FW_VERSION[0];
@@ -239,8 +299,8 @@ static app_err_t core_usb_command(keycard_t* kc, command_t* cmd) {
 
   if (APDU_CLA(apdu) == 0xe0) {
     switch(APDU_INS(apdu)) {
-      case INS_GET_ETH_ADDR:
-        err = core_eth_usb_get_address(kc, apdu);
+      case INS_GET_PUBLIC:
+        err = core_usb_get_public(kc, apdu);
         break;
       case INS_SIGN_ETH_TX:
         err = core_eth_usb_sign_tx(kc, apdu);

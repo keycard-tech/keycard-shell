@@ -5,7 +5,7 @@
 #include "iso7816/smartcard.h"
 #include "error.h"
 
-#define INS_GET_ETH_ADDR 0x02
+#define INS_GET_PUBLIC 0x02
 #define INS_SIGN_ETH_TX 0x04
 #define INS_GET_APP_CONF 0x06
 #define INS_SIGN_ETH_MSG 0x08

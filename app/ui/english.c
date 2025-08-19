@@ -273,4 +273,7 @@ const char *const i18n_english_strings[] = {
     "Invalid QR",
     "This QR does not contain a valid mnemonic",
 
+    // Export public key
+    "Connect wallet",
+    "The connected USB device is asking to export public keys. Only click OK if this a wallet you want to use your Shell with.",
 };

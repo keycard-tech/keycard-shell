@@ -152,60 +152,6 @@ static app_err_t core_eth_process_eip712(const uint8_t* data, uint32_t len) {
   return ui_display_eip712(g_core.address, &g_core.data.eip712) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
 }
 
-app_err_t core_eth_usb_get_address(keycard_t* kc, apdu_t* cmd) {
-  uint8_t* data = APDU_DATA(cmd);
-  uint16_t len = data[0] * 4;
-  if (len > BIP44_MAX_PATH_LEN) {
-    core_usb_err_sw(cmd, 0x6a, 0x80);
-    return ERR_DATA;
-  }
-
-  uint8_t extended = APDU_P2(cmd) == 1;
-
-  SC_BUF(path, BIP44_MAX_PATH_LEN);
-  memcpy(path, &data[1], len);
-  uint8_t* out = APDU_RESP(cmd);
-
-  app_err_t err = core_export_key(kc, path, len, &out[1], (extended ? &out[107] : NULL));
-
-  switch (err) {
-  case ERR_OK:
-    break;
-  case ERR_CRYPTO:
-    core_usb_err_sw(cmd, 0x69, 0x82);
-    return ERR_DATA;
-  default:
-    core_usb_err_sw(cmd, 0x6f, 0x00);
-    return ERR_DATA;
-  }
-
-  out[0] = 65;
-  out[66] = 40;
-
-  ethereum_address(&out[1], path);
-  ethereum_address_checksum(path, (char *)&out[67]);
-
-  if (APDU_P1(cmd) == 1) {
-    if (ui_confirm_eth_address((char *)&out[67]) != CORE_EVT_UI_OK) {
-      core_usb_err_sw(cmd, 0x69, 0x82);
-      return ERR_CANCEL;
-    }
-  }
-
-  if (extended) {
-    len = 139;
-  } else {
-    len = 107;
-  }
-
-  out[len++] = 0x90;
-  out[len++] = 0x00;
-
-  cmd->lr = len;
-
-  return ERR_OK;
-}
-
 static app_err_t core_eth_usb_init_sign(uint8_t* data) {
   g_core.bip44_path_len = data[0] * 4;
 
