@@ -7,7 +7,7 @@
 
 #include "core/settings.h"
 
-#define USB_STACK_SIZE 200
+#define USB_STACK_SIZE 800
 #define USB_TASK_PRIO 1
 
 #define CORE_STACK_SIZE 2048
