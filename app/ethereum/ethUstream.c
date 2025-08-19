@@ -32,7 +32,6 @@ void initTx(txContext_t *context, SHA3_CTX *sha3, txContent_t *content) {
   memset(content->destination, 0, ADDRESS_LENGTH);
   context->sha3 = sha3;
   context->content = content;
-  context->content->chainID = 1;
   context->currentField = RLP_NONE + 1;
 }
 

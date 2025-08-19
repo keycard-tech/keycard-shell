@@ -205,6 +205,7 @@ app_err_t core_eth_usb_sign_tx(keycard_t* kc, apdu_t* cmd) {
     }
 
     g_core.data.eth_tx.content.data = g_mem_heap;
+    g_core.data.eth_tx.content.chainID = 1;
   }
 
   app_err_t err = core_eth_process_tx(data, len, first);
