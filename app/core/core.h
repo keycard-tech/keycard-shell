@@ -47,7 +47,7 @@ typedef struct {
   size_t cbor_len;
 } core_key_t;
 
-typedef union {
+typedef struct {
   core_eth_tx_t eth_tx;
   core_msg_t msg;
   eip712_ctx_t eip712;
