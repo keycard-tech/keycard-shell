@@ -234,22 +234,20 @@ app_err_t core_eth_usb_sign_tx(keycard_t* kc, apdu_t* cmd) {
   return err;
 }
 
-static void core_eth_usb_message_reassemble(keycard_t* kc, apdu_t* cmd, uint8_t** segment, uint32_t* len, uint8_t* first_segment) {
+static app_err_t core_eth_usb_message_reassemble(keycard_t* kc, apdu_t* cmd, uint8_t** segment, uint32_t* len, uint8_t* first_segment) {
   cmd->has_lc = 1;
   uint8_t* data = APDU_DATA(cmd);
   *len = APDU_LC(cmd);
   *first_segment = APDU_P1(cmd) == 0;
   if (*first_segment) {
     if (core_eth_usb_init_sign(data) != ERR_OK) {
-      core_usb_err_sw(cmd, 0x6a, 0x80);
-      return;
+      return ERR_DATA;
     }
 
     g_core.data.msg.len = (data[1+g_core.bip44_path_len] << 24) | (data[2+g_core.bip44_path_len] << 16) | (data[3+g_core.bip44_path_len] << 8) | data[4+g_core.bip44_path_len];
 
     if (g_core.data.msg.len > MEM_HEAP_SIZE) {
-      core_usb_err_sw(cmd, 0x6a, 0x80);
-      return;
+      return ERR_DATA;
     }
 
     g_core.data.msg.received = 0;
@@ -258,22 +256,24 @@ static void core_eth_usb_message_reassemble(keycard_t* kc, apdu_t* cmd, uint8_t*
   }
 
   if ((g_core.data.msg.received + *len) > MEM_HEAP_SIZE) {
-    core_usb_err_sw(cmd, 0x6a, 0x80);
-    return;
+    return ERR_DATA;
   }
 
   g_core.data.msg.content = g_mem_heap;
   *segment = &g_core.data.msg.content[g_core.data.msg.received];
   memcpy(*segment, data, *len);
+  return ERR_OK;
 }
 
 app_err_t core_eth_usb_sign_message(keycard_t* kc, apdu_t* cmd) {
   uint8_t* segment;
   uint32_t len;
   uint8_t first_segment;
-  core_eth_usb_message_reassemble(kc, cmd, &segment, &len, &first_segment);
+  app_err_t err = core_eth_usb_message_reassemble(kc, cmd, &segment, &len, &first_segment);
 
-  app_err_t err = core_eth_process_msg(segment, len, first_segment);
+  if (err == ERR_OK) {
+    err = core_eth_process_msg(segment, len, first_segment);
+  }
 
   switch(err) {
     case ERR_OK:
@@ -305,9 +305,9 @@ app_err_t core_eth_usb_sign_eip712(keycard_t* kc, apdu_t* cmd) {
   uint8_t* segment;
   uint32_t len;
   uint8_t first_segment;
-  core_eth_usb_message_reassemble(kc, cmd, &segment, &len, &first_segment);
+  app_err_t err = core_eth_usb_message_reassemble(kc, cmd, &segment, &len, &first_segment);
 
-  if ((g_core.data.msg.received + len) > g_core.data.msg.len) {
+  if ((err != ERR_OK) || ((g_core.data.msg.received + len) > g_core.data.msg.len)) {
     core_usb_err_sw(cmd, 0x6a, 0x80);
     return ERR_DATA;
   }

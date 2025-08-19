@@ -188,7 +188,7 @@ static app_err_t core_usb_get_public(keycard_t* kc, apdu_t* cmd) {
   uint8_t* out = APDU_RESP(cmd);
   uint8_t extended = APDU_P2(cmd) == 1;
 
-  if (ui_confirm_export_key("") != CORE_EVT_UI_OK) {
+  if (ui_confirm_export_key() != CORE_EVT_UI_OK) {
     core_usb_err_sw(cmd, 0x69, 0x82);
     return ERR_CANCEL;
   }
