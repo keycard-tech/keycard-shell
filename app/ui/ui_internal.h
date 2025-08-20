@@ -159,7 +159,7 @@ struct cmd_input_number {
   bool show_max;
 };
 
-struct cmd_params {
+union cmd_params {
   struct cmd_info info;
   struct cmd_prompt prompt;
   struct cmd_eth_txn eth_tx;
@@ -184,7 +184,7 @@ struct ui_cmd {
   enum cmd_type type;
   uint8_t received;
   app_err_t result;
-  struct cmd_params params;
+  union cmd_params params;
 };
 
 struct ui_ctx {

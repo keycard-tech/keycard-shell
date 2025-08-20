@@ -255,7 +255,8 @@ app_err_t menu_run() {
   uint8_t selected[MENU_MAX_DEPTH];
 
   enum menu_draw_mode draw = MENU_ALL;
-  uint8_t depth = menu_scan(g_ui_cmd.params.menu.menu, g_ui_cmd.params.menu.title, *g_ui_cmd.params.menu.selected, menus, titles, selected, 0);
+  i18n_str_id_t* output = g_ui_cmd.params.menu.selected;
+  uint8_t depth = menu_scan(g_ui_cmd.params.menu.menu, g_ui_cmd.params.menu.title, *output, menus, titles, selected, 0);
 
   while(1) {
     const menu_t* menu = menus[depth];
@@ -263,7 +264,7 @@ app_err_t menu_run() {
 
     switch(ui_wait_keypress(portMAX_DELAY)) {
       case KEYPAD_KEY_CANCEL:
-        *g_ui_cmd.params.menu.selected = menu->entries[selected[depth]].label_id;
+        *output = menu->entries[selected[depth]].label_id;
         return ERR_CANCEL;
       case KEYPAD_KEY_BACK:
         if (depth) {
