@@ -22,7 +22,7 @@ def keycard_sign(digest):
             pin = get_pin()
         
         try:
-            sig = card.sign_with_path(digest, "m/43'/60'/1580'/0'/0")
+            sig = card.sign_with_path(digest, "m/43'/60'/1581'/35'/0")
             ecdsa = PrivateKey()
             return ecdsa.ecdsa_serialize_compact(ecdsa.ecdsa_deserialize(sig.signature))
         finally:
