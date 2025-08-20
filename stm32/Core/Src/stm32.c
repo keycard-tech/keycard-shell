@@ -171,6 +171,18 @@ hal_err_t hal_teardown_bootloader() {
   return HAL_SUCCESS;
 }
 
+hal_err_t hal_check_hardened() {
+  if ((FLASH->OPTSR_CUR & FLASH_OPTSR_PRODUCT_STATE) != OB_PROD_STATE_LOCKED) {
+    return HAL_FAIL;
+  }
+
+  if ((FLASH->WRP1R_CUR != 0xfffffffe) || (FLASH->WRP2R_CUR != 0xfffffffe)) {
+    return HAL_FAIL;
+  }
+
+  return HAL_SUCCESS;
+}
+
 hal_err_t hal_device_uid(uint8_t out[HAL_DEVICE_UID_LEN]) {
   memcpy(out, g_uid, HAL_DEVICE_UID_LEN);
   return HAL_SUCCESS;

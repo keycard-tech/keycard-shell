@@ -29,6 +29,7 @@ const uint8_t TEST_AID[] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01
 #define P1_TEST_CARD 0x06
 #define P1_TEST_CARD_PRESENCE 0x07
 #define P1_TEST_CAMERA 0x08
+#define P1_TEST_SECURITY 0x09
 
 #define TEST_GPIO_POLL_MS 5
 #define TEST_GPIO_TIMEOUT_MS 10000
@@ -211,6 +212,14 @@ static void core_usb_test(apdu_t* apdu) {
   core_usb_err_sw(apdu, 0x90, 0x00);
 }
 
+static void core_security_test(apdu_t* apdu) {
+  if (hal_check_hardened() == HAL_SUCCESS) {
+    core_usb_err_sw(apdu, 0x90, 0x00);
+  } else {
+    core_usb_err_sw(apdu, 0x6f, 0x01);
+  }
+}
+
 static void core_test_run(apdu_t* apdu) {
   switch(APDU_P1(apdu)) {
   case P1_TEST_USB:
@@ -236,6 +245,9 @@ static void core_test_run(apdu_t* apdu) {
     break;
   case P1_TEST_CAMERA:
     core_camera_test(apdu);
+    break;
+  case P1_TEST_SECURITY:
+    core_security_test(apdu);
     break;
   default:
     core_usb_err_sw(apdu, 0x6a, 0x86);
