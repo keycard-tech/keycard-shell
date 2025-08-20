@@ -301,7 +301,7 @@ app_err_t menu_run() {
           selected[depth] = 0;
           draw = MENU_ALL;
         } else {
-          *g_ui_cmd.params.menu.selected = entry->label_id;
+          *output = entry->label_id;
           return ERR_OK;
         }
         break;
