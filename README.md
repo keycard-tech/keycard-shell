@@ -45,7 +45,6 @@ This repo contains everything needed to build a Keycard Shell.
 * `freertos`: we use FreeRTOS as our task scheduler.
 * `hardware`: everything hardware related. From schematics up to case designs.
 * `json`: example json files for abi, token and chain db. These files are unused.
-* `nxp`: we started our development journey on a NXP i.MX RT1064. This port is unmantained and incomplete.
 * `stm32`: all platform-specific code for the STM32H5 MCU. It also contains the project file for STM32CubeIDE needed to build the firmware.
 * `test`: the tests firmware we run in the factory on each unit to check it has been properly assembled.
 * `tools`: some tools used during the build process or during development.
