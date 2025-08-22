@@ -1,5 +1,11 @@
 # Keycard Shell Dev Firmware
 
+## 0.10.2 (2025-08-22)
+
+* [usb] replace GET_ADDRESS command with GET_PUBLIC
+* [usb] changed USB PID
+* [usb] various bugfixes
+
 ## 0.10.1 (2025-08-14)
 
 * [btc] better change output detection
