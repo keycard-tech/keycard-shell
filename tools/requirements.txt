@@ -3,4 +3,4 @@ secp256k1Crypto >= 0.0.1
 freetype-py >= 2.5.1
 eth-utils >= 5.3.0
 pycryptodome >= 3.22.0
-keycard[keycard] >= 0.2.0
+keycard[keycard] >= 0.3.0
