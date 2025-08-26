@@ -1,6 +1,8 @@
-import tkinter.simpledialog
-
 def get_pin():
+    try:
+        import tkinter.simpledialog
+    except ImportError:
+        raise "Tkinter enabled version of Python required"
     return tkinter.simpledialog.askstring("Keycard PIN", "Enter PIN:", show='*')
 
 def keycard_sign(digest):
