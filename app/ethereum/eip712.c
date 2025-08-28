@@ -196,7 +196,7 @@ static app_err_t eip712_copy_bytes(int field_index, uint8_t* out, uint32_t* len,
     tmpstr.len -= 2;
     tmpstr.str += 2;
 
-    *len = APP_MIN((tmpstr.len / 2), *len);
+    *len = APP_MIN(((tmpstr.len + 1) / 2), *len);
 
     if (!base16_decode(tmpstr.str, out, ((*len) * 2))) {
       return ERR_DATA;
@@ -215,7 +215,7 @@ static app_err_t eip712_copy_uint(int field_index, bool pad_right, uint8_t out[3
   eip712_string_from_field(&tmpstr, field_index, ctx);
 
   if ((tmpstr.len >= 2) && (tmpstr.str[0] == '0') && (tmpstr.str[1] == 'x')) {
-    int out_len = (tmpstr.len - 2) / 2;
+    int out_len = ((tmpstr.len - 2) + 1) / 2;
     int padding = 32 - out_len;
     int offset;
 
@@ -494,7 +494,7 @@ static app_err_t eip712_encode_field(uint8_t out[32], uint8_t* heap, size_t heap
         tmpstr.len -= len;
         tmpstr.str += len;
 
-        keccak_Update(sha3, out, (len >> 1));
+        keccak_Update(sha3, out, ((len + 1) / 2));
       }
 
       keccak_Final(sha3, out);
