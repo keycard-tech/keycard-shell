@@ -2,7 +2,7 @@
 
 const char *const i18n_english_strings[] = {
     // Main menu
-    "Scan QR transaction",
+    "Scan QR",
     "Connect software wallet",
     "Addresses",
     "Settings",
@@ -35,7 +35,6 @@ const char *const i18n_english_strings[] = {
     // Device menu
     "Information",
     "Verification",
-    "",
     "Set brightness",
     "Auto-off time",
     "USB-data",
@@ -188,14 +187,7 @@ const char *const i18n_english_strings[] = {
     "Database updated",
     "Received database is invalid",
     "Couldn't write database",
-    "",
-    "",
     "Update database",
-    "",
-    "",
-    "",
-    "",
-    "",
 
     // FW Upgrade
     "Downloading firmware",

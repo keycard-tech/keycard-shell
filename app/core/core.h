@@ -97,7 +97,6 @@ void core_display_public_bitcoin_multisig();
 void core_display_public_multicoin();
 void core_addresses_ethereum();
 void core_addresses_bitcoin();
-void updater_database_run();
 void device_auth_run();
 void device_info();
 void device_elabel();

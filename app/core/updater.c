@@ -133,49 +133,11 @@ static app_err_t updater_database_update(uint8_t* data, size_t len, bool require
   app_err_t err = eth_db_update(data, len - SIG_LEN);
   if (err == ERR_OK) {
     ui_info(ICON_INFO_SUCCESS, LSTR(DB_UPDATE_OK), version_string, 0);
-  } else if (err == ERR_VERSION) {
-    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERR_VERSION), LSTR(DB_UPDATE_ERR_VERSION_HINT), 0);
   } else {
     ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_ERROR), LSTR(INFO_TRY_AGAIN), 0);
   }
 
   return err;
-}
-
-static app_err_t updater_prompt_version() {
-  uint32_t db_ver;
-  if (eth_db_lookup_version(&db_ver) != ERR_OK) {
-    ui_info(ICON_INFO_ERROR, LSTR(DB_UPDATE_NO_DB), LSTR(DB_UPDATE_NO_DB_HINT), 0);
-    return ERR_CANCEL;
-  }
-
-  char db[MAX_INFO_SIZE];
-  append_db_version(db, db_ver);
-
-  if (ui_dbinfo(db) != CORE_EVT_UI_OK) {
-    return ERR_CANCEL;
-  }
-
-  return ERR_OK;
-}
-
-void updater_database_run() {
-  const char* addr = "https://keycard.tech/update";
-  if (ui_display_msg_qr(LSTR(MENU_DB_UPDATE), addr, &addr[8]) != CORE_EVT_UI_OK) {
-    return;
-  }
-
-  data_t data;
-
-  do {
-    if (updater_prompt_version() != ERR_OK) {
-      return;
-    }
-
-    if (ui_qrscan(FS_DATA, &data) != CORE_EVT_UI_OK) {
-      return;
-    }
-  } while (updater_database_update(data.data, data.len, false) != ERR_OK);
 }
 
 static void updater_clear_flash_area() {

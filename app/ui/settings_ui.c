@@ -179,31 +179,3 @@ app_err_t settings_ui_devinfo() {
 
   return dialog_wait_dismiss(0);
 }
-
-app_err_t settings_ui_dbinfo() {
-  dialog_title(LSTR(MENU_DB_UPDATE));
-  dialog_blank(TH_TITLE_HEIGHT);
-  screen_area_t version_box = {
-      .x = TH_SCREEN_MARGIN,
-      .y = TH_TITLE_HEIGHT + TH_DB_VERSION_BOX_VERTICAL_MARGIN,
-      .width = SCREEN_WIDTH - (TH_SCREEN_MARGIN * 2),
-      .height = TH_DB_VERSION_BOX_HEIGHT,
-  };
-
-  screen_fill_area(&version_box, TH_DB_VERSION_BOX_COLOR);
-  screen_text_ctx_t ctx = {
-      .font = TH_FONT_TEXT,
-      .bg = TH_DB_VERSION_BOX_COLOR,
-      .fg = TH_COLOR_FG,
-      .x = TH_SCREEN_MARGIN,
-      .y = version_box.y + ((TH_DB_VERSION_BOX_HEIGHT - (TH_FONT_TEXT)->yAdvance) / 2)
-  };
-
-  screen_draw_centered_string(&ctx, g_ui_cmd.params.devinfo.db_version);
-
-  ctx.y = dialog_ordered_point(TH_SCREEN_MARGIN, TH_DB_UPDATE_INSTRUCTION_TOP, 1, LSTR(DB_UPDATE_POINT_1)) + TH_DB_UPDATE_INSTR_MARGIN;
-  ctx.y = dialog_ordered_point(TH_SCREEN_MARGIN, ctx.y, 2, LSTR(DB_UPDATE_POINT_2)) + TH_DB_UPDATE_INSTR_MARGIN;
-  dialog_ordered_point(TH_SCREEN_MARGIN, ctx.y, 3, LSTR(DB_UPDATE_POINT_3));
-
-  return dialog_wait_dismiss(UI_INFO_CANCELLABLE);
-}
