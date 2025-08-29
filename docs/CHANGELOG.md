@@ -1,5 +1,11 @@
 # Keycard Shell Dev Firmware
 
+## 0.10.3 (2025-08-29)
+
+* [eth] fix hex string hashing in EIP712
+* [eth] remove outdated code
+* [ui] rename "Scan QR transaction" to "Scan QR"
+
 ## 0.10.2 (2025-08-22)
 
 * [usb] replace GET_ADDRESS command with GET_PUBLIC
