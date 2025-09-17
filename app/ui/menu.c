@@ -25,7 +25,7 @@ const menu_t menu_device = {
     {MENU_BRIGHTNESS, NULL},
     {MENU_SET_OFF_TIME, NULL},
     {MENU_USB, NULL},
-    {MENU_ELABEL, NULL},
+    {MENU_INSTRUCTIONS, NULL},
   }
 };
 
@@ -47,9 +47,10 @@ const menu_t menu_addresses = {
 };
 
 const menu_t menu_settings = {
-  2, {
+  3, {
     {MENU_KEYCARD, &menu_keycard},
-    {MENU_DEVICE, &menu_device}
+    {MENU_DEVICE, &menu_device},
+    {MENU_ELABEL, NULL},
   }
 };
 
@@ -103,6 +104,13 @@ const menu_t menu_onoff = {
   2, {
     {MENU_ON, NULL},
     {MENU_OFF, NULL},
+  }
+};
+
+const menu_t menu_showhide = {
+  2, {
+    {MENU_SHOW, NULL},
+    {MENU_HIDE, NULL},
   }
 };
 

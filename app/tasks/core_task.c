@@ -71,6 +71,9 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_USB:
     settings_usb_onoff();
     break;
+  case MENU_INSTRUCTIONS:
+    settings_help_onoff();
+    break;
   case MENU_ELABEL:
     device_elabel();
     break;

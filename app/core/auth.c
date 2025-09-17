@@ -5,6 +5,7 @@
 #include "crypto/secp256k1.h"
 #include "crypto/rand.h"
 #include "hal.h"
+#include "settings.h"
 #include "storage/keys.h"
 #include "ui/ui.h"
 #include "ur/ur.h"
@@ -15,7 +16,7 @@
 
 void device_auth_run() {
   // Inform the user
-  if (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+  if (!g_settings.skip_help && (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return;
   }
 

@@ -26,6 +26,7 @@ typedef enum {
   // Settings menu
   MENU_DEVICE,
   MENU_KEYCARD,
+  MENU_ELABEL,
 
   // Keycard menu
   MENU_CARD_NAME,
@@ -42,7 +43,7 @@ typedef enum {
   MENU_BRIGHTNESS,
   MENU_SET_OFF_TIME,
   MENU_USB,
-  MENU_ELABEL,
+  MENU_INSTRUCTIONS,
 
   // Help menu
   HELP_TITLE,
@@ -251,6 +252,10 @@ typedef enum {
   USB_ENABLE_TITLE,
   MENU_OFF,
   MENU_ON,
+
+  // Instructions
+  MENU_SHOW,
+  MENU_HIDE,
 
   // Device info
   DEVICE_INFO_TITLE,

@@ -8,6 +8,7 @@
 #include "ui/ui.h"
 #include "util/tlv.h"
 #include "common.h"
+#include "core/settings.h"
 #include "crypto/rand.h"
 #include "crypto/sha2.h"
 #include "crypto/hmac.h"
@@ -280,7 +281,7 @@ static void keycard_generate_bip39_seed(const uint16_t* indexes, uint32_t len, c
 }
 
 static app_err_t keycard_generate_slip39(const uint8_t* seed, const size_t seed_len, slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN], uint8_t ems[SLIP39_SEED_STRENGTH]) {
-  if (ui_prompt(LSTR(MENU_MNEMO_SLIP39), LSTR(MNEMO_BACKUP_SLIP39_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+  if (!g_settings.skip_help && (ui_prompt(LSTR(MENU_MNEMO_SLIP39), LSTR(MNEMO_BACKUP_SLIP39_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return ERR_CANCEL;
   }
 
@@ -318,7 +319,7 @@ static app_err_t keycard_generate_slip39(const uint8_t* seed, const size_t seed_
 }
 
 static app_err_t keycard_generate_bip39(const uint8_t* raw_mnemo, uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len) {
-  if (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+  if (!g_settings.skip_help && (ui_prompt(LSTR(MENU_MNEMO_GENERATE), LSTR(MNEMO_BACKUP_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return ERR_CANCEL;
   }
 
@@ -326,7 +327,7 @@ static app_err_t keycard_generate_bip39(const uint8_t* raw_mnemo, uint16_t index
     indexes[i / 2] = ((raw_mnemo[i] << 8) | raw_mnemo[i+1]);
   }
 
-  return ui_backup_mnemonic(indexes, mnemo_len, BIP39_WORDLIST_ENGLISH, BIP39_WORD_COUNT, true) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
+  return ui_backup_mnemonic(indexes, mnemo_len, BIP39_WORDLIST_ENGLISH, BIP39_WORD_COUNT, !g_settings.skip_help) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
 }
 
 static app_err_t keycard_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len) {

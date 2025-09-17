@@ -26,7 +26,7 @@ void settings_load() {
 
   if (!_settings_entry) {
     g_settings.enable_usb = SETTINGS_DEF_ENABLE_USB;
-    g_settings.lang = SETTINGS_DEF_LANG;
+    g_settings.skip_help = SETTINGS_DEF_SKIP_HELP;
     g_settings.lcd_brightness = SETTINGS_DEF_LCD_BRIGHTNESS;
     g_settings.shutdown_timeout = SETTINGS_DEF_SHUTDOWN_TIMEOUT;
   } else {
@@ -129,4 +129,14 @@ void settings_usb_onoff() {
   } else {
     pwr_usb_unplugged(false);
   }
+}
+
+void settings_help_onoff() {
+  i18n_str_id_t selected = g_settings.skip_help ? MENU_HIDE : MENU_SHOW;
+
+  if (ui_menu(LSTR(MENU_INSTRUCTIONS), &menu_showhide, &selected, selected, 0, UI_MENU_NOCANCEL, 0, 0) != CORE_EVT_UI_OK) {
+    return;
+  }
+
+  g_settings.skip_help = selected == MENU_SHOW ? false : true;
 }

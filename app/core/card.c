@@ -2,6 +2,7 @@
 #include "core.h"
 #include "keycard/keycard_cmdset.h"
 #include "pwr.h"
+#include "settings.h"
 
 void card_change_name() {
   char name[KEYCARD_NAME_MAX_LEN + 1];
@@ -36,7 +37,7 @@ void card_change_pin() {
 }
 
 void card_change_puk() {
-  if (ui_prompt(LSTR(MENU_CHANGE_PUK), LSTR(PUK_CHANGE_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+  if (!g_settings.skip_help && (ui_prompt(LSTR(MENU_CHANGE_PUK), LSTR(PUK_CHANGE_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return;
   }
 
@@ -57,7 +58,7 @@ void card_change_puk() {
 }
 
 void card_change_pairing() {
-  if (ui_prompt(LSTR(MENU_CHANGE_PAIRING), LSTR(PAIRING_CHANGE_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+  if (!g_settings.skip_help && (ui_prompt(LSTR(MENU_CHANGE_PAIRING), LSTR(PAIRING_CHANGE_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return;
   }
 

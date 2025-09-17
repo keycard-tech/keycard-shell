@@ -22,6 +22,7 @@ const char *const i18n_english_strings[] = {
     // Settings menu
     "Device",
     "Keycard",
+    "Regulatory label",
 
     // Keycard menu
     "Set card name",
@@ -38,7 +39,7 @@ const char *const i18n_english_strings[] = {
     "Set brightness",
     "Auto-off time",
     "USB-data",
-    "Regulatory label",
+    "Instructions",
 
     // Help menu
     "View help documentation",
@@ -247,6 +248,10 @@ const char *const i18n_english_strings[] = {
     "Enable USB data transfer",
     "Off",
     "On",
+
+    // Instructions
+    "Show",
+    "Hide",
 
     // Device info
     "Device information",
