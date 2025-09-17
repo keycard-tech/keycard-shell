@@ -98,6 +98,7 @@ void core_display_public_multicoin();
 void core_addresses_ethereum();
 void core_addresses_bitcoin();
 void device_auth_run();
+void device_update_sw();
 void device_info();
 void device_elabel();
 void device_help();

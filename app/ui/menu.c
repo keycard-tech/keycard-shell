@@ -20,12 +20,19 @@ const menu_t menu_keycard = {
 
 const menu_t menu_device = {
   6, {
-    {MENU_INFO, NULL},
     {MENU_DEV_AUTH, NULL},
+    {MENU_UPDATE, NULL},
     {MENU_BRIGHTNESS, NULL},
     {MENU_SET_OFF_TIME, NULL},
     {MENU_USB, NULL},
     {MENU_INSTRUCTIONS, NULL},
+  }
+};
+
+const menu_t menu_info = {
+  2, {
+    {MENU_SW_INFO, NULL},
+    {MENU_ELABEL, NULL},
   }
 };
 
@@ -50,7 +57,7 @@ const menu_t menu_settings = {
   3, {
     {MENU_KEYCARD, &menu_keycard},
     {MENU_DEVICE, &menu_device},
-    {MENU_ELABEL, NULL},
+    {MENU_INFO, &menu_info},
   }
 };
 

@@ -22,7 +22,7 @@ const char *const i18n_english_strings[] = {
     // Settings menu
     "Device",
     "Keycard",
-    "Regulatory label",
+    "Information",
 
     // Keycard menu
     "Set card name",
@@ -34,12 +34,16 @@ const char *const i18n_english_strings[] = {
     "Enter pairing password",
 
     // Device menu
-    "Information",
     "Verification",
+    "Update",
     "Set brightness",
     "Auto-off time",
     "USB-data",
     "Instructions",
+
+    // Info menu
+    "Software",
+    "Regulatory label",
 
     // Help menu
     "View help documentation",
