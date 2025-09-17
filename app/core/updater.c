@@ -299,5 +299,5 @@ app_err_t updater_usb_db_upgrade(apdu_t* apdu) {
 }
 
 void device_update_sw() {
-
+  ui_prompt(LSTR(MENU_UPDATE), LSTR(FW_UPGRADE_HELP), UI_INFO_CANCELLABLE);
 }

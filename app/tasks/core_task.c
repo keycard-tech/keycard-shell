@@ -13,24 +13,11 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_QRCODE:
     core_qr_run();
     break;
+  case MENU_CONNECT:
+    core_connect_wallet();
+    break;
   case MENU_HELP:
     device_help();
-    break;
-  // Connect
-  case MENU_CONNECT_EIP4527:
-    core_display_public_eip4527();
-    break;
-  case MENU_CONNECT_BITCOIN:
-    core_display_public_bitcoin_mainnet();
-    break;
-  case MENU_CONNECT_BITCOIN_MULTISIG:
-    core_display_public_bitcoin_multisig();
-    break;
-  case MENU_CONNECT_BITCOIN_TESTNET:
-    core_display_public_bitcoin_testnet();
-    break;
-  case MENU_CONNECT_MULTICOIN:
-    core_display_public_multicoin();
     break;
   // Addresses
   case MENU_ETHEREUM:

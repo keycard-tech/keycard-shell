@@ -23,6 +23,7 @@ typedef enum {
 } ui_menu_opt_t;
 
 extern const menu_t menu_mainmenu;
+extern const menu_t menu_connect;
 extern const menu_t menu_mnemonic;
 extern const menu_t menu_mnemonic_length;
 extern const menu_t menu_mnemonic_has_pass;

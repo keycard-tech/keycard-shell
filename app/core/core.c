@@ -8,6 +8,7 @@
 #include "ethereum/eth_db.h"
 #include "mem.h"
 #include "keycard/keycard_cmdset.h"
+#include "settings.h"
 #include "storage/keys.h"
 #include "ui/ui_internal.h"
 #include "util/tlv.h"
@@ -603,4 +604,35 @@ core_evt_t core_wait_event(uint32_t timeout, uint8_t accept_usb) {
   }
 
   return core_wait_event(timeout, accept_usb);
+}
+
+
+void core_connect_wallet() {
+  if (!g_settings.skip_help && (ui_prompt(LSTR(CONNECT_HOWTO), LSTR(CONNECT_HOWTO_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
+    return;
+  }
+
+  i18n_str_id_t selected = MENU_CONNECT_EIP4527;
+
+  while (ui_menu(LSTR(MENU_CONNECT), &menu_connect, &selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) == CORE_EVT_UI_OK) {
+    switch(selected) {
+    case MENU_CONNECT_EIP4527:
+      core_display_public_eip4527();
+      break;
+    case MENU_CONNECT_BITCOIN:
+      core_display_public_bitcoin_mainnet();
+      break;
+    case MENU_CONNECT_BITCOIN_MULTISIG:
+      core_display_public_bitcoin_multisig();
+      break;
+    case MENU_CONNECT_BITCOIN_TESTNET:
+      core_display_public_bitcoin_testnet();
+      break;
+    case MENU_CONNECT_MULTICOIN:
+      core_display_public_multicoin();
+      break;
+    default:
+      break;
+    }
+  }
 }

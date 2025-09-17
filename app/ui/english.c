@@ -48,6 +48,10 @@ const char *const i18n_english_strings[] = {
     // Help menu
     "View help documentation",
 
+    // Connect wallet
+    "How to connect",
+    "Go to keycard.tech/wallets for the full list of supported wallets and step-by-step connection guides if in doubt. Press OK when ready.",
+
     // TX
     "Confirm transfer",
     "Confirm approval",
@@ -200,6 +204,7 @@ const char *const i18n_english_strings[] = {
     "Invalid firmware",
     "This firmware is not authentic. Please upgrade through the official site",
     "Update firmware",
+    "To update the software you need a computer with a browser and a USB cable. Please go to shell.keycard.tech/update and follow the instructions there.\n\nDismiss this prompt before starting the procedure.",
 
     // Mnemonic input
     "Add key pair",

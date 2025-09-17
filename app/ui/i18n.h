@@ -52,6 +52,10 @@ typedef enum {
   // Help menu
   HELP_TITLE,
 
+  // Connect wallet
+  CONNECT_HOWTO,
+  CONNECT_HOWTO_PROMPT,
+
   // TX Confirmation
   TX_CONFIRM_TRANSFER,
   TX_CONFIRM_APPROVAL,
@@ -204,6 +208,7 @@ typedef enum {
   FW_UPGRADE_INVALID_MSG,
   FW_UPGRADE_INVALID_SUB,
   FW_UPGRADE_CONFIRM,
+  FW_UPGRADE_HELP,
 
   // Mnemonic input
   MNEMO_TITLE,

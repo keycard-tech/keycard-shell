@@ -64,7 +64,7 @@ const menu_t menu_settings = {
 const menu_t menu_mainmenu = {
   5, {
     {MENU_QRCODE, NULL},
-    {MENU_CONNECT, &menu_connect},
+    {MENU_CONNECT, NULL},
     {MENU_ADDRESSES, &menu_addresses},
     {MENU_SETTINGS, &menu_settings},
     {MENU_HELP, NULL},
