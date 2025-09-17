@@ -1,5 +1,12 @@
 # Keycard Shell Dev Firmware
 
+## 0.10.4 (2025-09-17)
+
+* [ui] add inline help to "Connect software wallet" flow
+* [ui] add software update instructions in device settings
+* [ui] move informations and regulatory label to a different submenu
+* [prefs] add the ability to disable all inline help
+
 ## 0.10.3 (2025-08-29)
 
 * [eth] fix hex string hashing in EIP712
