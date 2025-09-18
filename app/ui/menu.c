@@ -30,7 +30,8 @@ const menu_t menu_device = {
 };
 
 const menu_t menu_info = {
-  2, {
+  3, {
+    {MENU_HELP, NULL},
     {MENU_SW_INFO, NULL},
     {MENU_ELABEL, NULL},
   }
@@ -54,10 +55,9 @@ const menu_t menu_addresses = {
 };
 
 const menu_t menu_settings = {
-  3, {
+  2, {
     {MENU_KEYCARD, &menu_keycard},
     {MENU_DEVICE, &menu_device},
-    {MENU_INFO, &menu_info},
   }
 };
 
@@ -67,7 +67,7 @@ const menu_t menu_mainmenu = {
     {MENU_CONNECT, NULL},
     {MENU_ADDRESSES, &menu_addresses},
     {MENU_SETTINGS, &menu_settings},
-    {MENU_HELP, NULL},
+    {MENU_INFO, &menu_info},
   }
 };
 

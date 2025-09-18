@@ -6,7 +6,7 @@ const char *const i18n_english_strings[] = {
     "Connect software wallet",
     "Addresses",
     "Settings",
-    "Help",
+    "Information",
 
     // Connect menu
     "Ethereum",
@@ -20,29 +20,29 @@ const char *const i18n_english_strings[] = {
     "Bitcoin",
 
     // Settings menu
-    "Device",
     "Keycard",
-    "Information",
+    "Shell",
 
     // Keycard menu
-    "Set card name",
+    "Rename",
     "Change PIN",
     "Change PUK",
     "Change pairing pass",
-    "Factory reset card",
+    "Factory reset",
     "Unblock with PUK",
     "Enter pairing password",
 
     // Device menu
-    "Verification",
+    "Verify",
     "Update",
-    "Set brightness",
+    "Brightness",
     "Auto-off time",
     "USB-data",
     "Instructions",
 
     // Info menu
-    "Software",
+    "Help",
+    "Software info",
     "Regulatory label",
 
     // Help menu
@@ -50,7 +50,7 @@ const char *const i18n_english_strings[] = {
 
     // Connect wallet
     "How to connect",
-    "Go to keycard.tech/wallets for the full list of supported wallets and step-by-step connection guides if in doubt. Press OK when ready.",
+    "Need help? Go to keycard.tech/wallets for the full list of supported wallets and step-by-step connection guides. Press OK to continue.",
 
     // TX
     "Confirm transfer",

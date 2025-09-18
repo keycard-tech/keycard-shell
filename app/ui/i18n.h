@@ -10,7 +10,7 @@ typedef enum {
   MENU_CONNECT,
   MENU_ADDRESSES,
   MENU_SETTINGS,
-  MENU_HELP,
+  MENU_INFO,
 
   // Connect menu
   MENU_CONNECT_EIP4527,
@@ -24,9 +24,8 @@ typedef enum {
   MENU_BITCOIN,
 
   // Settings menu
-  MENU_DEVICE,
   MENU_KEYCARD,
-  MENU_INFO,
+  MENU_DEVICE,
 
   // Keycard menu
   MENU_CARD_NAME,
@@ -46,6 +45,7 @@ typedef enum {
   MENU_INSTRUCTIONS,
 
   // Info menu
+  MENU_HELP,
   MENU_SW_INFO,
   MENU_ELABEL,
 
