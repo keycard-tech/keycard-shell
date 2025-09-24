@@ -297,11 +297,6 @@ app_err_t core_eth_usb_sign_message(keycard_t* kc, apdu_t* cmd) {
 }
 
 app_err_t core_eth_usb_sign_eip712(keycard_t* kc, apdu_t* cmd) {
-  if (APDU_P2(cmd) != 1) {
-    core_usb_err_sw(cmd, 0x69, 0x82);
-    return ERR_DATA;
-  }
-
   uint8_t* segment;
   uint32_t len;
   uint8_t first_segment;
