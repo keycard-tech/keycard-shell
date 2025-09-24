@@ -1,5 +1,10 @@
 # Keycard Shell Dev Firmware
 
+## 0.10.5 (2025-09-24)
+
+* [ui] update menu structure
+* [usb] remove outdated code in EIP712 message signing
+
 ## 0.10.4 (2025-09-17)
 
 * [ui] add inline help to "Connect software wallet" flow
