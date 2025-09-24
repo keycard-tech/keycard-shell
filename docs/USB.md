@@ -10,7 +10,7 @@ Keycard Shell exchanges commands with the host following a format closely resemb
 
 * CLA: 1 byte, set to 0xe0
 * INS: 1 byte, identifies the command to execute
-* P1: 1 byte, first parameter of the command
+* P1: 1 byte, first parameter of the command. Used mostly for command chaining
 * P2: 1 byte, second parameter of the command
 * Lc: 1 byte, 0-255, length of following Data field
 * Data: additional data length. Absent if Lc = 0
@@ -18,7 +18,24 @@ Keycard Shell exchanges commands with the host following a format closely resemb
 ### R-APDU format
 
 * Data: 0-253 bytes, response data
-* Status Words (SW): 2 bytes (big endian short) error code of the command.
+* Status Words (SW): 2 bytes error code of the command.
+
+### Command chaining
+
+Since C-APDU are limited to 255 bytes for their data field, it is often necessary to split the payload across multiple APDUs. This is achieved the following way:
+
+1. the host prepares the full payload and splits in chunks of maximum 255 bytes
+2. the first chunk is sent with P1 = 0
+3. Shell will respond with SW = 0x9000 and no other response data (unless this was the only chunk)
+4. all other chunks are sent with P1 = 1
+5. Shell will acknowledge each intermediate chunk with SW = 0x9000 while the response to the last chunk will contain the actual reponse.
+
+For this chaining scheme to work Shell must be able to detect when data ends. The way this is handled depends on each command but it either involves including the total length in the first segment or by transmitting data that instrinsically allows detecting its end.
+
+### Encoding conventions
+
+1. All multibyte integers are encoded in big endian byte order
+2. BIP32 paths are encoded by 1 byte representing the number of elements (max 10) followed by a sequence of 32-bit integers
 
 ### Status Words used by Shell:
 
@@ -37,45 +54,97 @@ Keycard Shell exchanges commands with the host following a format closely resemb
 ### GET RESPONSE
 
 * INS: 0xc0
-* P1: 0
-* P2: 0
+* P1: 0x00
+* P2: 0x00
 * Data: None
 
 This is a transport level command. In case the SW of the latest received R-APDU was 0x61XX send this command to receive the next chunk of the response. Repeat until you get a SW different from 0x61XX. 
 
 If sent where not more data available, the command will respond with SW = 0x6985.
 
-### GET APP CONF (INS = 0x06)
+### GET DEVICE INFO
 
-TBD
+* INS: 0x06
+* P1: 0x00
+* P2: 0x00
+* Data: None
 
-### GET PUBLIC (INS = 0x02)
+Returns informations about the device. The format is as follow:
 
-TBD
+* Firmware version: 3 bytes, representing major, minor, patch revision version respectively.
+* Database version: 4 bytes. It's integer value is a date in YYYYMMDD format.
+* Device UID: 16 bytes. Unique identifier of this Shell unit.
+* Public Key: 33 bytes. A public key that can be used for device verification purposes.
 
-### SIGN ETH TX (INS = 0x04)
+### GET PUBLIC
 
-TBD
+* INS: 0x02
+* P1: 0x00
+* P2: 0x00 for normal public key, 0x01 for extended public key
+* Data: BIP32 path
 
-### SIGN ETH MSG (INS = 0x08)
+Exports the public key of the given BIP32 derivation path. This operation requires user approval. The output format is as follows:
 
-TBD
+* Length of fingerprint: 1 byte
+* Fingerprint: 4 bytes, the master key fingerprint. Useful to identify the wallet.
+* Length of public key: 1 byte
+* Public key: the public key either in compressed (33-bytes) or uncompressed (65 bytes).
+* Length of chain code: 1 byte. If P2 = 0, the value is always 0.
+* Chain code: extension to the public key, allowing the client to derive deeper level of public keys
 
-### SIGN EIP712 (INS = 0x0c)
+### SIGN ETH TX
 
-TBD
+* INS: 0x04
+* P1: used for command chaining
+* P2: 0x00
+* Data: BIP32 path, unsigned Ethereum transaction
 
-### SIGN PSBT (INS = 0x0e)
+Signs the given Ethereum transaction. This operation requires user approval. Returns a 65-bytes signature in (v, r, s) format.
 
-TBD
+### SIGN ETH MSG
 
-### FW UPGRADE (INS = 0xf2)
+* INS: 0x08
+* P1: used for command chaining
+* P2: 0x00
+* Data: BIP32 path, message length on 4 bytes, message to sign
 
-TBD
+Signs the given message in a way compatible with Ethereum's `personal_sign` function. This operation requires user approval. Returns a 65-bytes signature in (v, r, s) format.
 
-### DB UPGRADE (INS = 0xf4)
+### SIGN EIP712
 
-TBD
+* INS: 0x0c
+* P1: used for command chaining
+* P2: 0x00
+* Data: BIP32 path, message length on 4 bytes, EIP712 message to sign
+
+Signs the given EIP712 message. This operation requires user approval. Returns a 65-bytes signature in (v, r, s) format.
+
+### SIGN PSBT
+
+* INS: 0x0e
+* P1: used for command chaining
+* P2: 0x00
+* Data: PSBT length on 4 bytes, PSBT to sign
+
+Signs the given PSBT. This operation requires user approval. Returns the entire PSBT with added signatures. Retrieving the full response is likely to require the usage of the `GET RESPONSE` command.
+
+### FW UPGRADE
+
+* INS: 0xf2
+* P1: used for command chaining
+* P2: 0x00
+* Data: firmware length on 4 bytes, firmware to load
+
+Performs a firmware upgrade. This operation requires user approval and the firmware's signature will be verified. The length fo each data chunk must be a multiple of 16 bytes, meaning that the maximum chunk length is 240 bytes. Shell will reply with SW = 0x9000 on success and reboot, which will interrupt the USB connection.
+
+### DB UPGRADE
+
+* INS: 0xf4
+* P1: used for command chaining
+* P2: 0x00
+* Data: databse length on 4 bytes, database to load
+
+Performs a database upgrade. This operation requires user approval and the database's signature will be verified.
 
 ## HID framing
 
@@ -85,8 +154,8 @@ Each frame has the following format
 
 Channel ID: 2 bytes, arbitrarely chosen by the host and repeated by Shell
 Frame type: 1 byte. Set to 0x05 for APDU and 0x02 for PING
-Segment number: 2 bytes (big endian short) indicating the current segment number (starting from 0)
-Total data length: 2 bytes (big endian short), only present if the segment number = 0 and is the total length of the APDU being transmitted
+Segment number: 2 bytes indicating the current segment number (starting from 0)
+Total data length: 2 bytes, only present if the segment number = 0 and is the total length of the APDU being transmitted
 Data: the chunk of the APDU being transmitted, filling the remaining bytes of the HID frame
 
 If frame type is PING, the Shell will answer with the exact same data received. This is ony useful for link diagnostic.
