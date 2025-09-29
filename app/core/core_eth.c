@@ -427,5 +427,5 @@ void core_eth_eip4527_run(struct eth_sign_request* qr_request) {
   }
 
   cbor_encode_eth_signature(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &sig, &g_core.data.sig.cbor_len);
-  ui_display_ur_qr(LSTR(QR_SCAN_WALLET_TITLE), g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, ETH_SIGNATURE);
+  ui_display_ur_qr(NULL, g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, ETH_SIGNATURE);
 }

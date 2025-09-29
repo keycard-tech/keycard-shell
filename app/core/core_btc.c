@@ -718,7 +718,7 @@ void core_btc_psbt_qr_run(struct zcbor_string* qr_request) {
   qr_out.len = out_len;
 
   cbor_encode_psbt(g_mem_heap, MEM_HEAP_SIZE, &qr_out, &out_len);
-  ui_display_ur_qr(LSTR(QR_SCAN_WALLET_TITLE), g_mem_heap, out_len, CRYPTO_PSBT);
+  ui_display_ur_qr(NULL, g_mem_heap, out_len, CRYPTO_PSBT);
 }
 
 app_err_t core_btc_sign_msg_run(const uint8_t* msg, size_t msg_len, uint32_t expected_mfp, uint8_t* out, uint8_t* pubkey) {
@@ -793,7 +793,7 @@ void core_btc_sign_msg_qr_run(struct btc_sign_request* qr_request) {
   cbor_sig.btc_signature_public_key.len = PUBKEY_COMPRESSED_LEN;
 
   cbor_encode_btc_signature(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &cbor_sig, &g_core.data.sig.cbor_len);
-  ui_display_ur_qr(LSTR(QR_SCAN_WALLET_TITLE), g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, BTC_SIGNATURE);
+  ui_display_ur_qr(NULL, g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, BTC_SIGNATURE);
 }
 
 app_err_t core_btc_usb_sign_psbt(keycard_t* kc, command_t* cmd) {

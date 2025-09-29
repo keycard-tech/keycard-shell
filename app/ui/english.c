@@ -104,7 +104,6 @@ const char *const i18n_english_strings[] = {
     "Hash",
 
     // QR output
-    "Scan with your wallet",
     "Scan to verify",
     "Your ETH address",
     "Your BTC address",

@@ -13,7 +13,7 @@
 #define QR_BUF_LEN qrcodegen_BUFFER_LEN_FOR_VERSION(QR_MAX_VERSION)
 #define QR_MAX_SEGMENT_LENGTH 200
 
-app_err_t qrout_display(const char* str, uint16_t max_y) {
+app_err_t qrout_display(const char* str, uint16_t start_y, uint16_t max_y) {
   uint8_t tmpBuf[QR_BUF_LEN];
   uint8_t qrcode[QR_BUF_LEN];
 
@@ -22,7 +22,7 @@ app_err_t qrout_display(const char* str, uint16_t max_y) {
   }
 
   screen_area_t qrarea;
-  qrarea.height = max_y - (TH_TITLE_HEIGHT + TH_QRCODE_VERTICAL_MARGIN);
+  qrarea.height = max_y - start_y;
 
   int qrsize = qrcodegen_getSize(qrcode);
   int scale = qrarea.height / qrsize;
@@ -30,7 +30,7 @@ app_err_t qrout_display(const char* str, uint16_t max_y) {
 
   qrarea.width = qrarea.height;
   qrarea.x = (SCREEN_WIDTH - qrarea.width) / 2;
-  qrarea.y = TH_TITLE_HEIGHT + (((max_y - TH_TITLE_HEIGHT) - qrarea.height) / 2);
+  qrarea.y = start_y + (((max_y - start_y) - qrarea.height) / 2);
 
   screen_draw_qrcode(&qrarea, qrcode, qrsize, scale);
 
@@ -38,8 +38,12 @@ app_err_t qrout_display(const char* str, uint16_t max_y) {
 }
 
 static void qrout_prepare_canvas(const char* title) {
-  dialog_title_colors(title, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
-  dialog_blank_color(TH_TITLE_HEIGHT, SCREEN_COLOR_WHITE);
+  dialog_blank_color(0, SCREEN_COLOR_WHITE);
+
+  if (title) {
+    dialog_title_colors(title, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
+  }
+
   dialog_nav_hints_colors(ICON_NAV_CANCEL, ICON_NAV_NEXT, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
 }
 
@@ -50,7 +54,7 @@ static app_err_t qrout_display_single_ur(ur_out_t* ur) {
     return ERR_DATA;
   }
 
-  if (qrout_display(urstr, (SCREEN_HEIGHT - TH_SCREEN_MARGIN)) != ERR_OK) {
+  if (qrout_display(urstr, TH_SCREEN_MARGIN/2, (SCREEN_HEIGHT - TH_SCREEN_MARGIN/2)) != ERR_OK) {
     return ERR_DATA;
   }
 
@@ -76,7 +80,7 @@ static app_err_t qrout_display_animated_ur(ur_out_t* ur) {
       return ERR_DATA;
     }
 
-    if (qrout_display(urstr, (SCREEN_HEIGHT - TH_SCREEN_MARGIN)) != ERR_OK) {
+    if (qrout_display(urstr, TH_SCREEN_MARGIN/2, (SCREEN_HEIGHT - TH_SCREEN_MARGIN/2)) != ERR_OK) {
       return ERR_DATA;
     }
 
@@ -110,7 +114,7 @@ app_err_t qrout_display_address() {
 
   uint16_t qr_height = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - ((TH_FONT_DATA)->yAdvance * 2);
 
-  if (qrout_display(g_ui_cmd.params.address.address, qr_height) != ERR_OK) {
+  if (qrout_display(g_ui_cmd.params.address.address, TH_TITLE_HEIGHT, qr_height) != ERR_OK) {
     return ERR_DATA;
   }
 
@@ -156,7 +160,7 @@ app_err_t qrout_display_msg() {
   qrout_prepare_canvas(g_ui_cmd.params.qrmsg.title);
   uint16_t qr_height = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - TH_QRCODE_MSG_LABEL_HEIGHT;
 
-  if (qrout_display(g_ui_cmd.params.qrmsg.msg, qr_height) != ERR_OK) {
+  if (qrout_display(g_ui_cmd.params.qrmsg.msg, TH_TITLE_HEIGHT, qr_height) != ERR_OK) {
     return ERR_DATA;
   }
 
