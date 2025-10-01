@@ -1,5 +1,9 @@
 # Keycard Shell Dev Firmware
 
+## 0.10.6 (2025-10-01)
+
+* [ui] maximize screen space used for QR output
+
 ## 0.10.5 (2025-09-24)
 
 * [ui] update menu structure
