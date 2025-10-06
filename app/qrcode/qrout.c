@@ -47,14 +47,14 @@ static void qrout_prepare_canvas(const char* title) {
   dialog_nav_hints_colors(ICON_NAV_CANCEL, ICON_NAV_NEXT, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
 }
 
-static app_err_t qrout_display_single_ur(ur_out_t* ur) {
+static app_err_t qrout_display_single_ur(ur_out_t* ur, uint16_t start_y) {
   char urstr[QR_BUF_LEN/2];
 
   if (ur_encode(ur, urstr, sizeof(urstr)) != ERR_OK) {
     return ERR_DATA;
   }
 
-  if (qrout_display(urstr, TH_SCREEN_MARGIN/2, (SCREEN_HEIGHT - TH_SCREEN_MARGIN/2)) != ERR_OK) {
+  if (qrout_display(urstr, start_y, (SCREEN_HEIGHT - TH_SCREEN_MARGIN/2)) != ERR_OK) {
     return ERR_DATA;
   }
 
@@ -72,7 +72,7 @@ static app_err_t qrout_display_single_ur(ur_out_t* ur) {
   }
 }
 
-static app_err_t qrout_display_animated_ur(ur_out_t* ur) {
+static app_err_t qrout_display_animated_ur(ur_out_t* ur, uint16_t start_y) {
   char urstr[QR_BUF_LEN/2];
 
   while(1) {
@@ -80,7 +80,7 @@ static app_err_t qrout_display_animated_ur(ur_out_t* ur) {
       return ERR_DATA;
     }
 
-    if (qrout_display(urstr, TH_SCREEN_MARGIN/2, (SCREEN_HEIGHT - TH_SCREEN_MARGIN/2)) != ERR_OK) {
+    if (qrout_display(urstr, start_y, (SCREEN_HEIGHT - TH_SCREEN_MARGIN/2)) != ERR_OK) {
       return ERR_DATA;
     }
 
@@ -102,10 +102,12 @@ app_err_t qrout_display_ur() {
   ur_out_t ur;
   ur_out_init(&ur, g_ui_cmd.params.qrout.type, g_ui_cmd.params.qrout.data, g_ui_cmd.params.qrout.len, QR_MAX_SEGMENT_LENGTH);
 
+  uint16_t start_y = g_ui_cmd.params.qrout.title == NULL ? TH_SCREEN_MARGIN/2 : TH_TITLE_HEIGHT;
+
   if (ur.part.ur_part_seqLen > 1) {
-    return qrout_display_animated_ur(&ur);
+    return qrout_display_animated_ur(&ur, start_y);
   } else {
-    return qrout_display_single_ur(&ur);
+    return qrout_display_single_ur(&ur, start_y);
   }
 }
 
