@@ -74,7 +74,7 @@ void device_auth_run() {
 
   cbor_encode_dev_auth(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &auth, &g_core.data.sig.cbor_len);
 
-  if (ui_display_ur_qr(LSTR(QR_DEVAUTH_TITLE), g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, DEV_AUTH) != CORE_EVT_UI_OK) {
+  if (ui_display_ur_qr(NULL, g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, DEV_AUTH) != CORE_EVT_UI_OK) {
     return;
   }
 
