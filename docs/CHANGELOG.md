@@ -1,5 +1,10 @@
 # Keycard Shell Dev Firmware
 
+## 1.0.0 (2025-10-14)
+
+* [ui] fix QR overlapping title in some cases
+* [misc] update database and site public keys
+
 ## 0.10.6 (2025-10-01)
 
 * [ui] maximize screen space used for QR output
