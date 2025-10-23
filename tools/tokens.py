@@ -40,16 +40,20 @@ def process_token(tokens, chains, token_json, chains_json):
     chain = chains.get(chain_id)
     if chain is None:
         chain_json = lookup_chain(chains_json, chain_id)
-        chain = {
-            "id": chain_id,
-            "name": chain_json["name"],
-            "shortName": chain_json["shortName"],
-            "ticker": chain_json["nativeCurrency"]["symbol"],
-            "decimals": chain_json["nativeCurrency"]["decimals"],
-        }
+        if chain_json is not None:
+            chain = {
+                "id": chain_id,
+                "name": chain_json["name"],
+                "shortName": chain_json["shortName"],
+                "ticker": chain_json["nativeCurrency"]["symbol"],
+                "decimals": chain_json["nativeCurrency"]["decimals"],
+            }
         
-        chains[chain_id] = chain
+            chains[chain_id] = chain
 
+    if len(token_json["address"]) != 42:
+        return
+    
     symbol = token_json["symbol"]
     token = tokens.get(symbol)
     
