@@ -188,7 +188,7 @@ eip712_data_type_t eip712_recognize(const eip712_ctx_t* ctx) {
 
 app_err_t eip712_extract_domain(const eip712_ctx_t* ctx, eip712_domain_t* out) {
   if (eip712_extract_uint256(ctx, ctx->index.domain, "verifyingContract", out->address) != ERR_OK) {
-    return ERR_DATA;
+    out->address[0] = 0xff;
   }
 
   if (eip712_extract_string(ctx, ctx->index.domain, "name", out->name, EIP712_MAX_NAME_LEN) != ERR_OK) {
@@ -198,10 +198,10 @@ app_err_t eip712_extract_domain(const eip712_ctx_t* ctx, eip712_domain_t* out) {
   uint8_t chain_bytes[32];
 
   if (eip712_extract_uint256(ctx, ctx->index.domain, "chainId", chain_bytes) != ERR_OK) {
-    return ERR_DATA;
+    out->chainID = UINT32_MAX;
+  } else {
+    out->chainID = (chain_bytes[28] << 24) | (chain_bytes[29] << 16) | (chain_bytes[30] << 8) | chain_bytes[31];
   }
-
-  out->chainID = (chain_bytes[28] << 24) | (chain_bytes[29] << 16) | (chain_bytes[30] << 8) | chain_bytes[31];
 
   return ERR_OK;
 }

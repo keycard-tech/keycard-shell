@@ -804,19 +804,30 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
 
       if (eip712) {
         dialog_address(&ctx, TX_SIGNER, ADDR_ETH, g_ui_cmd.params.eip712.addr);
-        dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, &eip712->address[ETH_ABI_WORD_ADDR_OFF]);
+
+        if (eip712->address[0] == 0xff) {
+          dialog_label(&ctx, LSTR(EIP712_CONTRACT));
+          dialog_data(&ctx, LSTR(EIP712_UNSPECIFIED));
+        } else {
+          dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, &eip712->address[ETH_ABI_WORD_ADDR_OFF]);
+        }
 
         dialog_label(&ctx, LSTR(TX_CHAIN));
 
-        chain_desc_t chain;
-        chain.chain_id = eip712->chainID;
+        if (eip712->chainID != UINT32_MAX) {
+          chain_desc_t chain;
+          chain.chain_id = eip712->chainID;
 
-        uint8_t num[11];
-        if (eth_db_lookup_chain(&chain) != ERR_OK) {
-          chain.name = (char*) u32toa(chain.chain_id, num, 11);
+          uint8_t num[11];
+          if (eth_db_lookup_chain(&chain) != ERR_OK) {
+            chain.name = (char*) u32toa(chain.chain_id, num, 11);
+          }
+
+          dialog_data(&ctx, chain.name);
+        } else {
+          dialog_data(&ctx, LSTR(EIP712_UNSPECIFIED));
         }
 
-        dialog_data(&ctx, chain.name);
         dialog_label(&ctx, LSTR(EIP712_NAME));
         dialog_data(&ctx, eip712->name);
         dialog_blank(ctx.y);

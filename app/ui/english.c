@@ -88,6 +88,7 @@ const char *const i18n_english_strings[] = {
     "Sign EIP712",
     "Contract",
     "Name",
+    "Any",
 
     // Safe Confirmation
     "Confirm Safe TX",
