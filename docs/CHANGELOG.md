@@ -1,5 +1,10 @@
 # Keycard Shell Dev Firmware
 
+## 1.0.1 (2025-10-29)
+
+* [ui] fix verify device URL
+* [eip712] handle EIP712 messages omitting verifyingContract/chainId fields
+
 ## 1.0.0 (2025-10-14)
 
 * [ui] fix QR overlapping title in some cases
