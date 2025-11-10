@@ -1,5 +1,10 @@
 # Keycard Shell Dev Firmware
 
+## 1.0.2 (2025-11-10)
+
+* [ui] correct some copy
+* [eip712] show hash for all EIP712 messages
+
 ## 1.0.1 (2025-10-29)
 
 * [ui] fix verify device URL
