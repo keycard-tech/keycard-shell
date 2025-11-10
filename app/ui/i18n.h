@@ -83,6 +83,7 @@ typedef enum {
   TX_SATOSHI,
   TX_UNLIMITED,
   TX_TOOLITTLE,
+  TX_HASH,
 
   // MSG Confirmation
   MSG_CONFIRM_TITLE,
@@ -106,7 +107,6 @@ typedef enum {
   TX_SAFE_OP,
   TX_SAFE_OP_CALL,
   TX_SAFE_OP_DELEGATE,
-  TX_SAFE_HASH,
 
   // QR output
   QR_ADDRESS_ETH_TITLE,

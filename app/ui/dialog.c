@@ -371,6 +371,21 @@ static void dialog_address_block(screen_text_ctx_t *ctx, i18n_str_id_t label, ad
   dialog_end_line(ctx);
 }
 
+static void dialog_sha3(screen_text_ctx_t *ctx, i18n_str_id_t label, const uint8_t* hash) {
+  char data[SHA3_256_DIGEST_LENGTH * 2 + 2 + 1];
+  data[0] = '0';
+  data[1] = 'x';
+  base16_encode(hash, &data[2], SHA3_256_DIGEST_LENGTH);
+
+  dialog_label_ctx(ctx);
+  dialog_begin_line(ctx, TH_LABEL_HEIGHT * 3);
+  ctx->y = ctx->v1;
+  screen_draw_string(ctx, LSTR(label));
+  dialog_data_ctx(ctx);
+  screen_draw_text(ctx, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y + (TH_LABEL_HEIGHT * 3), (uint8_t*) data, strlen(data), false, false);
+  dialog_end_line(ctx);
+}
+
 static void dialog_amount_adapt(char* amount, size_t amount_len, const char* ticker, size_t ticker_len) {
   if (amount_len <= DATA_FIELD_MAX_LEN) {
     return;
@@ -524,7 +539,7 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
   return ret;
 }
 
-static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const uint8_t* signer, bool has_fees) {
+static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const uint8_t* signer, const uint8_t* hash, bool has_fees) {
   screen_text_ctx_t ctx;
 
   dialog_title(LSTR(TX_CONFIRM_APPROVAL));
@@ -545,6 +560,9 @@ static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const u
       }
     } else {
       dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, info->token.addr);
+      if (hash != NULL) {
+        dialog_sha3(&ctx, TX_HASH, hash);
+      }
     }
 
     dialog_blank(ctx.y);
@@ -561,7 +579,7 @@ app_err_t dialog_confirm_eth_tx() {
     if ((abi->selector == ETH_DATA_ERC20_APPROVE) && (abi->ext_selector == ETH_DATA_ERC20_APPROVE_EXT_SELECTOR)) {
       eth_approve_info_t info;
       if (eth_extract_approve_info(g_ui_cmd.params.eth_tx.tx, abi, &info) == ERR_OK) {
-        return dialog_confirm_approval(&info, g_ui_cmd.params.eth_tx.addr, true);
+        return dialog_confirm_approval(&info, g_ui_cmd.params.eth_tx.addr, NULL, true);
       }
     }
   }
@@ -780,7 +798,7 @@ app_err_t dialog_confirm_btc_tx() {
   return ret;
 }
 
-app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_domain_t* eip712) {
+app_err_t dialog_confirm_raw_eip712(const uint8_t* data, size_t len, eip712_domain_t* eip712, const uint8_t* hash) {
   pager_ctx_t pager = { .last_page = 0, .page = 0 };
 
   screen_text_ctx_t ctx = {
@@ -789,53 +807,91 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
       .bg = TH_COLOR_TEXT_BG,
   };
 
-  dialog_measure_string_in_pages(&ctx, &pager, eip712 ? (TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 4) + (TH_LABEL_HEIGHT * 4)) : (TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 2) + (TH_LABEL_HEIGHT * 2)), 0, data, len);
+  dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 2) + (TH_LABEL_HEIGHT * 2)), 2, data, len);
 
+  app_err_t ret = ERR_NEED_MORE_DATA;
+
+  while(ret == ERR_NEED_MORE_DATA) {
+    dialog_title(LSTR(EIP712_CONFIRM_TITLE));
+    ctx.y = TH_TITLE_HEIGHT;
+
+    if (pager.page == 0) {
+      dialog_address(&ctx, TX_SIGNER, ADDR_ETH, g_ui_cmd.params.eip712.addr);
+
+      if (eip712->address[0] == 0xff) {
+        dialog_label(&ctx, LSTR(EIP712_CONTRACT));
+        dialog_data(&ctx, LSTR(EIP712_UNSPECIFIED));
+      } else {
+        dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, &eip712->address[ETH_ABI_WORD_ADDR_OFF]);
+      }
+
+      dialog_label(&ctx, LSTR(TX_CHAIN));
+
+      if (eip712->chainID != UINT32_MAX) {
+        chain_desc_t chain;
+        chain.chain_id = eip712->chainID;
+
+        uint8_t num[11];
+        if (eth_db_lookup_chain(&chain) != ERR_OK) {
+          chain.name = (char*) u32toa(chain.chain_id, num, 11);
+        }
+
+        dialog_data(&ctx, chain.name);
+      } else {
+        dialog_data(&ctx, LSTR(EIP712_UNSPECIFIED));
+      }
+
+      dialog_label(&ctx, LSTR(EIP712_NAME));
+      dialog_data(&ctx, eip712->name);
+      dialog_blank(ctx.y);
+    } else if (pager.page == 1) {
+      dialog_sha3(&ctx, TX_HASH, hash);
+
+      ctx.font = TH_FONT_TEXT;
+      ctx.fg = TH_COLOR_TEXT_FG;
+      ctx.bg = TH_COLOR_TEXT_BG;
+      ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+      dialog_blank(ctx.y);
+    } else {
+      uint16_t offset = pager.pages[pager.page];
+
+      ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+      ctx.y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN;
+      dialog_blank(TH_TITLE_HEIGHT);
+      screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &data[offset], (len - offset), false, false);
+    }
+
+    ret = dialog_wait_paged(&pager.page, pager.last_page);
+  }
+
+  return ret;
+}
+
+app_err_t dialog_confirm_msg() {
+  pager_ctx_t pager = { .last_page = 0, .page = 0 };
+  const uint8_t* data = g_ui_cmd.params.msg.data;
+  size_t len = g_ui_cmd.params.msg.len;
+
+  screen_text_ctx_t ctx = {
+      .font = TH_FONT_TEXT,
+      .fg = TH_COLOR_TEXT_FG,
+      .bg = TH_COLOR_TEXT_BG,
+  };
+
+  dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + (TH_DATA_HEIGHT * 2) + (TH_LABEL_HEIGHT * 2)), 0, data, len);
 
   app_err_t ret = ERR_NEED_MORE_DATA;
 
   while(ret == ERR_NEED_MORE_DATA) {
     uint16_t offset = pager.pages[pager.page];
 
-    dialog_title(LSTR(eip712 ? EIP712_CONFIRM_TITLE : MSG_CONFIRM_TITLE));
+    dialog_title(LSTR(MSG_CONFIRM_TITLE));
 
     if (pager.page == 0) {
       ctx.y = TH_TITLE_HEIGHT;
 
-      if (eip712) {
-        dialog_address(&ctx, TX_SIGNER, ADDR_ETH, g_ui_cmd.params.eip712.addr);
-
-        if (eip712->address[0] == 0xff) {
-          dialog_label(&ctx, LSTR(EIP712_CONTRACT));
-          dialog_data(&ctx, LSTR(EIP712_UNSPECIFIED));
-        } else {
-          dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, &eip712->address[ETH_ABI_WORD_ADDR_OFF]);
-        }
-
-        dialog_label(&ctx, LSTR(TX_CHAIN));
-
-        if (eip712->chainID != UINT32_MAX) {
-          chain_desc_t chain;
-          chain.chain_id = eip712->chainID;
-
-          uint8_t num[11];
-          if (eth_db_lookup_chain(&chain) != ERR_OK) {
-            chain.name = (char*) u32toa(chain.chain_id, num, 11);
-          }
-
-          dialog_data(&ctx, chain.name);
-        } else {
-          dialog_data(&ctx, LSTR(EIP712_UNSPECIFIED));
-        }
-
-        dialog_label(&ctx, LSTR(EIP712_NAME));
-        dialog_data(&ctx, eip712->name);
-        dialog_blank(ctx.y);
-        ctx.y = SCREEN_HEIGHT;
-      } else {
-        dialog_address_block(&ctx, TX_SIGNER, g_ui_cmd.params.msg.addr_type, g_ui_cmd.params.msg.addr);
-        dialog_label_only(&ctx, LSTR(MSG_LABEL));
-      }
+      dialog_address_block(&ctx, TX_SIGNER, g_ui_cmd.params.msg.addr_type, g_ui_cmd.params.msg.addr);
+      dialog_label_only(&ctx, LSTR(MSG_LABEL));
 
       ctx.font = TH_FONT_TEXT;
       ctx.fg = TH_COLOR_TEXT_FG;
@@ -853,10 +909,6 @@ app_err_t dialog_confirm_text_based(const uint8_t* data, size_t len, eip712_doma
   }
 
   return ret;
-}
-
-app_err_t dialog_confirm_msg() {
-  return dialog_confirm_text_based(g_ui_cmd.params.msg.data, g_ui_cmd.params.msg.len, NULL);
 }
 
 static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr, const uint8_t* hash) {
@@ -877,11 +929,6 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
     dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 3, data_str, data_str_len);
   }
 
-  char safetxhash[SHA3_256_DIGEST_LENGTH * 2 + 2 + 1];
-  safetxhash[0] = '0';
-  safetxhash[1] = 'x';
-  base16_encode(hash, &safetxhash[2], SHA3_256_DIGEST_LENGTH);
-
   dialog_title(LSTR(TX_SAFE_CONFIRM_TITLE));
 
   app_err_t ret = ERR_NEED_MORE_DATA;
@@ -892,9 +939,8 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
     if (pager.page == 0) {
       dialog_address(&ctx, TX_SIGNER, ADDR_ETH, addr);
       dialog_address(&ctx, TX_SAFE_ADDRESS, ADDR_ETH, info->safeAddr);
+      dialog_sha3(&ctx, TX_HASH, hash);
       dialog_blank(ctx.y);
-      dialog_label_2lines(&ctx, LSTR(TX_SAFE_HASH));
-      dialog_data_2lines(&ctx, safetxhash);
     } else if (pager.page == 1) {
       dialog_address(&ctx, TX_ADDRESS, ADDR_ETH, info->to);
       dialog_chain(&ctx, info->chain.name);
@@ -951,12 +997,12 @@ app_err_t dialog_confirm_eip712() {
   if (type == EIP712_PERMIT) {
     eth_approve_info_t info;
     if (eip712_extract_permit(g_ui_cmd.params.eip712.data, &info) == ERR_OK) {
-      return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, false);
+      return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, g_ui_cmd.params.eip712.data->hash, false);
     }
   } else if (type == EIP712_PERMIT_SINGLE) {
     eth_approve_info_t info;
     if (eip712_extract_permit_single(g_ui_cmd.params.eip712.data, &info) == ERR_OK) {
-      return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, false);
+      return dialog_confirm_approval(&info, g_ui_cmd.params.eip712.addr, g_ui_cmd.params.eip712.data->hash, false);
     }
   } else if (type == EIP712_SAFE_TX) {
     eth_safe_tx_t info;
@@ -971,7 +1017,7 @@ app_err_t dialog_confirm_eip712() {
   }
 
   size_t len = eip712_to_string(g_ui_cmd.params.eip712.data, g_camera_fb[0]);
-  return dialog_confirm_text_based(g_camera_fb[0], len, &domain);
+  return dialog_confirm_raw_eip712(g_camera_fb[0], len, &domain, g_ui_cmd.params.eip712.data->hash);
 }
 
 app_err_t dialog_info() {

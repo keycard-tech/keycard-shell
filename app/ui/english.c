@@ -53,7 +53,7 @@ const char *const i18n_english_strings[] = {
     "Need help? Go to keycard.tech/wallets for the full list of supported wallets and step-by-step connection guides. Press OK to continue.",
 
     // TX
-    "Confirm transfer",
+    "Confirm transaction",
     "Confirm approval",
     "Chain",
     "To",
@@ -79,6 +79,7 @@ const char *const i18n_english_strings[] = {
     "Sat",
     "Unlimited",
     "A bit of",
+    "Hash",
 
     // MSG Confirmation
     "Sign message",
@@ -102,7 +103,6 @@ const char *const i18n_english_strings[] = {
     "Op",
     "Call (0)",
     "DelegateCall (1)",
-    "Hash",
 
     // QR output
     "Your ETH address",
