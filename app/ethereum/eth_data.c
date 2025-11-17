@@ -354,7 +354,7 @@ static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint
   return ERR_OK;
 }
 
-static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t* out_len) {
+static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len) {
   const char* func_name = ETH_ABI_DEREF(const char*, abi, name);
 
   if (func_name == NULL) {
@@ -364,9 +364,6 @@ static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const u
   *out_len = strlen(func_name);
   memcpy(out, func_name, *out_len);
 
-  const uint8_t* args = &data[sizeof(uint32_t)];
-  size_t args_len = data_len - sizeof(uint32_t);
-
   if (eth_data_format_tuple(ETH_ABI_DEREF(eth_abi_argument_t*, abi, first_arg), args, args_len, out, out_len) != ERR_OK) {
     return ERR_DATA;
   }
@@ -375,9 +372,64 @@ static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const u
   return ERR_OK;
 }
 
+static app_err_t eth_data_format_execute_call(const eth_abi_function_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len) {
+  // execute with / without deadline
+  if (!(abi->selector == 0x4c569335 && abi->ext_selector == 0x45cef3fa) && !(abi->selector == 0xc36b8524 && abi->ext_selector == 0xdb20e9a6)) {
+    return ERR_UNSUPPORTED;
+  }
+
+  const uint8_t* commands;
+  size_t commands_len;
+
+  if (eth_data_tuple_get_elem(ETH_ABI_VARBYTES, 0, args, args_len, &commands, &commands_len) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  const uint8_t* command_args;
+  size_t command_args_count;
+
+  if (eth_data_tuple_get_elem(ETH_ABI_VARARRAY, 1, args, args_len, &command_args, &command_args_count) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (commands_len != command_args_count) {
+    return ERR_DATA;
+  }
+
+  *out_len = 0;
+
+  for (int i = 0; i < commands_len; i++) {
+    uint8_t cmd = commands[i];
+
+    const uint8_t* calldata;
+    size_t calldata_len;
+
+    if (eth_data_tuple_get_elem(ETH_ABI_VARBYTES, i, command_args, (args_len - (command_args - args)), &calldata, &calldata_len) != ERR_OK) {
+      return ERR_DATA;
+    }
+
+    base16_encode(&cmd, (char *) &out[*out_len], 1);
+    *out_len += 2;
+    out[(*out_len)++] = '\n';
+    base16_encode(calldata, (char *) &out[*out_len], calldata_len);
+    *out_len += calldata_len * 2;
+    out[(*out_len)++] = '\n';
+    out[(*out_len)++] = '\n';
+  }
+
+  out[*out_len] = '\0';
+
+  return ERR_OK;
+}
+
 void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t* out_len) {
   if (data_len) {
-    if ((abi == NULL) || (eth_data_format_abi_call(abi, data, data_len, out, out_len) != ERR_OK)) {
+    const uint8_t* args = &data[sizeof(uint32_t)];
+    size_t args_len = data_len - sizeof(uint32_t);
+
+    if ((abi == NULL) ||
+        ((eth_data_format_execute_call(abi, args, args_len, out, out_len) != ERR_OK) &&
+        (eth_data_format_abi_call(abi, args, args_len, out, out_len) != ERR_OK))) {
       base16_encode(data, (char *) out, data_len);
       *out_len = data_len * 2;
     }
