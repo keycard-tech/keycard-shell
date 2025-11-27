@@ -30,7 +30,7 @@ def main():
 
     m = hash_firmware(fw)
     if args.keycard:
-        signature = keycard_sign(m)
+        signature = keycard_sign("m/43'/60'/1581'/35'/0", m)
     else:
         signature = sign(sign_key, m)
 

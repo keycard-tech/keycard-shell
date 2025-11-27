@@ -10,6 +10,7 @@ import hashlib
 from common import PAGE_SIZE, WORD_SIZE, sign
 from tokens import *
 from abi import *
+from keycardsign import *
 
 VERSION_MAGIC = 0x4532
 
@@ -74,6 +75,7 @@ def main():
     parser.add_argument('-a', '--abi-list', help="the ABI json")
     parser.add_argument('-s', '--sign-key', help="sign the db with the specified key and exclude padding")
     parser.add_argument('-d', '--dummy-sign', help="adds a dummy signature. Useful only to reproduce builds", action='store_true')
+    parser.add_argument('-k', '--keycard', help="sign with Keycard", action='store_true')
     parser.add_argument('-v', '--version', help="the version in YYYYMMDD format", default=def_version, type=int)
     parser.add_argument('-o', '--output', help="the output file")
     args = parser.parse_args()
@@ -101,13 +103,15 @@ def main():
         m = hashlib.sha256()
         with open(args.sign_key) as f: 
             db_key = f.read()
-    elif args.dummy_sign:
+    elif args.dummy_sign or args.keycard:
         m = hashlib.sha256()
     
     with open(args.output, 'wb') as f:
         serialize_db(f, m, chains, tokens, abis, version)
         if db_key != None:
             f.write(sign(db_key, m.digest()))
+        elif args.keycard:
+            f.write(keycard_sign("m/43'/60'/1581'/36'/0", m.digest()))
         elif m != None:
             f.write(m.digest())
             f.write(bytearray(32))

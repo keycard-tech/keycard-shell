@@ -13,6 +13,11 @@ struct eth_func_search_ctx {
   bool has_value;
 };
 
+struct eth_func_find_exact_ctx {
+  uint32_t selector;
+  uint32_t ext_selector;
+};
+
 static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len);
 static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_count, size_t buf_len, uint8_t* out, size_t* out_len);
 
@@ -113,6 +118,17 @@ app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_
   }
 
   return ERR_OK;
+}
+
+fs_action_t eth_data_find_exact_function(void* ctx, fs_entry_t* entry) {
+  if (entry->magic != FS_ABI_MAGIC) {
+    return FS_REJECT;
+  }
+
+  struct eth_func_find_exact_ctx* search_ctx = (struct eth_func_find_exact_ctx*) ctx;
+  const eth_abi_function_t* func = FS_ENTRY_DATA(const eth_abi_function_t*, entry);
+
+  return ((func->selector == search_ctx->selector) && (func->ext_selector == search_ctx->ext_selector)) ? FS_ACCEPT : FS_REJECT;
 }
 
 fs_action_t eth_data_find_function(void* ctx, fs_entry_t* entry) {
@@ -354,7 +370,7 @@ static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint
   return ERR_OK;
 }
 
-static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t* out_len) {
+static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len) {
   const char* func_name = ETH_ABI_DEREF(const char*, abi, name);
 
   if (func_name == NULL) {
@@ -364,9 +380,6 @@ static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const u
   *out_len = strlen(func_name);
   memcpy(out, func_name, *out_len);
 
-  const uint8_t* args = &data[sizeof(uint32_t)];
-  size_t args_len = data_len - sizeof(uint32_t);
-
   if (eth_data_format_tuple(ETH_ABI_DEREF(eth_abi_argument_t*, abi, first_arg), args, args_len, out, out_len) != ERR_OK) {
     return ERR_DATA;
   }
@@ -375,9 +388,158 @@ static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const u
   return ERR_OK;
 }
 
+static app_err_t eth_data_format_execute_call(const eth_abi_function_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len) {
+  if (!(abi->selector == ETH_DATA_EXECUTE_DEADLINE_SELECTOR && abi->ext_selector == ETH_DATA_EXECUTE_DEADLINE_EXT_SELECTOR) &&
+      !(abi->selector == ETH_DATA_EXECUTE_SELECTOR && abi->ext_selector == ETH_DATA_EXECUTE_EXT_SELECTOR)) {
+    return ERR_UNSUPPORTED;
+  }
+
+  const uint8_t* commands;
+  size_t commands_len;
+
+  if (eth_data_tuple_get_elem(ETH_ABI_VARBYTES, 0, args, args_len, &commands, &commands_len) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  const uint8_t* command_args;
+  size_t command_args_count;
+
+  if (eth_data_tuple_get_elem(ETH_ABI_VARARRAY, 1, args, args_len, &command_args, &command_args_count) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (commands_len != command_args_count) {
+    return ERR_DATA;
+  }
+
+  *out_len = 0;
+
+  for (int i = 0; i < commands_len; i++) {
+    uint8_t cmd = commands[i] & 0x1f;
+
+    const uint8_t* calldata;
+    size_t calldata_len;
+
+    if (eth_data_tuple_get_elem(ETH_ABI_VARBYTES, i, command_args, (args_len - (command_args - args)), &calldata, &calldata_len) != ERR_OK) {
+      return ERR_DATA;
+    }
+
+    struct eth_func_find_exact_ctx find_ctx;
+
+    switch(cmd) {
+    case ETH_EXECUTE_V3_SWAP_EXACT_IN:
+      find_ctx.selector = 0x15716ade;
+      find_ctx.ext_selector = 0x346b68bc;
+      break;
+    case ETH_EXECUTE_V3_SWAP_EXACT_OUT:
+      find_ctx.selector = 0xcb3e790c;
+      find_ctx.ext_selector = 0x24b93143;
+      break;
+    case ETH_EXECUTE_PERMIT2_TRANSFER_FROM:
+      find_ctx.selector = 0x793d22f7;
+      find_ctx.ext_selector = 0xf54c5da0;
+      break;
+    case ETH_EXECUTE_PERMIT2_PERMIT_BATCH:
+      find_ctx.selector = 0xca3149a6;
+      find_ctx.ext_selector = 0xde1954f3;
+      break;
+    case ETH_EXECUTE_SWEEP:
+      find_ctx.selector = 0x6767c062;
+      find_ctx.ext_selector = 0xb544b1dc;
+      break;
+    case ETH_EXECUTE_TRANSFER:
+      find_ctx.selector = 0x8861d7b3;
+      find_ctx.ext_selector = 0x4c5f383b;
+      break;
+    case ETH_EXECUTE_PAY_PORTION:
+      find_ctx.selector = 0x812a09d5;
+      find_ctx.ext_selector = 0x764c7c66;
+      break;
+    case ETH_EXECUTE_V2_SWAP_EXACT_IN:
+      find_ctx.selector = 0x80f8a87a;
+      find_ctx.ext_selector = 0x1669e70e;
+      break;
+    case ETH_EXECUTE_V2_SWAP_EXACT_OUT:
+      find_ctx.selector = 0xcebd2d92;
+      find_ctx.ext_selector = 0xb7cc5b7c;
+      break;
+    case ETH_EXECUTE_PERMIT2_PERMIT:
+      find_ctx.selector = 0x4f2b0427;
+      find_ctx.ext_selector = 0x28f6ade3;
+      break;
+    case ETH_EXECUTE_WRAP_ETH:
+      find_ctx.selector = 0x7d3f7929;
+      find_ctx.ext_selector = 0x720b8247;
+      break;
+    case ETH_EXECUTE_UNWRAP_WETH:
+      find_ctx.selector = 0xac463b4e;
+      find_ctx.ext_selector = 0x0a272cbd;
+      break;
+    case ETH_EXECUTE_PERMIT2_TRANSFER_FROM_BATCH:
+      find_ctx.selector = 0x617746c1;
+      find_ctx.ext_selector = 0x13af5625;
+      break;
+    case ETH_EXECUTE_BALANCE_CHECK_ERC20:
+      find_ctx.selector = 0xd91931e9;
+      find_ctx.ext_selector = 0x4a897cd7;
+      break;
+    case ETH_EXECUTE_V4_SWAP:
+      find_ctx.selector = 0xdc4ac2da;
+      find_ctx.ext_selector = 0x8d7db337;
+      break;
+    case ETH_EXECUTE_V3_POSITION_MANAGER_PERMIT:
+      find_ctx.selector = 0x4befd555;
+      find_ctx.ext_selector = 0xfb23e734;
+      break;
+    case ETH_EXECUTE_V3_POSITION_MANAGER_CALL:
+      find_ctx.selector = 0x1f221bee;
+      find_ctx.ext_selector = 0xfbf9625a;
+      break;
+    case ETH_EXECUTE_V4_INITIALIZE_POOL:
+      find_ctx.selector = 0x51a896f8;
+      find_ctx.ext_selector = 0xfc7f7429;
+      break;
+    case ETH_EXECUTE_V4_POSITION_MANAGER_CALL:
+      find_ctx.selector = 0xfbed5bf4;
+      find_ctx.ext_selector = 0x0521c987;
+      break;
+    case ETH_EXECUTE_EXECUTE_SUB_PLAN:
+      return ERR_DATA;
+    default:
+      return ERR_DATA;
+    }
+
+    fs_entry_t* found = fs_find(eth_data_find_exact_function, &find_ctx);
+    const eth_abi_function_t* abi;
+    if (found) {
+      abi = FS_ENTRY_DATA(const eth_abi_function_t*, found);
+    } else {
+      return ERR_DATA;
+    }
+
+    size_t len;
+    if (eth_data_format_abi_call(abi, calldata, calldata_len, &out[*out_len], &len) != ERR_OK) {
+      return ERR_DATA;
+    }
+
+    *out_len += len;
+    out[(*out_len)++] = '\n';
+    out[(*out_len)++] = '\n';
+  }
+
+  out[*out_len] = '\0';
+
+  return ERR_OK;
+}
+
 void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t* out_len) {
   if (data_len) {
-    if ((abi == NULL) || (eth_data_format_abi_call(abi, data, data_len, out, out_len) != ERR_OK)) {
+    const uint8_t* args = &data[sizeof(uint32_t)];
+    size_t args_len = data_len - sizeof(uint32_t);
+
+    if ((abi == NULL) ||
+        ((eth_data_format_execute_call(abi, args, args_len, out, out_len) != ERR_OK) &&
+        (eth_data_format_abi_call(abi, args, args_len, out, out_len) != ERR_OK))) {
       base16_encode(data, (char *) out, data_len);
       *out_len = data_len * 2;
     }

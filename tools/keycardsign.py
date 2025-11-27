@@ -5,7 +5,7 @@ def get_pin():
         raise "Tkinter enabled version of Python required"
     return tkinter.simpledialog.askstring("Keycard PIN", "Enter PIN:", show='*')
 
-def keycard_sign(digest):
+def keycard_sign(path, digest):
     try:
         from keycard.keycard import KeyCard
     except ImportError:
@@ -22,7 +22,7 @@ def keycard_sign(digest):
             pin = get_pin()
         
         try:
-            sig = card.sign_with_path(digest, "m/43'/60'/1581'/35'/0")
+            sig = card.sign_with_path(digest, path)
             return sig.signature
         finally:
             card.unpair(pairing_index)
