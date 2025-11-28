@@ -38,12 +38,10 @@ const uint32_t BIP44_ETH_PATH[] = { ETH_PURPOSE, ETH_COIN, 0x80000000 };
 const uint32_t BIP44_BTC_LEGACY_PATH[] = { BTC_LEGACY_PURPOSE, BTC_MAINNET_COIN, 0x80000000 };
 const uint32_t BIP44_BTC_NESTED_SEGWIT_PATH[] = { BTC_NESTED_SEGWIT_PURPOSE, BTC_MAINNET_COIN, 0x80000000 };
 const uint32_t BIP44_BTC_NATIVE_SEGWIT_PATH[] = { BTC_NATIVE_SEGWIT_PURPOSE, BTC_MAINNET_COIN, 0x80000000 };
-const uint32_t BIP44_BTC_TAPROOT_PATH[] = { BTC_TAPROOT_PURPOSE, BTC_MAINNET_COIN, 0x80000000 };
 
 const uint32_t BIP44_BTC_TESTNET_LEGACY_PATH[] = { BTC_LEGACY_PURPOSE, BTC_TESTNET_COIN, 0x80000000 };
 const uint32_t BIP44_BTC_TESTNET_NESTED_SEGWIT_PATH[] = { BTC_NESTED_SEGWIT_PURPOSE, BTC_TESTNET_COIN, 0x80000000 };
 const uint32_t BIP44_BTC_TESTNET_NATIVE_SEGWIT_PATH[] = { BTC_NATIVE_SEGWIT_PURPOSE, BTC_TESTNET_COIN, 0x80000000 };
-const uint32_t BIP44_BTC_TESTNET_TAPROOT_PATH[] = { BTC_TAPROOT_PURPOSE, BTC_TESTNET_COIN, 0x80000000 };
 
 const uint32_t BIP44_BTC_MULTISIG_P2WSH_PATH[] = { BTC_MULTISIG_PURPOSE, BTC_MAINNET_COIN, 0x80000000, 0x80000002 };
 const uint32_t BIP44_BTC_MULTISIG_P2WSH_P2SH_PATH[] = { BTC_MULTISIG_PURPOSE, BTC_MAINNET_COIN, 0x80000000, 0x80000001 };
@@ -457,9 +455,8 @@ void core_display_public_bitcoin_mainnet() {
   CORE_BITCOIN_EXPORT(0, crypto_output_witness_public_key_hash_m_c, BIP44_BTC_NATIVE_SEGWIT_PATH);
   CORE_BITCOIN_EXPORT(1, crypto_output_script_hash_wpkh_m_c, BIP44_BTC_NESTED_SEGWIT_PATH);
   CORE_BITCOIN_EXPORT(2, crypto_output_public_key_hash_m_c, BIP44_BTC_LEGACY_PATH);
-  CORE_BITCOIN_EXPORT(3, crypto_output_taproot_m_c, BIP44_BTC_TAPROOT_PATH);
 
-  account.crypto_account_output_descriptors_crypto_output_m_count = 4;
+  account.crypto_account_output_descriptors_crypto_output_m_count = 3;
   account.crypto_account_master_fingerprint = g_core.master_fingerprint;
   cbor_encode_crypto_account(&g_mem_heap[keys_off], MEM_HEAP_SIZE, &account, &g_core.data.key.cbor_len);
   ui_display_ur_qr(NULL, &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_ACCOUNT);
@@ -473,9 +470,8 @@ void core_display_public_bitcoin_testnet() {
   CORE_BITCOIN_EXPORT(0, crypto_output_witness_public_key_hash_m_c, BIP44_BTC_TESTNET_NATIVE_SEGWIT_PATH);
   CORE_BITCOIN_EXPORT(1, crypto_output_script_hash_wpkh_m_c, BIP44_BTC_TESTNET_NESTED_SEGWIT_PATH);
   CORE_BITCOIN_EXPORT(2, crypto_output_public_key_hash_m_c, BIP44_BTC_TESTNET_LEGACY_PATH);
-  CORE_BITCOIN_EXPORT(3, crypto_output_taproot_m_c, BIP44_BTC_TESTNET_TAPROOT_PATH);
 
-  account.crypto_account_output_descriptors_crypto_output_m_count = 4;
+  account.crypto_account_output_descriptors_crypto_output_m_count = 3;
   account.crypto_account_master_fingerprint = g_core.master_fingerprint;
   cbor_encode_crypto_account(&g_mem_heap[keys_off], MEM_HEAP_SIZE, &account, &g_core.data.key.cbor_len);
   ui_display_ur_qr(NULL, &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_ACCOUNT);
