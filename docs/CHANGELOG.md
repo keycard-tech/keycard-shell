@@ -1,5 +1,11 @@
 # Keycard Shell Dev Firmware
 
+## 1.0.3 (2025-12-02)
+
+* [eth] better signing UI for Uniswap execute
+* [btc] fix issue with PSBT output record order
+* [btc] remove unused taproot key from export
+
 ## 1.0.2 (2025-11-10)
 
 * [ui] correct some copy
