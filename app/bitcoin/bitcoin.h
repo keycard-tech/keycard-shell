@@ -63,8 +63,8 @@ typedef struct {
   size_t output_count;
 
   psbt_t psbt_out;
-  size_t index_in;
-  size_t index_out;
+  int32_t index_in;
+  int32_t index_out;
   uint8_t hash_prevouts[SHA256_DIGEST_LENGTH];
   uint8_t hash_sequence[SHA256_DIGEST_LENGTH];
   uint8_t hash_outputs[SHA256_DIGEST_LENGTH];

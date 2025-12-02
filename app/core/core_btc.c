@@ -405,18 +405,18 @@ static void core_btc_sign_handler(psbt_elem_t* rec) {
     psbt_write_global_record(&tx_ctx->psbt_out, rec->elem.rec);
     break;
   case PSBT_SCOPE_INPUTS:
-    if (rec->index != tx_ctx->index_in) {
+    if (tx_ctx->index_in < rec->index) {
       psbt_new_input_record_set(&tx_ctx->psbt_out);
-      tx_ctx->index_in = rec->index;
-      tx_ctx->error = core_btc_sign_input(tx_ctx, rec->index);
+      tx_ctx->index_in++;
+      tx_ctx->error = core_btc_sign_input(tx_ctx, tx_ctx->index_in);
     }
 
     psbt_write_input_record(&tx_ctx->psbt_out, rec->elem.rec);
     break;
   case PSBT_SCOPE_OUTPUTS:
-    if (rec->index != tx_ctx->index_out) {
+    while (tx_ctx->index_out < rec->index) {
       psbt_new_output_record_set(&tx_ctx->psbt_out);
-      tx_ctx->index_out = rec->index;
+      tx_ctx->index_out++;
     }
 
     psbt_write_output_record(&tx_ctx->psbt_out, rec->elem.rec);
@@ -676,8 +676,8 @@ static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint
   psbt_init(&psbt, (uint8_t*) psbt_in, psbt_len);
   psbt_init(&tx_ctx->psbt_out, *psbt_out, psbt_out_len);
 
-  tx_ctx->index_in = UINT32_MAX;
-  tx_ctx->index_out = UINT32_MAX;
+  tx_ctx->index_in = -1;
+  tx_ctx->index_out = -1;
 
   if (psbt_read(psbt_in, psbt_len, &psbt, core_btc_sign_handler, tx_ctx) != PSBT_OK) {
     ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
