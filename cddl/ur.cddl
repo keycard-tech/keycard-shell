@@ -157,6 +157,7 @@ output-descriptors = 2
 
 ; PSBT
 psbt = bstr
+tagged-psbt = #6.310(psbt)
 
 ; BTC Message Sign
 btc-message = 1

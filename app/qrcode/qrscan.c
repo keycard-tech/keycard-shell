@@ -75,6 +75,9 @@ app_err_t qrscan_deserialize(ur_t* ur) {
     break;
   case CRYPTO_PSBT:
     err = cbor_decode_psbt(ur->data, ur->data_len, g_ui_cmd.params.qrscan.out, NULL) == ZCBOR_SUCCESS ? ERR_OK : ERR_DATA;
+    if (err != ERR_OK) {
+      err = cbor_decode_tagged_psbt(ur->data, ur->data_len, g_ui_cmd.params.qrscan.out, NULL) == ZCBOR_SUCCESS ? ERR_OK : ERR_DATA;
+    }
     break;
   case BTC_SIGN_REQUEST:
     err = cbor_decode_btc_sign_request(ur->data, ur->data_len, g_ui_cmd.params.qrscan.out, NULL) == ZCBOR_SUCCESS ? ERR_OK : ERR_DATA;

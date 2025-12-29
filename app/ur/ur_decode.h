@@ -25,56 +25,62 @@ extern "C" {
 int cbor_decode_eth_sign_request(
 		const uint8_t *payload, size_t payload_len,
 		struct eth_sign_request *result,
-		size_t *payload_len_out);
-
+		size_t *payload_len_out);
+
 
 int cbor_decode_eth_signature(
 		const uint8_t *payload, size_t payload_len,
 		struct eth_signature *result,
-		size_t *payload_len_out);
-
+		size_t *payload_len_out);
+
 
 int cbor_decode_hd_key(
 		const uint8_t *payload, size_t payload_len,
 		struct hd_key *result,
-		size_t *payload_len_out);
-
+		size_t *payload_len_out);
+
 
 int cbor_decode_crypto_multi_accounts(
 		const uint8_t *payload, size_t payload_len,
 		struct crypto_multi_accounts *result,
-		size_t *payload_len_out);
-
+		size_t *payload_len_out);
+
 
 int cbor_decode_crypto_account(
 		const uint8_t *payload, size_t payload_len,
 		struct crypto_account *result,
-		size_t *payload_len_out);
-
+		size_t *payload_len_out);
+
 
 int cbor_decode_ur_part(
 		const uint8_t *payload, size_t payload_len,
 		struct ur_part *result,
-		size_t *payload_len_out);
-
+		size_t *payload_len_out);
+
 
 int cbor_decode_dev_auth(
 		const uint8_t *payload, size_t payload_len,
 		struct dev_auth *result,
-		size_t *payload_len_out);
-
+		size_t *payload_len_out);
+
 
 int cbor_decode_psbt(
 		const uint8_t *payload, size_t payload_len,
 		struct zcbor_string *result,
-		size_t *payload_len_out);
-
+		size_t *payload_len_out);
+
+
+int cbor_decode_tagged_psbt(
+		const uint8_t *payload, size_t payload_len,
+		struct zcbor_string *result,
+		size_t *payload_len_out);
+
 
 int cbor_decode_btc_sign_request(
 		const uint8_t *payload, size_t payload_len,
 		struct btc_sign_request *result,
-		size_t *payload_len_out);
-
+		size_t *payload_len_out);
+
 
 int cbor_decode_btc_signature(
 		const uint8_t *payload, size_t payload_len,
