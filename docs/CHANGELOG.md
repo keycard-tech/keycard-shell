@@ -1,5 +1,10 @@
 # Keycard Shell Dev Firmware
 
+## 1.0.4 (2026-01-12)
+
+* [ur] handle PSBT wrapped in #6.310 tag
+* [btc] support Cove wallet
+
 ## 1.0.3 (2025-12-02)
 
 * [eth] better signing UI for Uniswap execute
