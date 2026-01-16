@@ -203,6 +203,10 @@ app_err_t updater_usb_fw_upgrade(command_t *cmd, apdu_t* apdu) {
   uint8_t first_segment = APDU_P1(apdu) == 0;
 
   if (first_segment) {
+    if (len < 4) {
+      core_usb_err_sw(apdu, 0x6a, 0x80);
+      return ERR_DATA;
+    }
     g_core.data.msg.len = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
     g_core.data.msg.received = 0;
     data += 4;
@@ -211,7 +215,7 @@ app_err_t updater_usb_fw_upgrade(command_t *cmd, apdu_t* apdu) {
     updater_clear_flash_area();
   }
 
-  if ((len % HAL_FLASH_WORD_SIZE) || g_core.data.msg.received >= (HAL_FLASH_FW_BLOCK_COUNT * HAL_FLASH_BLOCK_SIZE)) {
+  if ((len % HAL_FLASH_WORD_SIZE) || (g_core.data.msg.received + len) > (HAL_FLASH_FW_BLOCK_COUNT * HAL_FLASH_BLOCK_SIZE)) {
     core_usb_err_sw(apdu, 0x6a, 0x80);
     return ERR_DATA;
   }

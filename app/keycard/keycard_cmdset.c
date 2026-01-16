@@ -48,7 +48,7 @@ app_err_t keycard_cmd_autopair(keycard_t* kc, const uint8_t* psk, pairing_t* pai
   if (sw == 0x6a84) {
     return ERR_FULL;
   } else if (sw != SW_OK) {
-    return sw;
+    return ERR_HW;
   }
 
   uint8_t* card_cryptogram = APDU_RESP(&kc->apdu);

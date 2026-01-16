@@ -336,7 +336,11 @@ static app_err_t core_btc_read_signature(uint8_t* data, uint8_t sighash, psbt_re
   return ERR_OK;
 }
 
-static void core_btc_set_path(uint8_t* btc_bip32_path, uint32_t btc_bip32_path_len) {
+static app_err_t core_btc_set_path(uint8_t* btc_bip32_path, uint32_t btc_bip32_path_len) {
+  if (btc_bip32_path_len > BIP44_MAX_PATH_LEN) {
+    return ERR_DATA;
+  }
+
   for (int i = 0; i < btc_bip32_path_len; i += 4) {
     g_core.bip44_path[i + 3] = btc_bip32_path[i];
     g_core.bip44_path[i + 2] = btc_bip32_path[i + 1];
@@ -345,6 +349,7 @@ static void core_btc_set_path(uint8_t* btc_bip32_path, uint32_t btc_bip32_path_l
   }
 
   g_core.bip44_path_len = btc_bip32_path_len;
+  return ERR_OK;
 }
 
 static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
@@ -375,7 +380,9 @@ static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
 
   keycard_t *kc = &g_core.keycard;
 
-  core_btc_set_path(tx_ctx->input_data[index].bip32_path, tx_ctx->input_data[index].bip32_path_len);
+  if (core_btc_set_path(tx_ctx->input_data[index].bip32_path, tx_ctx->input_data[index].bip32_path_len) != ERR_OK) {
+    return ERR_DATA;
+  }
 
   if ((keycard_cmd_sign(kc, g_core.bip44_path, g_core.bip44_path_len, digest) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
     return ERR_CRYPTO;
@@ -580,7 +587,10 @@ static app_err_t core_btc_validate(btc_tx_ctx_t* tx_ctx) {
   for (int i = 0; i < tx_ctx->output_count; i++) {
     if (tx_ctx->output_data[i].master_fingerprint == tx_ctx->mfp) {
       uint8_t pub[PUBKEY_LEN];
-      core_btc_set_path(tx_ctx->output_data[i].bip32_path, tx_ctx->output_data[i].bip32_path_len);
+      if (core_btc_set_path(tx_ctx->output_data[i].bip32_path, tx_ctx->output_data[i].bip32_path_len) != ERR_OK) {
+        return ERR_DATA;
+      }
+
       if (core_export_public(pub, NULL, NULL, NULL) != ERR_OK) {
         return ERR_HW;
       }
