@@ -19,7 +19,7 @@ def main():
             for dev in in_csv:
                 batchId = f'{t(dev[1])}-{t(dev[2])}'
                 if batchId == args.batch:
-                    out_file.write(f'{t(dev[3])},{t(dev[4])}\r\n')
+                    out_file.write(f'{t(dev[4])},{t(dev[5])}\r\n')
 
 if __name__ == "__main__":
     main()
