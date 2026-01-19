@@ -90,6 +90,7 @@ void MX_PKA_Init(void);
 
 /* USER CODE BEGIN EFP */
 void SystemClock_Config(void);
+void MPU_Config(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

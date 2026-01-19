@@ -82,12 +82,14 @@ static void _hal_aes_enable() {
 }
 
 hal_err_t hal_init() {
-  // Copies UID, Flash size, package info before it becomes privileged
+  // Copies UID, Flash size, package info before enabling ICACHE
   memcpy(g_uid, (uint32_t*) UID_BASE, HAL_DEVICE_UID_LEN);
   uint16_t vrefint_cal = *VREFINT_CAL_ADDR;
 
   HAL_Init();
   SystemClock_Config();
+
+  MPU_Config();
 
   MX_RNG_Init();
   MX_HASH_Init();
