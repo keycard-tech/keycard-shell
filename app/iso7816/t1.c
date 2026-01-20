@@ -126,6 +126,10 @@ static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
   uint8_t s;
 
   if ((header[1] & T1_R_BLOCK) == 0) {
+    if ((apdu->lr + 1 + blen) > APDU_BUF_LEN) {
+      return ERR_TXRX;
+    }
+
     data = &apdu->data[(apdu->lr+1)];
     apdu->lr += blen;
   } else if ((header[1] & T1_S_BLOCK) == T1_S_BLOCK) {
