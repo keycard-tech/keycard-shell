@@ -1,5 +1,11 @@
 # Keycard Shell Dev Firmware
 
+## 1.0.5 (2026-01-23)
+
+* [btc] more robust BIP32 path handling
+* [stm32] stricter MPU configuration
+* [misc] small fixes
+
 ## 1.0.4 (2026-01-12)
 
 * [ur] handle PSBT wrapped in #6.310 tag
