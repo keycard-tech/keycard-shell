@@ -1,0 +1,28 @@
+------------------------------------------------------------------------------------------
+Gerber File Extension Report For: FLX-2282-611-PCB V3.3.GBR   17/02/2025  09:32:32
+------------------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------------------
+Layer Extension     Layer Description                      
+------------------------------------------------------------------------------------------
+.GTL                Top Side                                
+.GBL                Bottom Side                             
+.GTO                Top Overlay                             
+.GTP                Top Paste                               
+.GTS                Top Solder                              
+.GBS                Bottom Solder                           
+.GBP                Bottom Paste                            
+.GBO                Bottom Overlay                          
+.GM2                02 - Outline                            
+.GM3                03 - DXF                                
+.GM4                04 - Top Implant                        
+.GM10               10 - Spec PCB                           
+.GM11               11 - Spec PCBA                          
+.GM12               12 - Cartouche PCB                      
+.GM13               13 - Bottom Implant                     
+.GM14               14 - Milling                            
+.GM16               16 - Spec Panel                         
+.GD1                Drill Drawing                           
+.GG1                Drill Guide                             
+------------------------------------------------------------------------------------------

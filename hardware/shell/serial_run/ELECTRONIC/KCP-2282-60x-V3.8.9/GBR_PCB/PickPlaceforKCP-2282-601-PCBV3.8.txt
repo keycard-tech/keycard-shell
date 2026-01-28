@@ -1,0 +1,137 @@
+Designator Footprint               Mid X         Mid Y         Ref X         Ref Y         Pad X         Pad Y TB      Rotation Comment        
+
+R100       0402_-_RESISTOR         3.9mm        79.6mm         3.9mm        79.6mm         3.9mm      80.055mm  T        270.00 RC0402FR-07220KL
+D6         SOD523_TOSHIBA         48.5mm        42.6mm        48.5mm        42.6mm        48.5mm       41.75mm  T         90.00 BZX585-C3V0,135
+S3         SONG_TS1821C          56.12mm        64.3mm       56.12mm        64.3mm       55.22mm      62.325mm  T         90.00 TS-1821C       
+S11        XKB_TS3-737              48mm      45.294mm          48mm      45.294mm       46.35mm      43.919mm  B        270.00 TS-3737-B      
+S8         XKB_TS3-737              30mm      32.294mm          30mm      32.294mm       31.65mm      33.669mm  B         90.00 TS-3737-B      
+S2         XKB_TS3-737              12mm      32.294mm          12mm      32.294mm       13.65mm      33.669mm  B         90.00 TS-3737-B      
+S13        XKB_TS3-737         48.0201mm      19.294mm     48.0201mm      19.294mm     49.6701mm      20.669mm  B         90.00 TS-3737-B      
+S9         XKB_TS3-737              30mm      19.294mm          30mm      19.294mm       31.65mm      20.669mm  B         90.00 TS-3737-B      
+S5         XKB_TS3-737              12mm      19.294mm          12mm      19.294mm       13.65mm      20.669mm  B         90.00 TS-3737-B      
+F2         0805_-_FUSE            12.4mm        58.4mm        12.4mm        58.4mm     11.2999mm        58.4mm  T          0.00 0ZCK0075FF2E   
+F1         0805_-_FUSE             9.3mm        65.2mm         9.3mm        65.2mm      8.1999mm        65.2mm  T          0.00 BNP05000F000   
+C17        0805_-_CAPACITOR        17.1mm          83mm        17.1mm          83mm        17.1mm      82.105mm  T         90.00 0805X475M250CT 
+C16        0402_-_CAPACITOR        18.8mm        81.7mm        18.8mm        81.7mm        18.8mm      82.155mm  T        270.00 0402B104K500CT 
+C15        0402_-_CAPACITOR        46.3mm        74.6mm        46.3mm        74.6mm      46.755mm        74.6mm  T        180.00 0402B104K500CT 
+C14        0805_-_CAPACITOR        45.6mm        76.6mm        45.6mm        76.6mm      46.495mm        76.6mm  T        180.00 0805X475M250CT 
+U4         LQFP-100               28.8mm     81.3001mm        28.8mm     81.3001mm     21.0784mm        87.3mm  T          0.00 STM32H573VIT6  
+R16        0402_-_RESISTOR        55.9mm        81.7mm        55.9mm        81.7mm        55.9mm      82.155mm  T        270.00 RC0402FR-07100KL
+R28        0402_-_RESISTOR        31.3mm        92.5mm        31.3mm        92.5mm        31.3mm      92.955mm  T        270.00 RC0402FR-07100KL
+C49        0603_-_CAPACITOR        51.8mm        91.6mm        51.8mm        91.6mm        51.8mm       90.83mm  T         90.00 0603X105K500CT 
+C48        0603_-_CAPACITOR        55.5mm        89.9mm        55.5mm        89.9mm        55.5mm       90.67mm  T        270.00 0603X105K500CT 
+C12        0603_-_CAPACITOR        52.7mm        83.1mm        52.7mm        83.1mm       51.93mm        83.1mm  T          0.00 0603X105K500CT 
+C11        0603_-_CAPACITOR        53.7mm        80.5mm        53.7mm        80.5mm        53.7mm       81.27mm  T        270.00 0603X105K500CT 
+C10        0603_-_CAPACITOR        51.8mm        88.3mm        51.8mm        88.3mm        51.8mm       87.53mm  T         90.00 0603X105K500CT 
+C7         0603_-_CAPACITOR        55.5mm        86.3mm        55.5mm        86.3mm        55.5mm       87.07mm  T        270.00 0603X105K500CT 
+U9         ON_SEMI_NCV8160AMX330TBG        53.8mm        90.7mm        53.8mm        90.7mm     53.3951mm     91.0251mm  T          0.00 NCP115AMX280TCG
+U8         ON_SEMI_NCV8160AMX330TBG        52.1mm        81.3mm        52.1mm        81.3mm     51.6951mm     81.6251mm  T          0.00 NCP115AMX180TCG
+U3         ON_SEMI_NCV8160AMX330TBG        53.7mm          87mm        53.7mm          87mm     53.2951mm     87.3251mm  T          0.00 NCP115AMX150TCG
+X1         HCTL_HC-FPC-05-09-24RLTAG       47.95mm        86.3mm        49.2mm        86.3mm        49.2mm       92.05mm  T        270.00 HC-FPC-05-09-24RLTAG
+J4         JUSHUO_AFA07-S15FCC-00        27.5mm      60.385mm        27.5mm        59.3mm     30.0001mm        59.3mm  T        180.00 AFA07-S06FCA-00
+J6         TE_19826331         12.5999mm     54.3199mm     12.5999mm        54.1mm     15.5999mm        53.5mm  T        180.00 1982633-1      
+R25        0402_-_RESISTOR        47.4mm        36.7mm        47.4mm        36.7mm        47.4mm      37.155mm  T        270.00 RC0402FR-07220KL
+Q3         SOT-723                34.1mm        56.8mm        34.1mm        56.8mm        33.7mm     56.3999mm  T          0.00 RZM002P02T2L   
+R24        0402_-_RESISTOR        38.7mm        71.6mm        38.7mm        71.6mm        38.7mm      72.055mm  T        270.00 RC0402FR-0710KL
+R11        0402_-_RESISTOR        30.8mm        71.8mm        30.8mm        71.8mm      31.255mm        71.8mm  T        180.00 RC0402FR-0710KL
+R9         0402_-_RESISTOR        53.8mm        43.3mm        53.8mm        43.3mm        53.8mm      42.845mm  T         90.00 RC0402FR-07100KL
+D4         SOD123_DIODE_INC     30.7002mm     56.7002mm        30.7mm        56.7mm     29.1252mm     56.7002mm  T        180.00 MBR0530-TP     
+R17        0402_-_RESISTOR        18.8mm        87.5mm        18.8mm        87.5mm      19.255mm        87.5mm  T        180.00 RC0402FR-0710KL
+Q7         SOT-416-3              44.4mm        42.8mm        44.4mm        42.8mm       43.75mm     43.3001mm  T        270.00 RE1C001UNTCL   
+Q6         SOT-416-3              47.9mm        34.2mm        47.9mm        34.2mm     48.4001mm       34.85mm  T        180.00 RE1C001UNTCL   
+R27        0402_-_RESISTOR        42.1mm        41.2mm        42.1mm        41.2mm      42.555mm        41.2mm  T        180.00 RC0201FR-071ML 
+R26        0402_-_RESISTOR        51.2mm        36.7mm        51.2mm        36.7mm      51.655mm        36.7mm  T        180.00 RC0402FR-07750KL
+R21        0402_-_RESISTOR        48.5mm        36.7mm        48.5mm        36.7mm        48.5mm      36.245mm  T         90.00 RC0402FR-07220KL
+Q5         SOT-416-3              44.4mm        36.6mm        44.4mm        36.6mm       43.75mm     37.1001mm  T        270.00 RE1C001UNTCL   
+C8         0603_-_CAPACITOR        48.5mm        39.2mm        48.5mm        39.2mm        48.5mm       39.97mm  T        270.00 0603X105K500CT 
+R20        0402_-_RESISTOR        46.8mm        40.8mm        46.8mm        40.8mm      46.345mm        40.8mm  T          0.00 RC0402FR-0710KL
+Q4         SOT-416-3              44.4mm        40.8mm        44.4mm        40.8mm       43.75mm     41.3001mm  T        270.00 RE1C001ZPTL    
+Q2         SOT-416-3              44.4mm        38.7mm        44.4mm        38.7mm       43.75mm     39.2001mm  T        270.00 RE1C001UNTCL   
+R19        0402_-_RESISTOR        15.6mm        81.3mm        15.6mm        81.3mm        15.6mm      80.845mm  T         90.00 RC0402FR-0710KL
+R14        0402_-_RESISTOR        54.8mm        78.6mm        54.8mm        78.6mm      54.345mm        78.6mm  T          0.00 RC0402FR-07100KL
+R12        0402_-_RESISTOR        51.4mm        73.6mm        51.4mm        73.6mm      50.945mm        73.6mm  T          0.00 RC0402FR-0710RL
+T1         SOT23-VAR_AB           54.8mm        75.7mm        54.8mm        75.7mm       55.75mm      76.725mm  T        180.00 NTR3C21NZT1G   
+U7         SOT95P270X145-5N        37.1mm        61.5mm        37.1mm        61.5mm       38.05mm     62.7499mm  T        270.00 ESDS312DBVR    
+U5         SOT23-VAR_AB           15.9mm        86.8mm        15.9mm        86.8mm       14.95mm      85.775mm  T          0.00 TLVH431AQDBZR  
+U2         TOREX_USP-8B06         53.4mm          37mm        53.4mm          37mm     52.5501mm     37.7501mm  T        270.00 XC6194AA05ER-G 
+U1         QFN14-0.5-3S4          10.5mm        73.3mm        10.5mm        73.3mm      9.0499mm     74.8001mm  T        270.00 MP2607DL-LF-P  
+S7         XKB_TS3-737              30mm      45.294mm          30mm      45.294mm       28.35mm      43.919mm  B        270.00 TS-3737-B      
+S6         XKB_TS3-737              12mm      6.2941mm          12mm      6.2941mm       13.65mm      7.6691mm  B         90.00 TS-3737-B      
+S14        XKB_TS3-737         47.9999mm      6.2941mm     47.9999mm      6.2941mm     46.3499mm      4.9191mm  B        270.00 TS-3737-B      
+S12        XKB_TS3-737            47.9mm      32.294mm        47.9mm      32.294mm       46.25mm      30.919mm  B        270.00 TS-3737-B      
+S10        XKB_TS3-737         29.9999mm      6.2941mm     29.9999mm      6.2941mm     31.6499mm      7.6691mm  B         90.00 TS-3737-B      
+R8         0402_-_RESISTOR         4.1mm        77.1mm         4.1mm        77.1mm       3.645mm        77.1mm  T          0.00 RC0402FR-0710KL
+R7         0402_-_RESISTOR         7.4mm        70.8mm         7.4mm        70.8mm       6.945mm        70.8mm  T          0.00 RC0402FR-07118KL
+R6         0402_-_RESISTOR        11.3mm        70.2mm        11.3mm        70.2mm        11.3mm      70.655mm  T        270.00 RC0402FR-0740K2L
+R5         0402_-_RESISTOR           5mm        53.7mm           5mm        53.7mm       5.455mm        53.7mm  T        180.00 RC0402FR-07200RL
+R4         0402_-_RESISTOR         7.5mm        77.4mm         7.5mm        77.4mm         7.5mm      76.945mm  T         90.00 RC0402FR-075K1L
+R33        0402_-_RESISTOR        36.9mm        58.4mm        36.9mm        58.4mm        36.9mm      58.855mm  T        270.00 RC0402FR-0711K5L
+R32        0402_-_RESISTOR        34.3mm        55.2mm        34.3mm        55.2mm      34.755mm        55.2mm  T        180.00 RC0402FR-07220KL
+R3         0402_-_RESISTOR        10.2mm          69mm        10.2mm          69mm        10.2mm      69.455mm  T        270.00 RC0402FR-075K1L
+R23        0402_-_RESISTOR        13.3mm        88.2mm        13.3mm        88.2mm      12.845mm        88.2mm  T          0.00 RC0402FR-0775KL
+R22        0402_-_RESISTOR        14.1mm        89.5mm        14.1mm        89.5mm      14.555mm        89.5mm  T        180.00 RC0402FR-07220KL
+R2         0402_-_RESISTOR        10.9mm        62.2mm        10.9mm        62.2mm        10.9mm      61.745mm  T         90.00 RC0402FR-075K1L
+R18        0402_-_RESISTOR        25.8mm        91.7mm        25.8mm        91.7mm        25.8mm      92.155mm  T        270.00 RC0402FR-0710KL
+R15        0402_-_RESISTOR        51.3mm        47.7mm        51.3mm        47.7mm        51.3mm      47.245mm  T         90.00 RC0402FR-0749K9L
+R13        0402_-_RESISTOR        51.3mm        49.6mm        51.3mm        49.6mm        51.3mm      50.055mm  T        270.00 RC0402FR-07205KL
+R10        0402_-_RESISTOR        54.9mm        46.3mm        54.9mm        46.3mm      54.445mm        46.3mm  T          0.00 RC0402FR-07100KL
+R1         0402_-_RESISTOR        18.5mm        54.8mm        18.5mm        54.8mm      18.955mm        54.8mm  T        180.00 ERT-J0EP473GM  
+Q1         SOT23-VAR_AB            4.9mm        73.9mm         4.9mm        73.9mm       3.875mm       74.85mm  T        270.00 BSS123-TP      
+L1         CHILISON_BWF00252012          49mm        53.4mm          49mm        53.4mm      48.175mm        53.4mm  T          0.00 BWVF002520122R2M00
+J2         GCT_FFC2B35-12-G       46.35mm     70.1249mm       46.35mm        68.5mm     43.5999mm     71.7499mm  T          0.00 FFC2B35-12-G   
+IC2        SOT23-5_0.95_VAR_AA     49.0999mm     50.0001mm     49.0999mm     50.0001mm     50.0499mm     51.2552mm  T        180.00 SY8088IAAC     
+D5         SOD123_DIODE_INC     25.5998mm     54.7998mm        25.6mm        54.8mm     27.1748mm     54.7998mm  T          0.00 MBR0530-TP     
+D2         OSRAM_LRY8SFU1V21      1.3122mm       55.15mm      1.2002mm       55.15mm      1.3122mm     56.6001mm  T        180.00 LR_Y8SF-U1V2-1 
+D1         SOT23-6_0.95_VAR_AA        15.5mm        65.2mm        15.5mm        65.2mm      16.755mm       64.25mm  T         90.00 824001         
+C9         0402_-_CAPACITOR        51.6mm        38.5mm        51.6mm        38.5mm        51.6mm      38.045mm  T         90.00 0402B104K500CT 
+C6         0805_-_CAPACITOR        13.3mm        78.5mm        13.3mm        78.5mm      12.405mm        78.5mm  T          0.00 0805X475M250CT 
+C54        0402_-_CAPACITOR        26.7mm          57mm        26.7mm          57mm        26.7mm      57.455mm  T        270.00 0402B104K500CT 
+C53        0402_-_CAPACITOR        36.8mm        54.8mm        36.8mm        54.8mm      36.345mm        54.8mm  T          0.00 0402B104K500CT 
+C52        0805_-_CAPACITOR        37.3mm        56.4mm        37.3mm        56.4mm      36.405mm        56.4mm  T          0.00 0805X475M250CT 
+C5         0805_-_CAPACITOR        13.3mm        76.5mm        13.3mm        76.5mm      12.405mm        76.5mm  T          0.00 0805X475M250CT 
+C47        0402_-_CAPACITOR          49mm        74.6mm          49mm        74.6mm      48.545mm        74.6mm  T          0.00 0402B104K500CT 
+C46        0805_-_CAPACITOR        50.3mm        77.7mm        50.3mm        77.7mm        50.3mm      76.805mm  T         90.00 0805X475M250CT 
+C45        0402_-_CAPACITOR        50.7mm        81.1mm        50.7mm        81.1mm        50.7mm      81.555mm  T        270.00 0402B104K500CT 
+C44        0805_-_CAPACITOR        52.8mm        84.9mm        52.8mm        84.9mm      51.905mm        84.9mm  T          0.00 0805X475M250CT 
+C42        0402_-_CAPACITOR        19.1mm        77.7mm        19.1mm        77.7mm        19.1mm      77.245mm  T         90.00 0402B104K500CT 
+C41        0603_-_CAPACITOR        17.9mm        76.1mm        17.9mm        76.1mm        17.9mm       76.87mm  T        270.00 0603X105K500CT 
+C40        0402_-_CAPACITOR        16.6mm        79.6mm        16.6mm        79.6mm        16.6mm      80.055mm  T        270.00 0402B104K500CT 
+C4         0805_-_CAPACITOR           9mm        78.3mm           9mm        78.3mm           9mm      77.405mm  T         90.00 0805X475M250CT 
+C39        0603_-_CAPACITOR        15.9mm        90.2mm        15.9mm        90.2mm        15.9mm       89.43mm  T         90.00 0603X105K500CT 
+C38        0402_-_CAPACITOR          21mm        90.4mm          21mm        90.4mm          21mm      89.945mm  T         90.00 0402B104K500CT 
+C37        0402_-_CAPACITOR          38mm        88.5mm          38mm        88.5mm      37.545mm        88.5mm  T          0.00 0402B104K500CT 
+C36        0402_-_CAPACITOR        35.4mm        71.7mm        35.4mm        71.7mm      34.945mm        71.7mm  T          0.00 0402B104K500CT 
+C35        0402_-_CAPACITOR        23.3mm        71.5mm        23.3mm        71.5mm      23.755mm        71.5mm  T        180.00 0402B104K500CT 
+C34        0805_-_CAPACITOR        19.4mm        91.1mm        19.4mm        91.1mm        19.4mm      90.205mm  T         90.00 0805X475M250CT 
+C33        0805_-_CAPACITOR        37.4mm        91.3mm        37.4mm        91.3mm        37.4mm      90.405mm  T         90.00 0805X475M250CT 
+C32        0805_-_CAPACITOR        34.7mm          69mm        34.7mm          69mm        34.7mm      69.895mm  T        270.00 0805X475M250CT 
+C31        0805_-_CAPACITOR        22.4mm          70mm        22.4mm          70mm      23.295mm          70mm  T        180.00 0805X475M250CT 
+C30        0805_-_CAPACITOR        32.6mm          69mm        32.6mm          69mm        32.6mm      69.895mm  T        270.00 805X225M500CT  
+C3         0402_-_CAPACITOR         6.4mm        77.4mm         6.4mm        77.4mm         6.4mm      77.855mm  T        270.00 CC0402KRX5R6BB475
+C29        0805_-_CAPACITOR        23.7mm        92.1mm        23.7mm        92.1mm        23.7mm      91.205mm  T         90.00 805X225M500CT  
+C28        0402_-_CAPACITOR        52.6mm        49.6mm        52.6mm        49.6mm        52.6mm      49.145mm  T         90.00 0402N9R0B500CT 
+C27        0402_-_CAPACITOR        13.9mm        74.2mm        13.9mm        74.2mm        13.9mm      73.745mm  T         90.00 0402B104K500CT 
+C26        0805_-_CAPACITOR        15.2mm        72.4mm        15.2mm        72.4mm      14.305mm        72.4mm  T          0.00 0805X475M250CT 
+C25        0805_-_CAPACITOR          53mm        52.7mm          53mm        52.7mm      52.105mm        52.7mm  T          0.00 0805X475M250CT 
+C24        0402_-_CAPACITOR        48.9mm        55.4mm        48.9mm        55.4mm      49.355mm        55.4mm  T        180.00 0402B104K500CT 
+C23        0805_-_CAPACITOR          53mm          55mm          53mm          55mm      52.105mm          55mm  T          0.00 0805X475M250CT 
+C21        0805_-_CAPACITOR        45.6mm        47.3mm        45.6mm        47.3mm      46.495mm        47.3mm  T        180.00 0805X475M250CT 
+C2         0402_-_CAPACITOR        11.9mm        64.5mm        11.9mm        64.5mm        11.9mm      64.955mm  T        270.00 0402B104K500CT 
+C19        0402_-_CAPACITOR        46.9mm        49.3mm        46.9mm        49.3mm        46.9mm      48.845mm  T         90.00 0402B104K500CT 
+C13        0805_-_CAPACITOR        51.6mm        42.5mm        51.6mm        42.5mm        51.6mm      43.395mm  T        270.00 0805X475M250CT 
+C1         0805_-_CAPACITOR        15.2mm        70.5mm        15.2mm        70.5mm      14.305mm        70.5mm  T          0.00 0805X475M250CT 
+J8         ANTENK_U6252-35C       3.525mm        65.3mm           1mm        65.3mm        6.05mm     68.4999mm  B        270.00 U6252-35c      
+C300       0402_-_CAPACITOR        50.5mm        90.8mm        50.5mm        90.8mm        50.5mm      90.345mm  T         90.00 0402B104K500CT 
+C302       0402_-_CAPACITOR        50.4mm        88.3mm        50.4mm        88.3mm        50.4mm      87.845mm  T         90.00 0402B104K500CT 
+D3         SOD123_DIODE_INC      7.4002mm     81.2002mm         7.4mm        81.2mm      5.8252mm     81.2002mm  T        180.00 MBR0530-TP     
+Mire BOT 1 MIRE                     54mm           3mm          54mm           3mm          54mm           3mm  B         90.00 DNI            
+Mire BOT 2 MIRE                 4.9999mm          92mm      4.9999mm          92mm      4.9999mm          92mm  B         90.00 DNI            
+Mire Top 1 MIRE                     54mm           3mm          54mm           3mm          54mm           3mm  T         90.00 DNI            
+Mire Top 2 MIRE                     12mm        92.1mm          12mm        92.1mm          12mm        92.1mm  T         90.00 DNI            
+Mire BOT 3 MIRE                 4.9999mm           3mm      4.9999mm           3mm      4.9999mm           3mm  B         90.00 DNI            
+Mire BOT 4 MIRE                     56mm          71mm          56mm          71mm          56mm          71mm  B         90.00 DNI            
+Mire Top 3 MIRE                      5mm           3mm           5mm           3mm           5mm           3mm  T         90.00 DNI            
+Mire Top 4 MIRE                     56mm          71mm          56mm          71mm          56mm          71mm  T         90.00 DNI            
+S1         XKB_TS3-737              12mm      45.294mm          12mm      45.294mm       13.65mm      46.669mm  B         90.00 TS-3737-B      
+Mire Top 5 MIRE                    3.9mm        84.1mm         3.9mm        84.1mm         3.9mm        84.1mm  T         90.00 DNI            
+
