@@ -1,0 +1,5 @@
+Layer Pairs Export File for PCB: C:\Users\dlebrun\Altyor\P2282-STATUS-KPRO - General\PROJECT DOCUMENTS\06-R&D\03-Electronic engineering\01-Engineering\KCP-2282-60x-V3.8.9\KCP-2282-601-PCB V3.8.PcbDoc
+LayersSetName=Top_Bot_Plated_Thru_Holes|DrillFile=kcp-2282-601-pcb v3.8-roundholes-plated.txt|DrillLayers=gtl,g2,g15,gbl
+LayersSetName=Top_Bot_Plated_Slot_Holes|DrillFile=kcp-2282-601-pcb v3.8-slotholes-plated.txt|DrillLayers=gtl,g2,g15,gbl
+LayersSetName=Top_Bot_NonPlated_Thru_Holes|DrillFile=kcp-2282-601-pcb v3.8-roundholes-nonplated.txt|DrillLayers=gtl,g2,g15,gbl
+LayersSetName=Top_Bot_NonPlated_Slot_Holes|DrillFile=kcp-2282-601-pcb v3.8-slotholes-nonplated.txt|DrillLayers=gtl,g2,g15,gbl

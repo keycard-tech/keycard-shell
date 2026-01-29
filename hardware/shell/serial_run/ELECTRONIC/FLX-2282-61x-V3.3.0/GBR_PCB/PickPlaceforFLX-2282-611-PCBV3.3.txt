@@ -1,0 +1,12 @@
+Designator Footprint               Mid X         Mid Y         Ref X         Ref Y         Pad X         Pad Y TB      Rotation Comment        
+
+Mire Top 2 MIRE                   -6.9mm         1.6mm        -6.9mm         1.6mm        -6.9mm         1.6mm  T         90.00 DNI            
+Mire Top 1 MIRE                     13mm          35mm          13mm          35mm          13mm          35mm  T         90.00 DNI            
+P2         7311S0725A01LF        3.175mm        13.3mm           0mm        13.3mm        1.27mm     25.4001mm  T        270.00 7311S0725A01LF 
+Designator MIRE                    7.5mm        77.8mm         7.5mm        77.8mm         7.5mm        77.8mm  T        360.00 Comment        
+Designator MIRE                   -7.5mm        77.8mm        -7.5mm        77.8mm        -7.5mm        77.8mm  T        360.00 Comment        
+Designator MIRE                   18.4mm        32.2mm        18.4mm        32.2mm        18.4mm        32.2mm  T        360.00 Comment        
+Designator MIRE                   12.4mm         0.5mm        12.4mm         0.5mm        12.4mm         0.5mm  T        360.00 Comment        
+Designator MIRE                   18.4mm        19.3mm        18.4mm        19.3mm        18.4mm        19.3mm  T        360.00 Comment        
+Designator MIRE                   -8.2mm          -4mm        -8.2mm          -4mm        -8.2mm          -4mm  T        360.00 Comment        
+

@@ -1,0 +1,3 @@
+Layer Pairs Export File for PCB: C:\Users\dlebrun\Altyor\P2282-STATUS-KPRO - Documents\General\PROJECT DOCUMENTS\06-R&D\03-Electronic engineering\01-Engineering\FLX-2282-60x-V3.2.0\FLX-2282-611-PCB V3.3.PcbDoc
+LayersSetName=Top_Bot_Plated_Thru_Holes|DrillFile=flx-2282-611-pcb v3.3-plated.txt|DrillLayers=gtl,gbl
+LayersSetName=Top_Bot_NonPlated_Thru_Holes|DrillFile=flx-2282-611-pcb v3.3-nonplated.txt|DrillLayers=gtl,gbl

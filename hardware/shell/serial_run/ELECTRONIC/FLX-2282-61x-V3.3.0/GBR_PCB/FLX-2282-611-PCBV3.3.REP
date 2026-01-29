@@ -1,0 +1,339 @@
+*************************************************************
+FileName = FLX-2282-611-PCB V3.3.GBR
+AutoAperture = True
+*************************************************************
+Generating : Top Side
+      File : FLX-2282-611-PCB V3.3.GTL
+
+    Adding Layer      : Top Side
+
+    Adding Layer      : 02 - Outline
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D11
+    D12
+    D13
+    D14
+    D15
+    D16
+    D17
+    D18
+    D19
+    D20
+*************************************************************
+
+*************************************************************
+Generating : Bottom Side
+      File : FLX-2282-611-PCB V3.3.GBL
+
+    Adding Layer      : Bottom Side
+
+    Adding Layer      : 02 - Outline
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D18
+    D19
+    D20
+*************************************************************
+
+*************************************************************
+Generating : Top Overlay
+      File : FLX-2282-611-PCB V3.3.GTO
+
+    Adding Layer      : Top Overlay
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+    D15
+    D16
+    D21
+*************************************************************
+
+*************************************************************
+Generating : Top Paste
+      File : FLX-2282-611-PCB V3.3.GTP
+
+    Adding Layer      : Top Paste
+
+    Adding Layer      : 02 - Outline
+
+    Adding Layer      : Top Side
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D13
+    D14
+    D22
+    D23
+    D24
+*************************************************************
+
+*************************************************************
+Generating : Top Solder
+      File : FLX-2282-611-PCB V3.3.GTS
+
+    Adding Layer      : Top Solder
+
+    Adding Layer      : 02 - Outline
+
+    Adding Layer      : Top Side
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D19
+    D25
+    D26
+    D27
+    D28
+    D29
+*************************************************************
+
+*************************************************************
+Generating : Bottom Solder
+      File : FLX-2282-611-PCB V3.3.GBS
+
+    Adding Layer      : Bottom Solder
+
+    Adding Layer      : 02 - Outline
+
+    Adding Layer      : Bottom Side
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D19
+*************************************************************
+
+*************************************************************
+Generating : Bottom Paste
+      File : FLX-2282-611-PCB V3.3.GBP
+
+    Adding Layer      : Bottom Paste
+
+    Adding Layer      : 02 - Outline
+
+    Adding Layer      : Bottom Side
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+*************************************************************
+
+*************************************************************
+Generating : Bottom Overlay
+      File : FLX-2282-611-PCB V3.3.GBO
+
+    Adding Layer      : Bottom Overlay
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+*************************************************************
+
+*************************************************************
+Generating : 02 - Outline
+      File : FLX-2282-611-PCB V3.3.GM2
+
+    Adding Layer      : 02 - Outline
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+*************************************************************
+
+*************************************************************
+Generating : 03 - DXF
+      File : FLX-2282-611-PCB V3.3.GM3
+
+    Adding Layer      : 03 - DXF
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+    D30
+    D31
+*************************************************************
+
+*************************************************************
+Generating : 04 - Top Implant
+      File : FLX-2282-611-PCB V3.3.GM4
+
+    Adding Layer      : 04 - Top Implant
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+    D16
+*************************************************************
+
+*************************************************************
+Generating : 10 - Spec PCB
+      File : FLX-2282-611-PCB V3.3.GM10
+
+    Adding Layer      : 10 - Spec PCB
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+    D21
+    D32
+    D33
+    D34
+*************************************************************
+
+*************************************************************
+Generating : 11 - Spec PCBA
+      File : FLX-2282-611-PCB V3.3.GM11
+
+    Adding Layer      : 11 - Spec PCBA
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+    D21
+    D30
+    D33
+    D35
+    D36
+    D37
+    D38
+    D39
+    D40
+    D41
+    D42
+    D43
+*************************************************************
+
+*************************************************************
+Generating : 12 - Cartouche PCB
+      File : FLX-2282-611-PCB V3.3.GM12
+
+    Adding Layer      : 12 - Cartouche PCB
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+    D30
+    D33
+    D35
+    D36
+    D37
+    D38
+    D39
+    D40
+    D41
+    D42
+    D43
+*************************************************************
+
+*************************************************************
+Generating : 13 - Bottom Implant
+      File : FLX-2282-611-PCB V3.3.GM13
+
+    Adding Layer      : 13 - Bottom Implant
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+*************************************************************
+
+*************************************************************
+Generating : 14 - Milling
+      File : FLX-2282-611-PCB V3.3.GM14
+
+    Adding Layer      : 14 - Milling
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+    D44
+*************************************************************
+
+*************************************************************
+Generating : 16 - Spec Panel
+      File : FLX-2282-611-PCB V3.3.GM16
+
+    Adding Layer      : 16 - Spec Panel
+
+    Adding Layer      : 02 - Outline
+
+
+Used DCodes :
+    D10
+    D21
+*************************************************************
+
+*************************************************************
+Generating : Drill Drawing
+      File : FLX-2282-611-PCB V3.3.GD1
+
+    Adding Layer      : 02 - Outline
+
+    Adding Drill Pair : Top Side-Bottom Side
+
+    Adding Layer      : Drill Drawing
+
+
+Used DCodes :
+    D10
+    D33
+    D45
+    D46
+    D47
+*************************************************************
+
+*************************************************************
+Generating : Drill Guide
+      File : FLX-2282-611-PCB V3.3.GG1
+
+    Adding Layer      : 02 - Outline
+
+    Adding Drill Pair : Top Side-Bottom Side
+
+    Adding Layer      : Drill Guide
+
+
+Used DCodes :
+    D10
+    D45
+*************************************************************
+
