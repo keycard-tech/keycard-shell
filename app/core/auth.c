@@ -20,11 +20,6 @@ void device_auth_run() {
     return;
   }
 
-  const char* addr = "https://shell.keycard.tech/verify";
-  if (ui_display_msg_qr(LSTR(DEV_AUTH_TITLE), addr, &addr[8]) != CORE_EVT_UI_OK) {
-    return;
-  }
-
   struct dev_auth auth;
 
   // Challenge QR

@@ -233,7 +233,7 @@ const char *const i18n_english_strings[] = {
 
     // Device verification
     "Verify device",
-    "Confirm the authenticity of your Keycard Shell. Scan your device's authentication QR on on the official Keycard website. You will also scan a QR on the Keycard website with the device to ensure the site is also legitimate. Better safe than sorry!",
+    "1. Visit shell.keycard.tech/verify to confirm the authencity of your device.\n2. Scan the provided QR code and follow the website instructions to ensure the site is also legitimate.",
     "Wrong QR",
     "This is not a device verification QR code",
     "Site is not authentic",
