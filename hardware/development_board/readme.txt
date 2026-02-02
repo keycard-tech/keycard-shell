@@ -6,6 +6,8 @@ The folder '/devboard_v1' contains this design. Please note that there are some 
 
 We'd need someone to update the layout of this dev board based on latest shell designs so that the dev board can actually run the shell builds.
 
+Probably the best way to do this, would be to use the design and schematic from 'serial_run' version and make it in the form factor of this development board 
+
 Get in touch with us either 
 - on our discord server https://discord.gg/uJAXk7jFhZ
 - our here with a GitHub issue or GitHub discussion 
