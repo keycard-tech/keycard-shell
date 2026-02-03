@@ -14,6 +14,11 @@ const char *const i18n_english_strings[] = {
     "Bitcoin MultiSig",
     "Bitcoin Testnet",
     "Bitget",
+    "Others",
+    "Ledger Legacy",
+    "Bitcoin (alt accounts)",
+    "Bitcoin MultiSig (alt accounts)",
+    "Select account",
 
     // Addresses menu
     "Ethereum",

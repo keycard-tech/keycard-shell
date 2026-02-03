@@ -14,6 +14,7 @@
 #include "util/tlv.h"
 #include "ur/ur_encode.h"
 
+#define BIP44_ACCOUNT_IDX 2
 #define CRYPTO_MULTIACCOUNT_SN_LEN 40
 
 #define USB_MORE_DATA_TIMEOUT 100
@@ -388,7 +389,7 @@ static inline void set_device_name(struct zcbor_string* card_name) {
   card_name->len = strlen(name);
 }
 
-static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, const uint32_t* path, uint32_t path_len, bool add_source) {
+static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, const uint32_t* path, uint32_t path_len, uint32_t account, bool add_source) {
   key->hd_key_is_private = 0;
   key->hd_key_key_data.len = PUBKEY_COMPRESSED_LEN;
   key->hd_key_key_data.value = pub;
@@ -412,8 +413,13 @@ static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, co
   g_core.bip44_path_len = 0;
 
   for (int i = 0; i < path_len; i++) {
-    key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_child_index_m = path[i] & 0x7fffffff;
-    key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_is_hardened_m = ((path[i] & 0x80000000) >> 31);
+    if (i == BIP44_ACCOUNT_IDX) {
+      key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_child_index_m = account;
+      key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_is_hardened_m = 1;
+    } else {
+      key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_child_index_m = path[i] & 0x7fffffff;
+      key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_is_hardened_m = ((path[i] & 0x80000000) >> 31);
+    }
 
     uint32_t tmp = rev32(path[i]);
     memcpy(&g_core.bip44_path[i * sizeof(uint32_t)], &tmp, sizeof(uint32_t));
@@ -427,10 +433,10 @@ static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, co
   return ERR_OK;
 }
 
-void core_display_public_eip4527() {
+static void core_display_public_eip4527(uint32_t account) {
   struct hd_key key;
 
-  if (get_hd_key(&key, g_core.data.key.pub, g_core.data.key.chain, BIP44_ETH_PATH, (sizeof(BIP44_ETH_PATH)/sizeof(uint32_t)), true) != ERR_OK) {
+  if (get_hd_key(&key, g_core.data.key.pub, g_core.data.key.chain, BIP44_ETH_PATH, (sizeof(BIP44_ETH_PATH)/sizeof(uint32_t)), account, true) != ERR_OK) {
     ui_card_transport_error();
     return;
   }
@@ -440,21 +446,21 @@ void core_display_public_eip4527() {
 }
 
 // this macro can only be used in core_display_public_bitcoin_*()
-#define CORE_BITCOIN_EXPORT(__NUM__, __TYPE__, __PATH__) \
-  if (get_hd_key(&account.crypto_account_output_descriptors_crypto_output_m[__NUM__].crypto_output_public_key_hash_m, &g_mem_heap[keys_off], &g_mem_heap[keys_off + PUBKEY_LEN], __PATH__, (sizeof(__PATH__)/sizeof(uint32_t)), false) != ERR_OK) { \
+#define CORE_BITCOIN_EXPORT(__NUM__, __TYPE__, __PATH__, __PATH_LEN__, __ACCOUNT__) \
+  if (get_hd_key(&account.crypto_account_output_descriptors_crypto_output_m[__NUM__].crypto_output_public_key_hash_m, &g_mem_heap[keys_off], &g_mem_heap[keys_off + PUBKEY_LEN], __PATH__, __PATH_LEN__, __ACCOUNT__, false) != ERR_OK) { \
     ui_card_transport_error(); \
     return; \
   } \
   account.crypto_account_output_descriptors_crypto_output_m[__NUM__].crypto_output_choice =  __TYPE__; \
   keys_off += PUBKEY_LEN + CHAINCODE_LEN
-void core_display_public_bitcoin_mainnet() {
+static void core_display_public_bitcoin(const uint32_t* segwit, const uint32_t* nested_segwit, const uint32_t* legacy, uint32_t account_idx) {
   struct crypto_account account;
 
   size_t keys_off = 0;
 
-  CORE_BITCOIN_EXPORT(0, crypto_output_witness_public_key_hash_m_c, BIP44_BTC_NATIVE_SEGWIT_PATH);
-  CORE_BITCOIN_EXPORT(1, crypto_output_script_hash_wpkh_m_c, BIP44_BTC_NESTED_SEGWIT_PATH);
-  CORE_BITCOIN_EXPORT(2, crypto_output_public_key_hash_m_c, BIP44_BTC_LEGACY_PATH);
+  CORE_BITCOIN_EXPORT(0, crypto_output_witness_public_key_hash_m_c, segwit, 3, account_idx);
+  CORE_BITCOIN_EXPORT(1, crypto_output_script_hash_wpkh_m_c, nested_segwit, 3, account_idx);
+  CORE_BITCOIN_EXPORT(2, crypto_output_public_key_hash_m_c, legacy, 3, account_idx);
 
   account.crypto_account_output_descriptors_crypto_output_m_count = 3;
   account.crypto_account_master_fingerprint = g_core.master_fingerprint;
@@ -462,29 +468,14 @@ void core_display_public_bitcoin_mainnet() {
   ui_display_ur_qr(NULL, &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_ACCOUNT);
 }
 
-void core_display_public_bitcoin_testnet() {
+static void core_display_public_bitcoin_multisig(uint32_t account_idx) {
   struct crypto_account account;
 
   size_t keys_off = 0;
 
-  CORE_BITCOIN_EXPORT(0, crypto_output_witness_public_key_hash_m_c, BIP44_BTC_TESTNET_NATIVE_SEGWIT_PATH);
-  CORE_BITCOIN_EXPORT(1, crypto_output_script_hash_wpkh_m_c, BIP44_BTC_TESTNET_NESTED_SEGWIT_PATH);
-  CORE_BITCOIN_EXPORT(2, crypto_output_public_key_hash_m_c, BIP44_BTC_TESTNET_LEGACY_PATH);
-
-  account.crypto_account_output_descriptors_crypto_output_m_count = 3;
-  account.crypto_account_master_fingerprint = g_core.master_fingerprint;
-  cbor_encode_crypto_account(&g_mem_heap[keys_off], MEM_HEAP_SIZE, &account, &g_core.data.key.cbor_len);
-  ui_display_ur_qr(NULL, &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_ACCOUNT);
-}
-
-void core_display_public_bitcoin_multisig() {
-  struct crypto_account account;
-
-  size_t keys_off = 0;
-
-  CORE_BITCOIN_EXPORT(0, crypto_output_witness_script_hash_m_c, BIP44_BTC_MULTISIG_P2WSH_PATH);
-  CORE_BITCOIN_EXPORT(1, crypto_output_script_hash_wsh_m_c, BIP44_BTC_MULTISIG_P2WSH_P2SH_PATH);
-  CORE_BITCOIN_EXPORT(2, crypto_output_script_hash_m_c, BIP44_BTC_MULTISIG_P2SH_PATH);
+  CORE_BITCOIN_EXPORT(0, crypto_output_witness_script_hash_m_c, BIP44_BTC_MULTISIG_P2WSH_PATH, 4, account_idx);
+  CORE_BITCOIN_EXPORT(1, crypto_output_script_hash_wsh_m_c, BIP44_BTC_MULTISIG_P2WSH_P2SH_PATH, 4, account_idx);
+  CORE_BITCOIN_EXPORT(2, crypto_output_script_hash_m_c, BIP44_BTC_MULTISIG_P2SH_PATH, 1, account_idx);
 
   account.crypto_account_output_descriptors_crypto_output_m_count = 3;
   account.crypto_account_master_fingerprint = g_core.master_fingerprint;
@@ -493,8 +484,8 @@ void core_display_public_bitcoin_multisig() {
 }
 
 // this macro can only be used in core_display_public_multicoin()
-#define CORE_MULTICOIN_EXPORT(__NUM__, __PATH__, __SOURCE__) \
-  if (get_hd_key(&accounts.crypto_multi_accounts_keys_tagged_hd_key_m[__NUM__], &g_mem_heap[keys_off], &g_mem_heap[keys_off + PUBKEY_LEN], __PATH__, (sizeof(__PATH__)/sizeof(uint32_t)), __SOURCE__) != ERR_OK) { \
+#define CORE_MULTICOIN_EXPORT(__NUM__, __PATH__, __ACCOUNT__, __SOURCE__) \
+  if (get_hd_key(&accounts.crypto_multi_accounts_keys_tagged_hd_key_m[__NUM__], &g_mem_heap[keys_off], &g_mem_heap[keys_off + PUBKEY_LEN], __PATH__, (sizeof(__PATH__)/sizeof(uint32_t)), __ACCOUNT__, __SOURCE__) != ERR_OK) { \
     ui_card_transport_error(); \
     return; \
   } \
@@ -520,10 +511,10 @@ void core_display_public_multicoin() {
 
   size_t keys_off = 0;
 
-  CORE_MULTICOIN_EXPORT(0, BIP44_BTC_LEGACY_PATH, false);
-  CORE_MULTICOIN_EXPORT(1, BIP44_BTC_NESTED_SEGWIT_PATH, false);
-  CORE_MULTICOIN_EXPORT(2, BIP44_BTC_NATIVE_SEGWIT_PATH, false);
-  CORE_MULTICOIN_EXPORT(3, BIP44_ETH_PATH, true);
+  CORE_MULTICOIN_EXPORT(0, BIP44_BTC_LEGACY_PATH, 0, false);
+  CORE_MULTICOIN_EXPORT(1, BIP44_BTC_NESTED_SEGWIT_PATH, 0, false);
+  CORE_MULTICOIN_EXPORT(2, BIP44_BTC_NATIVE_SEGWIT_PATH, 0, false);
+  CORE_MULTICOIN_EXPORT(3, BIP44_ETH_PATH, 0, true);
 
   accounts.crypto_multi_accounts_keys_tagged_hd_key_m_count = 4;
   accounts.crypto_multi_accounts_master_fingerprint = g_core.master_fingerprint;
@@ -611,18 +602,32 @@ void core_connect_wallet() {
   i18n_str_id_t selected = MENU_CONNECT_EIP4527;
 
   while (ui_menu(LSTR(MENU_CONNECT), &menu_connect, &selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) == CORE_EVT_UI_OK) {
+    uint32_t account = 0;
+
+    if ((selected == MENU_CONNECT_LEDGER_LEGACY) ||
+        (selected == MENU_CONNECT_BITCOIN_ALT) ||
+        (selected == MENU_CONNECT_BITCOIN_MULTISIG_ALT) ||
+        (selected == MENU_CONNECT_BITCOIN_TESTNET)) {
+      if (ui_read_number(LSTR(MENU_CONNECT_SELECT_ACCOUNT), 0, INT32_MAX, &account, false) != CORE_EVT_UI_OK) {
+        continue;
+      }
+    }
+
     switch(selected) {
+    case MENU_CONNECT_LEDGER_LEGACY:
     case MENU_CONNECT_EIP4527:
-      core_display_public_eip4527();
+      core_display_public_eip4527(account);
       break;
+    case MENU_CONNECT_BITCOIN_ALT:
     case MENU_CONNECT_BITCOIN:
-      core_display_public_bitcoin_mainnet();
+      core_display_public_bitcoin(BIP44_BTC_NATIVE_SEGWIT_PATH, BIP44_BTC_NESTED_SEGWIT_PATH, BIP44_BTC_LEGACY_PATH, account);
       break;
+    case MENU_CONNECT_BITCOIN_MULTISIG_ALT:
     case MENU_CONNECT_BITCOIN_MULTISIG:
-      core_display_public_bitcoin_multisig();
+      core_display_public_bitcoin_multisig(account);
       break;
     case MENU_CONNECT_BITCOIN_TESTNET:
-      core_display_public_bitcoin_testnet();
+      core_display_public_bitcoin(BIP44_BTC_TESTNET_NATIVE_SEGWIT_PATH, BIP44_BTC_TESTNET_NESTED_SEGWIT_PATH, BIP44_BTC_TESTNET_LEGACY_PATH, account);
       break;
     case MENU_CONNECT_MULTICOIN:
       core_display_public_multicoin();

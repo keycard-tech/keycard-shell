@@ -37,13 +37,22 @@ const menu_t menu_info = {
   }
 };
 
+const menu_t menu_connect_others = {
+  4, {
+      {MENU_CONNECT_LEDGER_LEGACY, NULL},
+      {MENU_CONNECT_BITCOIN_ALT, NULL},
+      {MENU_CONNECT_BITCOIN_MULTISIG_ALT, NULL},
+      {MENU_CONNECT_BITCOIN_TESTNET, NULL},
+  }
+};
+
 const menu_t menu_connect = {
   5, {
     {MENU_CONNECT_EIP4527, NULL},
     {MENU_CONNECT_BITCOIN, NULL},
     {MENU_CONNECT_BITCOIN_MULTISIG, NULL},
-    {MENU_CONNECT_BITCOIN_TESTNET, NULL},
     {MENU_CONNECT_MULTICOIN, NULL},
+    {MENU_CONNECT_OTHERS, &menu_connect_others},
   }
 };
 
