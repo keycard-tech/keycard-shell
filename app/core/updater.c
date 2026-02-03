@@ -32,6 +32,21 @@ static char* append_fw_version(char* dst, const uint8_t* version) {
     *(dst++) = '.';
   }
 
+  if (version[3] != 0x00) {
+    --dst;
+    *(dst++) = '+';
+    *(dst++) = 'b';
+    *(dst++) = 'e';
+    *(dst++) = 't';
+    *(dst++) = 'a';
+
+    digits = u32toa(version[3], tmp, 4);
+    size_t seg_len = strlen((char *) digits);
+    memcpy(dst, digits, seg_len);
+    dst += seg_len;
+    *(dst++) = '.';
+  }
+
   *(--dst) = '\0';
 
   return dst;
@@ -180,14 +195,25 @@ static inline uint8_t updater_progress() {
 }
 
 static app_err_t updater_confirm_fw_upgrade() {
+  uint32_t ver_off = ((uint32_t ) FW_VERSION) - HAL_FLASH_FW_START_ADDR;
+  uint8_t* ver_buf = (uint8_t*)(HAL_FLASH_FW_UPGRADE_AREA + ver_off);
+
+  // don't consider beta when checking version
+  uint32_t current_ver = (FW_VERSION[0] << 24) | (FW_VERSION[1] << 16) | (FW_VERSION[2] << 8) | 0;
+  uint32_t new_ver = (ver_buf[0] << 24) | (ver_buf[1] << 16) | (ver_buf[2] << 8) | 0;
+
+  if (current_ver > new_ver) {
+    ui_info(ICON_INFO_ERROR, LSTR(FW_UPGRADE_INVALID_MSG), LSTR(FW_UPGRADE_OUTDATED_SUB), 0);
+    return ERR_CANCEL;
+  }
+
   const char* prompt = LSTR(FW_UPGRADE_CONFIRM);
   size_t len = strlen(prompt);
 
   char info[MAX_INFO_SIZE];
   memcpy(info, prompt, len);
 
-  uint32_t ver_off = ((uint32_t ) FW_VERSION) - HAL_FLASH_FW_START_ADDR;
-  append_fw_version(info, (uint8_t*)(HAL_FLASH_FW_UPGRADE_AREA + ver_off));
+  append_fw_version(info, ver_buf);
 
   if (ui_info(ICON_INFO_UPLOAD, LSTR(FW_UPGRADE_CONFIRM), info, UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
@@ -246,6 +272,7 @@ app_err_t updater_usb_fw_upgrade(command_t *cmd, apdu_t* apdu) {
       updater_fw_switch();
       return ERR_OK;
     } else {
+      updater_clear_flash_area();
       core_usb_err_sw(apdu, 0x69, 0x82);
       return ERR_CANCEL;
     }

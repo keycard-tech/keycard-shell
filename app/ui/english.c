@@ -207,6 +207,7 @@ const char *const i18n_english_strings[] = {
     "Do not disconnect your device",
     "Invalid firmware",
     "This firmware is not authentic. Please upgrade through the official site",
+    "This firmware is older than the current one",
     "Update firmware",
     "To update the software you need a computer with a browser and a USB cable. Please go to shell.keycard.tech/update and follow the instructions there.\n\nDismiss this prompt before starting the procedure.",
 
