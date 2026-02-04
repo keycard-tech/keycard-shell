@@ -38,7 +38,8 @@ const menu_t menu_info = {
 };
 
 const menu_t menu_connect_others = {
-  4, {
+  5, {
+      {MENU_CONNECT_LEDGER_LIVE, NULL},
       {MENU_CONNECT_LEDGER_LEGACY, NULL},
       {MENU_CONNECT_BITCOIN_ALT, NULL},
       {MENU_CONNECT_BITCOIN_MULTISIG_ALT, NULL},

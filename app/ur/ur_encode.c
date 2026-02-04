@@ -29,6 +29,7 @@ static bool encode_repeated_dev_auth_auth_sig(zcbor_state_t *state, const struct
 static bool encode_repeated_eth_sign_request_request_id(zcbor_state_t *state, const struct eth_sign_request_request_id *input);
 static bool encode_sign_data_type(zcbor_state_t *state, const struct sign_data_type_r *input);
 static bool encode_repeated_eth_sign_request_chain_id(zcbor_state_t *state, const struct eth_sign_request_chain_id *input);
+static bool encode_repeated_path_component_child_index_m(zcbor_state_t *state, const uint32_t *input);
 static bool encode_path_component(zcbor_state_t *state, const struct path_component *input);
 static bool encode_repeated_crypto_keypath_source_fingerprint(zcbor_state_t *state, const struct crypto_keypath_source_fingerprint *input);
 static bool encode_repeated_crypto_keypath_depth(zcbor_state_t *state, const struct crypto_keypath_depth *input);
@@ -37,6 +38,7 @@ static bool encode_repeated_eth_sign_request_address(zcbor_state_t *state, const
 static bool encode_repeated_eth_sign_request_request_origin(zcbor_state_t *state, const struct eth_sign_request_request_origin *input);
 static bool encode_coininfo(zcbor_state_t *state, const struct coininfo *input);
 static bool encode_repeated_hd_key_use_info(zcbor_state_t *state, const struct hd_key_use_info *input);
+static bool encode_repeated_hd_key_children(zcbor_state_t *state, const struct hd_key_children *input);
 static bool encode_repeated_hd_key_source(zcbor_state_t *state, const struct hd_key_source *input);
 static bool encode_repeated_btc_sign_request_btc_addresses(zcbor_state_t *state, const struct btc_sign_request_btc_addresses_r *input);
 static bool encode_repeated_btc_sign_request_btc_origin(zcbor_state_t *state, const struct btc_sign_request_btc_origin *input);
@@ -312,13 +314,30 @@ static bool encode_repeated_eth_sign_request_chain_id(
 	return tmp_result;
 }
 
+static bool encode_repeated_path_component_child_index_m(
+		zcbor_state_t *state, const uint32_t *input)
+{
+	zcbor_log("%s\r\n", __func__);
+
+	bool tmp_result = ((((((((((((*input) <= UINT32_MAX)) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))
+	&& (zcbor_uint32_encode(state, (&(*input))))));
+
+	if (!tmp_result) {
+		zcbor_trace_file(state);
+		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
+	} else {
+		zcbor_log("%s success\r\n", __func__);
+	}
+
+	return tmp_result;
+}
+
 static bool encode_path_component(
 		zcbor_state_t *state, const struct path_component *input)
 {
 	zcbor_log("%s\r\n", __func__);
 
-	bool tmp_result = ((((((((((((((*input).path_component_child_index_m <= UINT32_MAX)) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))
-	&& (zcbor_uint32_encode(state, (&(*input).path_component_child_index_m))))
+	bool tmp_result = ((((!(*input).path_component_child_index_m_present || encode_repeated_path_component_child_index_m(state, (&(*input).path_component_child_index_m)))
 	&& ((zcbor_bool_encode(state, (&(*input).path_component_is_hardened_m)))))));
 
 	if (!tmp_result) {
@@ -456,6 +475,25 @@ static bool encode_repeated_hd_key_use_info(
 	bool tmp_result = ((((zcbor_uint32_put(state, (5))))
 	&& zcbor_tag_put(state, 305)
 	&& (encode_coininfo(state, (&(*input).hd_key_use_info)))));
+
+	if (!tmp_result) {
+		zcbor_trace_file(state);
+		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
+	} else {
+		zcbor_log("%s success\r\n", __func__);
+	}
+
+	return tmp_result;
+}
+
+static bool encode_repeated_hd_key_children(
+		zcbor_state_t *state, const struct hd_key_children *input)
+{
+	zcbor_log("%s\r\n", __func__);
+
+	bool tmp_result = ((((zcbor_uint32_put(state, (7))))
+	&& zcbor_tag_put(state, 304)
+	&& (encode_crypto_keypath(state, (&(*input).hd_key_children)))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);
@@ -941,7 +979,7 @@ static bool encode_hd_key(
 {
 	zcbor_log("%s\r\n", __func__);
 
-	bool tmp_result = (((zcbor_map_start_encode(state, 8) && (((((zcbor_uint32_put(state, (2))))
+	bool tmp_result = (((zcbor_map_start_encode(state, 9) && (((((zcbor_uint32_put(state, (2))))
 	&& (zcbor_bool_encode(state, (&(*input).hd_key_is_private))))
 	&& (((zcbor_uint32_put(state, (3))))
 	&& ((((((*input).hd_key_key_data.len >= 33)
@@ -955,12 +993,13 @@ static bool encode_hd_key(
 	&& (((zcbor_uint32_put(state, (6))))
 	&& zcbor_tag_put(state, 304)
 	&& (encode_crypto_keypath(state, (&(*input).hd_key_origin))))
+	&& (!(*input).hd_key_children_present || encode_repeated_hd_key_children(state, (&(*input).hd_key_children)))
 	&& (((zcbor_uint32_put(state, (8))))
 	&& ((((((*input).hd_key_parent_fingerprint <= UINT32_MAX)) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))
 	&& (zcbor_uint32_encode(state, (&(*input).hd_key_parent_fingerprint))))
 	&& (((zcbor_uint32_put(state, (9))))
 	&& (zcbor_tstr_encode(state, (&(*input).hd_key_name))))
-	&& (!(*input).hd_key_source_present || encode_repeated_hd_key_source(state, (&(*input).hd_key_source)))) || (zcbor_list_map_end_force_encode(state), false)) && zcbor_map_end_encode(state, 8))));
+	&& (!(*input).hd_key_source_present || encode_repeated_hd_key_source(state, (&(*input).hd_key_source)))) || (zcbor_list_map_end_force_encode(state), false)) && zcbor_map_end_encode(state, 9))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);

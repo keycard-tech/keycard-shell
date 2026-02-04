@@ -15,7 +15,7 @@ crypto-keypath = {
 }
 
 path-component = (
-    child-index,
+    ? child-index,
     is-hardened
 )
 
@@ -45,7 +45,7 @@ hd-key = {
     chain-code: chain-code-bytes,
     ? use-info: #6.305(coininfo),
     origin: #6.304(crypto-keypath),
-    ;? children: #6.304(crypto-keypath),
+    ? children: #6.304(crypto-keypath),
     parent-fingerprint: uint32 .gt 0,
     name: text,
     ? source: text

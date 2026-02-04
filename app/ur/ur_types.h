@@ -122,6 +122,7 @@ struct eth_sign_request_chain_id {
 
 struct path_component {
 	uint32_t path_component_child_index_m;
+	bool path_component_child_index_m_present;
 	bool path_component_is_hardened_m;
 };
 
@@ -173,6 +174,10 @@ struct hd_key_use_info {
 	struct coininfo hd_key_use_info;
 };
 
+struct hd_key_children {
+	struct crypto_keypath hd_key_children;
+};
+
 struct hd_key_source {
 	struct zcbor_string hd_key_source;
 };
@@ -184,6 +189,8 @@ struct hd_key {
 	struct hd_key_use_info hd_key_use_info;
 	bool hd_key_use_info_present;
 	struct crypto_keypath hd_key_origin;
+	struct hd_key_children hd_key_children;
+	bool hd_key_children_present;
 	uint32_t hd_key_parent_fingerprint;
 	struct zcbor_string hd_key_name;
 	struct hd_key_source hd_key_source;

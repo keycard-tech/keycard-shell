@@ -1,1 +1,1 @@
-zcbor code -c cddl/ur.cddl -d -e -t eth-sign-request eth-signature hd-key crypto-multi-accounts crypto-account ur-part dev-auth psbt tagged-psbt btc-sign-request btc-signature --output-c app/ur/ur.c --output-h app/ur/ur.h
+uvx zcbor@0.8.1 code -c cddl/ur.cddl -d -e -t eth-sign-request eth-signature hd-key crypto-multi-accounts crypto-account ur-part dev-auth psbt tagged-psbt btc-sign-request btc-signature --output-c app/ur/ur.c --output-h app/ur/ur.h

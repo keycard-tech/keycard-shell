@@ -50,8 +50,9 @@ const uint32_t BIP44_BTC_MULTISIG_P2SH_PATH[] = { BTC_LEGACY_MULTISIG_PURPOSE };
 
 const char *const EIP4527_NAME = "Keycard Shell";
 
-const uint8_t *const EIP4527_SOURCE = (uint8_t*) "account.standard";
-const uint32_t EIP4527_SOURCE_LEN = 16;
+const char *const EIP4527_STANDARD = "account.standard";
+const char *const EIP4527_LEDGER_LIVE = "account.ledger_live";
+const char *const EIP4527_LEDGER_LEGACY = "account.ledger_legacy";
 
 core_ctx_t g_core;
 
@@ -389,7 +390,7 @@ static inline void set_device_name(struct zcbor_string* card_name) {
   card_name->len = strlen(name);
 }
 
-static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, const uint32_t* path, uint32_t path_len, uint32_t account, bool add_source) {
+static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, const uint32_t* path, uint32_t path_len, uint32_t account, const char* source) {
   key->hd_key_is_private = 0;
   key->hd_key_key_data.len = PUBKEY_COMPRESSED_LEN;
   key->hd_key_key_data.value = pub;
@@ -400,29 +401,47 @@ static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, co
   key->hd_key_origin.crypto_keypath_depth.crypto_keypath_depth = path_len;
   key->hd_key_origin.crypto_keypath_source_fingerprint_present = 1;
   key->hd_key_origin.crypto_keypath_components_path_component_m_count = path_len;
+
   set_device_name(&key->hd_key_name);
 
-  if (add_source) {
+  if (source != NULL) {
+    if (source == EIP4527_LEDGER_LEGACY) {
+      key->hd_key_children_present = 1;
+      key->hd_key_children.hd_key_children.crypto_keypath_depth_present = 0;
+      key->hd_key_children.hd_key_children.crypto_keypath_source_fingerprint_present = 0;
+      key->hd_key_children.hd_key_children.crypto_keypath_components_path_component_m_count = 1;
+      key->hd_key_children.hd_key_children.crypto_keypath_components_path_component_m[0].path_component_child_index_m_present = 0;
+      key->hd_key_children.hd_key_children.crypto_keypath_components_path_component_m[0].path_component_is_hardened_m = 0;
+    } else {
+      key->hd_key_children_present = 0;
+    }
+
     key->hd_key_source_present = 1;
-    key->hd_key_source.hd_key_source.len = EIP4527_SOURCE_LEN;
-    key->hd_key_source.hd_key_source.value = EIP4527_SOURCE;
+    key->hd_key_source.hd_key_source.len = strlen(source);
+    key->hd_key_source.hd_key_source.value = (const uint8_t*) source;
   } else {
+    key->hd_key_children_present = 0;
     key->hd_key_source_present = 0;
   }
 
   g_core.bip44_path_len = 0;
 
   for (int i = 0; i < path_len; i++) {
+    uint32_t path_elem;
+
+    key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_child_index_m_present = 1;
+
     if (i == BIP44_ACCOUNT_IDX) {
       key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_child_index_m = account;
       key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_is_hardened_m = 1;
+      path_elem = rev32((0x80000000 | account));
     } else {
       key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_child_index_m = path[i] & 0x7fffffff;
       key->hd_key_origin.crypto_keypath_components_path_component_m[i].path_component_is_hardened_m = ((path[i] & 0x80000000) >> 31);
+      path_elem = rev32(path[i]);
     }
 
-    uint32_t tmp = rev32(path[i]);
-    memcpy(&g_core.bip44_path[i * sizeof(uint32_t)], &tmp, sizeof(uint32_t));
+    memcpy(&g_core.bip44_path[i * sizeof(uint32_t)], &path_elem, sizeof(uint32_t));
     g_core.bip44_path_len += sizeof(uint32_t);
   }
 
@@ -433,10 +452,10 @@ static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, co
   return ERR_OK;
 }
 
-static void core_display_public_eip4527(uint32_t account) {
+static void core_display_public_eip4527(uint32_t account, const char* account_type) {
   struct hd_key key;
 
-  if (get_hd_key(&key, g_core.data.key.pub, g_core.data.key.chain, BIP44_ETH_PATH, (sizeof(BIP44_ETH_PATH)/sizeof(uint32_t)), account, true) != ERR_OK) {
+  if (get_hd_key(&key, g_core.data.key.pub, g_core.data.key.chain, BIP44_ETH_PATH, (sizeof(BIP44_ETH_PATH)/sizeof(uint32_t)), account, account_type) != ERR_OK) {
     ui_card_transport_error();
     return;
   }
@@ -447,7 +466,7 @@ static void core_display_public_eip4527(uint32_t account) {
 
 // this macro can only be used in core_display_public_bitcoin_*()
 #define CORE_BITCOIN_EXPORT(__NUM__, __TYPE__, __PATH__, __PATH_LEN__, __ACCOUNT__) \
-  if (get_hd_key(&account.crypto_account_output_descriptors_crypto_output_m[__NUM__].crypto_output_public_key_hash_m, &g_mem_heap[keys_off], &g_mem_heap[keys_off + PUBKEY_LEN], __PATH__, __PATH_LEN__, __ACCOUNT__, false) != ERR_OK) { \
+  if (get_hd_key(&account.crypto_account_output_descriptors_crypto_output_m[__NUM__].crypto_output_public_key_hash_m, &g_mem_heap[keys_off], &g_mem_heap[keys_off + PUBKEY_LEN], __PATH__, __PATH_LEN__, __ACCOUNT__, NULL) != ERR_OK) { \
     ui_card_transport_error(); \
     return; \
   } \
@@ -511,10 +530,10 @@ void core_display_public_multicoin() {
 
   size_t keys_off = 0;
 
-  CORE_MULTICOIN_EXPORT(0, BIP44_BTC_LEGACY_PATH, 0, false);
-  CORE_MULTICOIN_EXPORT(1, BIP44_BTC_NESTED_SEGWIT_PATH, 0, false);
-  CORE_MULTICOIN_EXPORT(2, BIP44_BTC_NATIVE_SEGWIT_PATH, 0, false);
-  CORE_MULTICOIN_EXPORT(3, BIP44_ETH_PATH, 0, true);
+  CORE_MULTICOIN_EXPORT(0, BIP44_BTC_LEGACY_PATH, 0, NULL);
+  CORE_MULTICOIN_EXPORT(1, BIP44_BTC_NESTED_SEGWIT_PATH, 0, NULL);
+  CORE_MULTICOIN_EXPORT(2, BIP44_BTC_NATIVE_SEGWIT_PATH, 0, NULL);
+  CORE_MULTICOIN_EXPORT(3, BIP44_ETH_PATH, 0, EIP4527_STANDARD);
 
   accounts.crypto_multi_accounts_keys_tagged_hd_key_m_count = 4;
   accounts.crypto_multi_accounts_master_fingerprint = g_core.master_fingerprint;
@@ -604,7 +623,7 @@ void core_connect_wallet() {
   while (ui_menu(LSTR(MENU_CONNECT), &menu_connect, &selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) == CORE_EVT_UI_OK) {
     uint32_t account = 0;
 
-    if ((selected == MENU_CONNECT_LEDGER_LEGACY) ||
+    if ((selected == MENU_CONNECT_LEDGER_LIVE) ||
         (selected == MENU_CONNECT_BITCOIN_ALT) ||
         (selected == MENU_CONNECT_BITCOIN_MULTISIG_ALT) ||
         (selected == MENU_CONNECT_BITCOIN_TESTNET)) {
@@ -614,9 +633,14 @@ void core_connect_wallet() {
     }
 
     switch(selected) {
+    case MENU_CONNECT_LEDGER_LIVE:
+      core_display_public_eip4527(account, EIP4527_LEDGER_LIVE);
+      break;
     case MENU_CONNECT_LEDGER_LEGACY:
+      core_display_public_eip4527(account, EIP4527_LEDGER_LEGACY);
+      break;
     case MENU_CONNECT_EIP4527:
-      core_display_public_eip4527(account);
+      core_display_public_eip4527(account, EIP4527_STANDARD);
       break;
     case MENU_CONNECT_BITCOIN_ALT:
     case MENU_CONNECT_BITCOIN:

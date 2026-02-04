@@ -29,6 +29,7 @@ static bool decode_repeated_dev_auth_auth_sig(zcbor_state_t *state, struct dev_a
 static bool decode_repeated_eth_sign_request_request_id(zcbor_state_t *state, struct eth_sign_request_request_id *result);
 static bool decode_sign_data_type(zcbor_state_t *state, struct sign_data_type_r *result);
 static bool decode_repeated_eth_sign_request_chain_id(zcbor_state_t *state, struct eth_sign_request_chain_id *result);
+static bool decode_repeated_path_component_child_index_m(zcbor_state_t *state, uint32_t *result);
 static bool decode_path_component(zcbor_state_t *state, struct path_component *result);
 static bool decode_repeated_crypto_keypath_source_fingerprint(zcbor_state_t *state, struct crypto_keypath_source_fingerprint *result);
 static bool decode_repeated_crypto_keypath_depth(zcbor_state_t *state, struct crypto_keypath_depth *result);
@@ -37,6 +38,7 @@ static bool decode_repeated_eth_sign_request_address(zcbor_state_t *state, struc
 static bool decode_repeated_eth_sign_request_request_origin(zcbor_state_t *state, struct eth_sign_request_request_origin *result);
 static bool decode_coininfo(zcbor_state_t *state, struct coininfo *result);
 static bool decode_repeated_hd_key_use_info(zcbor_state_t *state, struct hd_key_use_info *result);
+static bool decode_repeated_hd_key_children(zcbor_state_t *state, struct hd_key_children *result);
 static bool decode_repeated_hd_key_source(zcbor_state_t *state, struct hd_key_source *result);
 static bool decode_repeated_btc_sign_request_btc_addresses(zcbor_state_t *state, struct btc_sign_request_btc_addresses_r *result);
 static bool decode_repeated_btc_sign_request_btc_origin(zcbor_state_t *state, struct btc_sign_request_btc_origin *result);
@@ -310,13 +312,30 @@ static bool decode_repeated_eth_sign_request_chain_id(
 	return tmp_result;
 }
 
+static bool decode_repeated_path_component_child_index_m(
+		zcbor_state_t *state, uint32_t *result)
+{
+	zcbor_log("%s\r\n", __func__);
+
+	bool tmp_result = (((zcbor_uint32_decode(state, (&(*result))))
+	&& ((((((((((*result) <= UINT32_MAX)) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))));
+
+	if (!tmp_result) {
+		zcbor_trace_file(state);
+		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
+	} else {
+		zcbor_log("%s success\r\n", __func__);
+	}
+
+	return tmp_result;
+}
+
 static bool decode_path_component(
 		zcbor_state_t *state, struct path_component *result)
 {
 	zcbor_log("%s\r\n", __func__);
 
-	bool tmp_result = (((((zcbor_uint32_decode(state, (&(*result).path_component_child_index_m)))
-	&& ((((((((((*result).path_component_child_index_m <= UINT32_MAX)) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false)))
+	bool tmp_result = (((zcbor_present_decode(&((*result).path_component_child_index_m_present), (zcbor_decoder_t *)decode_repeated_path_component_child_index_m, state, (&(*result).path_component_child_index_m))
 	&& ((zcbor_bool_decode(state, (&(*result).path_component_is_hardened_m)))))));
 
 	if (!tmp_result) {
@@ -454,6 +473,25 @@ static bool decode_repeated_hd_key_use_info(
 	bool tmp_result = ((((zcbor_uint32_expect(state, (5))))
 	&& zcbor_tag_expect(state, 305)
 	&& (decode_coininfo(state, (&(*result).hd_key_use_info)))));
+
+	if (!tmp_result) {
+		zcbor_trace_file(state);
+		zcbor_log("%s error: %s\r\n", __func__, zcbor_error_str(zcbor_peek_error(state)));
+	} else {
+		zcbor_log("%s success\r\n", __func__);
+	}
+
+	return tmp_result;
+}
+
+static bool decode_repeated_hd_key_children(
+		zcbor_state_t *state, struct hd_key_children *result)
+{
+	zcbor_log("%s\r\n", __func__);
+
+	bool tmp_result = ((((zcbor_uint32_expect(state, (7))))
+	&& zcbor_tag_expect(state, 304)
+	&& (decode_crypto_keypath(state, (&(*result).hd_key_children)))));
 
 	if (!tmp_result) {
 		zcbor_trace_file(state);
@@ -954,6 +992,7 @@ static bool decode_hd_key(
 	&& (((zcbor_uint32_expect(state, (6))))
 	&& zcbor_tag_expect(state, 304)
 	&& (decode_crypto_keypath(state, (&(*result).hd_key_origin))))
+	&& zcbor_present_decode(&((*result).hd_key_children_present), (zcbor_decoder_t *)decode_repeated_hd_key_children, state, (&(*result).hd_key_children))
 	&& (((zcbor_uint32_expect(state, (8))))
 	&& (zcbor_uint32_decode(state, (&(*result).hd_key_parent_fingerprint)))
 	&& ((((((*result).hd_key_parent_fingerprint <= UINT32_MAX)) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false))) || (zcbor_error(state, ZCBOR_ERR_WRONG_RANGE), false)))
