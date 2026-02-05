@@ -27,7 +27,7 @@ APP_DEF_TASK(ui, UI_STACK_SIZE);
 // Beta version. 0 means release.
 // Although not customary, to keep downgrade protection simple betas of the next release
 // share the main version number with the current stable release
-#define FW_BETA 2
+#define FW_BETA 3
 
 __attribute__((section(".fw_signature"))) __attribute__((__used__)) const uint8_t FW_SIGNATURE[64];
 __attribute__((section(".fw_version"))) __attribute__((__used__)) const uint8_t FW_VERSION[4] = { FW_MAJOR, FW_MINOR, FW_PATCH, FW_BETA };

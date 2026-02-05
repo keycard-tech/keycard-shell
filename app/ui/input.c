@@ -619,56 +619,31 @@ static char input_keyboard_navigate_numeric(keyboard_state_t* keyboard) {
 
   switch(ui_wait_keypress(portMAX_DELAY)) {
   case KEYPAD_KEY_UP:
-    if (keyboard->idx > (KEYBOARD_NUMERIC_LINE_LEN * 2)) {
-      keyboard->idx = KEYBOARD_NUMERIC_LINE_LEN + (keyboard->idx - (KEYBOARD_NUMERIC_LINE_LEN * 2));
-    } else if (keyboard->idx >= KEYBOARD_NUMERIC_LINE_LEN) {
+    if (keyboard->idx >= KEYBOARD_NUMERIC_LINE_LEN) {
       keyboard->idx -= KEYBOARD_NUMERIC_LINE_LEN;
     } else {
-      keyboard->idx = (KEYBOARD_NUMERIC_LINE_LEN * 2) + APP_MIN(keyboard->idx, 2);
+      keyboard->idx = (KEYBOARD_NUMERIC_LINE_LEN * 2) + APP_MIN(keyboard->idx, (KEYBOARD_NUMERIC_LINE_LAST_LEN - 1));
     }
     break;
   case KEYPAD_KEY_LEFT:
-    if ((keyboard->idx > (KEYBOARD_NUMERIC_LINE_LEN * 2)) ||
-        (keyboard->idx > KEYBOARD_NUMERIC_LINE_LEN && (keyboard->idx < (KEYBOARD_NUMERIC_LINE_LEN * 2))) ||
-        ((keyboard->idx > 0) && (keyboard->idx < KEYBOARD_NUMERIC_LINE_LEN))) {
+    if ((keyboard->idx % KEYBOARD_NUMERIC_LINE_LEN)) {
       keyboard->idx--;
     } else {
-      if (keyboard->idx == 0) {
-        keyboard->idx = KEYBOARD_NUMERIC_LINE_LEN - 1;
-      } else if (keyboard->idx == KEYBOARD_NUMERIC_LINE_LEN) {
-        keyboard->idx = (KEYBOARD_NUMERIC_LINE_LEN * 2) - 1;
-      } else if (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2)) {
-        keyboard->idx += 2;
-      } else {
-        keyboard->idx++;
-      }
+      keyboard->idx = APP_MIN(((keyboard->idx + KEYBOARD_NUMERIC_LINE_LEN) - 1), KEYBOARD_NUMERIC_SPACE_IDX);
     }
     break;
   case KEYPAD_KEY_RIGHT:
-    if ((keyboard->idx < (KEYBOARD_NUMERIC_LINE_LEN - 1)) ||
-        ((keyboard->idx < ((KEYBOARD_NUMERIC_LINE_LEN * 2) - 1)) && (keyboard->idx >= KEYBOARD_NUMERIC_LINE_LEN)) ||
-        (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2)) ||
-        (keyboard->idx == ((KEYBOARD_NUMERIC_LINE_LEN * 2) + 1))) {
+    if ((keyboard->idx % KEYBOARD_NUMERIC_LINE_LEN) != (KEYBOARD_NUMERIC_LINE_LEN - 1) && (keyboard->idx != KEYBOARD_NUMERIC_SPACE_IDX)) {
       keyboard->idx++;
-    }  else {
-      if (keyboard->idx == KEYBOARD_NUMERIC_LINE_LEN - 1) {
-        keyboard->idx = 0;
-      } else if (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2) - 1) {
-        keyboard->idx = KEYBOARD_NUMERIC_LINE_LEN;
-      } else if (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2) + 2) {
-        keyboard->idx -= 2;
-      } else {
-        keyboard->idx--;
-      }
+    } else {
+      keyboard->idx -= (keyboard->idx % KEYBOARD_NUMERIC_LINE_LEN);
     }
     break;
   case KEYPAD_KEY_DOWN:
-    if (keyboard->idx < KEYBOARD_NUMERIC_LINE_LEN) {
-      keyboard->idx += KEYBOARD_NUMERIC_LINE_LEN;
-    } else if (keyboard->idx < (KEYBOARD_NUMERIC_LINE_LEN * 2)) {
-      keyboard->idx = (KEYBOARD_NUMERIC_LINE_LEN * 2) + APP_MIN((keyboard->idx % KEYBOARD_NUMERIC_LINE_LEN), 2);
-    } else {
+    if (keyboard->idx >= (KEYBOARD_NUMERIC_LINE_LEN * 2)) {
       keyboard->idx = (keyboard->idx % KEYBOARD_NUMERIC_LINE_LEN);
+    } else {
+      keyboard->idx = APP_MIN((keyboard->idx + KEYBOARD_NUMERIC_LINE_LEN), KEYBOARD_NUMERIC_SPACE_IDX);
     }
     break;
   case KEYPAD_KEY_BACK:
