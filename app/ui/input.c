@@ -40,6 +40,10 @@
 #define KEYBOARD_EXTRA_SYM '@'
 
 #define KEYBOARD_NUMERIC_LINE_LEN 5
+#define KEYBOARD_NUMERIC_LINE_LAST_LEN 3
+
+#define KEYBOARD_EXTRA_LINE_LEN 9
+#define KEYBOARD_EXTRA_LINE_LAST_LEN 6
 
 #define KEYBOARD_NUMERIC_ALPHA_IDX 10
 #define KEYBOARD_NUMERIC_EXTRA_IDX 11
@@ -376,11 +380,11 @@ static void input_keyboard_render_extra(keyboard_state_t* keyboard) {
   uint16_t x;
   uint16_t y = TH_KEYBOARD_TOP;
 
-  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_ROW0_LEN, KEYBOARD_ROW0_LEN, KEYBOARD_EXTRA_LAYOUT[i]);
-  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_ROW0_LEN, (KEYBOARD_ROW0_LEN * 2), KEYBOARD_EXTRA_LAYOUT[i]);
-  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_ROW0_LEN, (KEYBOARD_ROW0_LEN * 3), KEYBOARD_EXTRA_LAYOUT[i]);
+  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_EXTRA_LINE_LEN, KEYBOARD_ROW0_LEN, KEYBOARD_EXTRA_LAYOUT[i]);
+  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_EXTRA_LINE_LEN, (KEYBOARD_ROW0_LEN * 2), KEYBOARD_EXTRA_LAYOUT[i]);
+  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_EXTRA_LINE_LEN, (KEYBOARD_ROW0_LEN * 3), KEYBOARD_EXTRA_LAYOUT[i]);
   uint16_t y_back = y;
-  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_ROW0_LEN, ((KEYBOARD_ROW0_LEN * 3) + 3), KEYBOARD_EXTRA_LAYOUT[i]);
+  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_EXTRA_LINE_LEN, ((KEYBOARD_ROW0_LEN * 3) + 3), KEYBOARD_EXTRA_LAYOUT[i]);
   y = y_back;
 
   input_keyboard_render_key(KEYBOARD_NUM_SYM, x, y, keyboard->idx == i++, true);
@@ -389,7 +393,7 @@ static void input_keyboard_render_extra(keyboard_state_t* keyboard) {
   input_keyboard_render_key(KEYBOARD_ALPHA_SYM, x, y, keyboard->idx == i++, true);
   x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
 
-  input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN) - KEYBOARD_LINE_WIDTH(5) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
+  input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_EXTRA_LINE_LEN) - KEYBOARD_LINE_WIDTH(5) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
 }
 
 #undef _INPUT_KEYBOARD_RENDER_LINE
@@ -700,10 +704,58 @@ static char input_keyboard_navigate_extra(keyboard_state_t* keyboard) {
   char ret = KEY_NONE;
 
   switch(ui_wait_keypress(portMAX_DELAY)) {
+  case KEYPAD_KEY_UP:
+    if (keyboard->idx >= KEYBOARD_EXTRA_LINE_LEN) {
+      keyboard->idx -= KEYBOARD_EXTRA_LINE_LEN;
+    } else {
+      keyboard->idx = (KEYBOARD_EXTRA_LINE_LEN * 3) + APP_MIN(keyboard->idx, (KEYBOARD_EXTRA_LINE_LAST_LEN - 1));
+    }
+    break;
+  case KEYPAD_KEY_LEFT:
+    if ((keyboard->idx % KEYBOARD_EXTRA_LINE_LEN)) {
+      keyboard->idx--;
+    } else {
+      keyboard->idx = APP_MIN(((keyboard->idx + KEYBOARD_EXTRA_LINE_LEN) - 1), KEYBOARD_EXTRA_SPACE_IDX);
+    }
+    break;
+  case KEYPAD_KEY_RIGHT:
+    if ((keyboard->idx % KEYBOARD_EXTRA_LINE_LEN) != (KEYBOARD_EXTRA_LINE_LEN - 1) && (keyboard->idx != KEYBOARD_EXTRA_SPACE_IDX)) {
+      keyboard->idx++;
+    } else {
+      keyboard->idx -= (keyboard->idx % KEYBOARD_EXTRA_LINE_LEN);
+    }
+    break;
+  case KEYPAD_KEY_DOWN:
+    if (keyboard->idx >= (KEYBOARD_EXTRA_LINE_LEN * 3)) {
+      keyboard->idx = (keyboard->idx % KEYBOARD_EXTRA_LINE_LEN);
+    } else {
+      keyboard->idx = APP_MIN((keyboard->idx + KEYBOARD_EXTRA_LINE_LEN), KEYBOARD_EXTRA_SPACE_IDX);
+    }
+    break;
+  case KEYPAD_KEY_BACK:
+    ret = g_ui_ctx.keypad.last_key_long ? KEY_ESCAPE : KEY_BACKSPACE;
+    break;
+  case KEYPAD_KEY_CONFIRM:
+    if (g_ui_ctx.keypad.last_key_long) {
+      ret = KEY_RETURN;
+    } else {
+      if (keyboard->idx == KEYBOARD_EXTRA_SPACE_IDX) {
+        ret = ' ';
+      } else if (keyboard->idx == KEYBOARD_EXTRA_NUM_IDX) {
+        input_keyboard_blank();
+        keyboard->idx = 0;
+        keyboard->layout = KEYBOARD_NUMERIC;
+      } else if (keyboard->idx == KEYBOARD_EXTRA_ALPHA_IDX) {
+        input_keyboard_blank();
+        keyboard->idx = 0;
+        keyboard->layout = KEYBOARD_LOWERCASE;
+      } else {
+        ret = KEYBOARD_EXTRA_LAYOUT[keyboard->idx];
+      }
+    }
+    break;
   default:
-    input_keyboard_blank();
-    keyboard->idx = 0;
-    keyboard->layout = KEYBOARD_LOWERCASE;
+    break;
   }
 
   return ret;
