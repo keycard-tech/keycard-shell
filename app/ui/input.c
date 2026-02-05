@@ -28,21 +28,31 @@
 #define KEYBOARD_ROW0_LEN 9
 #define KEYBOARD_ROW1_LEN 9
 #define KEYBOARD_ROW2_LEN 8
-#define KEYBOARD_ROW_EXTRA_LEN 3
+#define KEYBOARD_ROW_EXTRA_LEN 4
 
 #define KEYBOARD_ROW0_LIMIT KEYBOARD_ROW0_LEN
 #define KEYBOARD_ROW1_LIMIT (KEYBOARD_ROW0_LIMIT + KEYBOARD_ROW1_LEN)
 #define KEYBOARD_ROW2_LIMIT (KEYBOARD_ROW1_LIMIT + KEYBOARD_ROW2_LEN)
 #define KEYBOARD_ROW_EXTRA_LIMIT (KEYBOARD_ROW2_LIMIT + KEYBOARD_ROW_EXTRA_LEN)
 
+#define KEYBOARD_ALPHA_SYM 'a'
+#define KEYBOARD_NUM_SYM '0'
+#define KEYBOARD_EXTRA_SYM '@'
+
 #define KEYBOARD_NUMERIC_LINE_LEN 5
 
 #define KEYBOARD_NUMERIC_ALPHA_IDX 10
-#define KEYBOARD_NUMERIC_SPACE_IDX 11
+#define KEYBOARD_NUMERIC_EXTRA_IDX 11
+#define KEYBOARD_NUMERIC_SPACE_IDX 12
+
+#define KEYBOARD_EXTRA_NUM_IDX 30
+#define KEYBOARD_EXTRA_ALPHA_IDX 31
+#define KEYBOARD_EXTRA_SPACE_IDX 32
 
 #define KEYBOARD_ALPHA_NUMERIC_IDX 26
-#define KEYBOARD_ALPHA_CASE_IDX 27
-#define KEYBOARD_ALPHA_SPACE_IDX 28
+#define KEYBOARD_ALPHA_EXTRA_IDX 27
+#define KEYBOARD_ALPHA_CASE_IDX 28
+#define KEYBOARD_ALPHA_SPACE_IDX 29
 
 #define KEYBOARD_MNEMONIC_SUGGESTION1_IDX 26
 #define KEYBOARD_MNEMONIC_SUGGESTION2_IDX 27
@@ -59,7 +69,8 @@ typedef enum {
   KEYBOARD_MNEMONIC,
   KEYBOARD_LOWERCASE,
   KEYBOARD_UPPERCASE,
-  KEYBOARD_NUMERIC
+  KEYBOARD_NUMERIC,
+  KEYBOARD_EXTRA,
 } keyboard_layout_t;
 
 typedef struct {
@@ -76,6 +87,13 @@ typedef struct {
 } secret_spec_t;
 
 const char KEYPAD_TO_DIGIT[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', DIG_INV, '0', DIG_INV, DIG_INV, DIG_INV};
+
+const char KEYBOARD_EXTRA_LAYOUT[] = {
+    '@', '!', '#', '$', '%', '^', '&', '*', '~',
+    '(', ')', '-', '+', '=', '"', '.', ':', ';',
+    '<', '>', ',', '.', '/', '?', '|', '{', '}',
+    '[', ']', '_'
+};
 
 const secret_spec_t SECRET_SPEC[] = {
     {PIN_INPUT_TITLE, PIN_CREATE_TITLE, PIN_LABEL_REPEAT, PIN_LEN},
@@ -323,11 +341,13 @@ static void input_keyboard_render_alpha(keyboard_state_t* keyboard, uint16_t sug
     input_keyboard_render_suggestion(x, y, suggestion_idx + 2, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION3_IDX));
   } else {
     x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN)) / 2;
-    input_keyboard_render_key(SYM_HASHTAG, x, y, keyboard->idx == i++, true);
+    input_keyboard_render_key(KEYBOARD_NUM_SYM, x, y, keyboard->idx == i++, true);
+    x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
+    input_keyboard_render_key(KEYBOARD_EXTRA_SYM, x, y, keyboard->idx == i++, true);
     x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
     input_keyboard_render_key((keyboard->layout == KEYBOARD_LOWERCASE) ? SYM_UP_ARROW : SYM_DOWN_ARROW, x, y, keyboard->idx == i++, true);
     x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
-    input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_ROW2_LEN) - KEYBOARD_LINE_WIDTH(2) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
+    input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_ROW2_LEN) - KEYBOARD_LINE_WIDTH(3) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
   }
 }
 
@@ -342,10 +362,34 @@ static void input_keyboard_render_numeric(keyboard_state_t* keyboard) {
   x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_NUMERIC_LINE_LEN)) / 2;
   y += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
 
-  input_keyboard_render_key('a', x, y, keyboard->idx == i++, true);
+  input_keyboard_render_key(KEYBOARD_ALPHA_SYM, x, y, keyboard->idx == i++, true);
   x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
 
-  input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_NUMERIC_LINE_LEN) - KEYBOARD_LINE_WIDTH(1) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
+  input_keyboard_render_key(KEYBOARD_EXTRA_SYM, x, y, keyboard->idx == i++, true);
+  x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
+
+  input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_NUMERIC_LINE_LEN) - KEYBOARD_LINE_WIDTH(2) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
+}
+
+static void input_keyboard_render_extra(keyboard_state_t* keyboard) {
+  uint8_t i = 0;
+  uint16_t x;
+  uint16_t y = TH_KEYBOARD_TOP;
+
+  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_ROW0_LEN, KEYBOARD_ROW0_LEN, KEYBOARD_EXTRA_LAYOUT[i]);
+  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_ROW0_LEN, (KEYBOARD_ROW0_LEN * 2), KEYBOARD_EXTRA_LAYOUT[i]);
+  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_ROW0_LEN, (KEYBOARD_ROW0_LEN * 3), KEYBOARD_EXTRA_LAYOUT[i]);
+  uint16_t y_back = y;
+  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_ROW0_LEN, ((KEYBOARD_ROW0_LEN * 3) + 3), KEYBOARD_EXTRA_LAYOUT[i]);
+  y = y_back;
+
+  input_keyboard_render_key(KEYBOARD_NUM_SYM, x, y, keyboard->idx == i++, true);
+  x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
+
+  input_keyboard_render_key(KEYBOARD_ALPHA_SYM, x, y, keyboard->idx == i++, true);
+  x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
+
+  input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN) - KEYBOARD_LINE_WIDTH(5) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
 }
 
 #undef _INPUT_KEYBOARD_RENDER_LINE
@@ -542,6 +586,11 @@ static char input_keyboard_navigate_alpha(keyboard_state_t* keyboard) {
         keyboard->idx = 0;
         keyboard->layout = KEYBOARD_NUMERIC;
         break;
+      case KEYBOARD_ALPHA_EXTRA_IDX:
+        input_keyboard_blank();
+        keyboard->idx = 0;
+        keyboard->layout = KEYBOARD_EXTRA;
+        break;
       case KEYBOARD_ALPHA_CASE_IDX:
         keyboard->layout = keyboard->layout == KEYBOARD_UPPERCASE ? KEYBOARD_LOWERCASE : KEYBOARD_UPPERCASE;
         break;
@@ -571,7 +620,7 @@ static char input_keyboard_navigate_numeric(keyboard_state_t* keyboard) {
     } else if (keyboard->idx >= KEYBOARD_NUMERIC_LINE_LEN) {
       keyboard->idx -= KEYBOARD_NUMERIC_LINE_LEN;
     } else {
-      keyboard->idx = (KEYBOARD_NUMERIC_LINE_LEN * 2) + APP_MIN(keyboard->idx, 1);
+      keyboard->idx = (KEYBOARD_NUMERIC_LINE_LEN * 2) + APP_MIN(keyboard->idx, 2);
     }
     break;
   case KEYPAD_KEY_LEFT:
@@ -584,6 +633,8 @@ static char input_keyboard_navigate_numeric(keyboard_state_t* keyboard) {
         keyboard->idx = KEYBOARD_NUMERIC_LINE_LEN - 1;
       } else if (keyboard->idx == KEYBOARD_NUMERIC_LINE_LEN) {
         keyboard->idx = (KEYBOARD_NUMERIC_LINE_LEN * 2) - 1;
+      } else if (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2)) {
+        keyboard->idx += 2;
       } else {
         keyboard->idx++;
       }
@@ -592,13 +643,16 @@ static char input_keyboard_navigate_numeric(keyboard_state_t* keyboard) {
   case KEYPAD_KEY_RIGHT:
     if ((keyboard->idx < (KEYBOARD_NUMERIC_LINE_LEN - 1)) ||
         ((keyboard->idx < ((KEYBOARD_NUMERIC_LINE_LEN * 2) - 1)) && (keyboard->idx >= KEYBOARD_NUMERIC_LINE_LEN)) ||
-        (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2))) {
+        (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2)) ||
+        (keyboard->idx == ((KEYBOARD_NUMERIC_LINE_LEN * 2) + 1))) {
       keyboard->idx++;
     }  else {
       if (keyboard->idx == KEYBOARD_NUMERIC_LINE_LEN - 1) {
         keyboard->idx = 0;
       } else if (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2) - 1) {
         keyboard->idx = KEYBOARD_NUMERIC_LINE_LEN;
+      } else if (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2) + 2) {
+        keyboard->idx -= 2;
       } else {
         keyboard->idx--;
       }
@@ -608,9 +662,9 @@ static char input_keyboard_navigate_numeric(keyboard_state_t* keyboard) {
     if (keyboard->idx < KEYBOARD_NUMERIC_LINE_LEN) {
       keyboard->idx += KEYBOARD_NUMERIC_LINE_LEN;
     } else if (keyboard->idx < (KEYBOARD_NUMERIC_LINE_LEN * 2)) {
-      keyboard->idx = (KEYBOARD_NUMERIC_LINE_LEN * 2) + ((keyboard->idx == KEYBOARD_NUMERIC_LINE_LEN) ? 0 : 1);
+      keyboard->idx = (KEYBOARD_NUMERIC_LINE_LEN * 2) + APP_MIN((keyboard->idx % KEYBOARD_NUMERIC_LINE_LEN), 2);
     } else {
-      keyboard->idx = (keyboard->idx == (KEYBOARD_NUMERIC_LINE_LEN * 2)) ? 0 : 1;
+      keyboard->idx = (keyboard->idx % KEYBOARD_NUMERIC_LINE_LEN);
     }
     break;
   case KEYPAD_KEY_BACK:
@@ -626,6 +680,10 @@ static char input_keyboard_navigate_numeric(keyboard_state_t* keyboard) {
         input_keyboard_blank();
         keyboard->idx = 0;
         keyboard->layout = KEYBOARD_LOWERCASE;
+      } else if (keyboard->idx == KEYBOARD_NUMERIC_EXTRA_IDX) {
+        input_keyboard_blank();
+        keyboard->idx = 0;
+        keyboard->layout = KEYBOARD_EXTRA;
       } else {
         ret = '0' + (keyboard->idx + 1) % 10;
       }
@@ -638,6 +696,19 @@ static char input_keyboard_navigate_numeric(keyboard_state_t* keyboard) {
   return ret;
 }
 
+static char input_keyboard_navigate_extra(keyboard_state_t* keyboard) {
+  char ret = KEY_NONE;
+
+  switch(ui_wait_keypress(portMAX_DELAY)) {
+  default:
+    input_keyboard_blank();
+    keyboard->idx = 0;
+    keyboard->layout = KEYBOARD_LOWERCASE;
+  }
+
+  return ret;
+}
+
 static char input_keyboard(keyboard_state_t* keyboard, uint16_t suggestion_idx) {
   char c = KEY_NONE;
 
@@ -645,6 +716,9 @@ static char input_keyboard(keyboard_state_t* keyboard, uint16_t suggestion_idx) 
     if (keyboard->layout == KEYBOARD_NUMERIC) {
       input_keyboard_render_numeric(keyboard);
       c = input_keyboard_navigate_numeric(keyboard);
+    } else if (keyboard->layout == KEYBOARD_EXTRA) {
+      input_keyboard_render_extra(keyboard);
+      c = input_keyboard_navigate_extra(keyboard);
     } else {
       input_keyboard_render_alpha(keyboard, suggestion_idx);
       c = input_keyboard_navigate_alpha(keyboard);
