@@ -1,5 +1,13 @@
 # Keycard Shell Dev Firmware
 
+## 1.1.0 (2026-02-06)
+
+* [ui] add symbol layout to virtual keyboard
+* [ui] improve device verification instructions
+* [btc] allow export of multiple accounts
+* [eth] allow export of legacy and ledger live accounts
+* [misc] do not allow firmware downgrade
+
 ## 1.0.5 (2026-01-23)
 
 * [btc] more robust BIP32 path handling
