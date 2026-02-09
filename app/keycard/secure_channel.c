@@ -106,7 +106,7 @@ app_err_t securechannel_protect_apdu(secure_channel_t *sc, apdu_t* apdu, uint8_t
   apduData[3] = APDU_P2(apdu);
   apduData[4] = len;
 
-  if (!aes_cmac(sc->mac_key, apduData, len, apduData)) {
+  if (!aes_cbc_mac(sc->mac_key, apduData, len, apduData)) {
     return ERR_CRYPTO;
   }
 
@@ -134,7 +134,7 @@ app_err_t securechannel_decrypt_apdu(secure_channel_t *sc, apdu_t* apdu) {
   memset(data, 0, AES_IV_SIZE);
   data[0] = apdu->lr;
 
-  if (!aes_cmac(sc->mac_key, data, apdu->lr, new_iv)) {
+  if (!aes_cbc_mac(sc->mac_key, data, apdu->lr, new_iv)) {
     sc->open = 0;
     return ERR_CRYPTO;    
   }

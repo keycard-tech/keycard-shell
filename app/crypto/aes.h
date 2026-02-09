@@ -9,6 +9,6 @@
 
 uint8_t aes_encrypt_cbc(const uint8_t* key, const uint8_t* iv, const uint8_t* data, uint32_t len, uint8_t* out);
 uint8_t aes_decrypt_cbc(const uint8_t* key, const uint8_t* iv, const uint8_t* data, uint32_t len, uint8_t* out);
-uint8_t aes_cmac(const uint8_t* key, const uint8_t* data, uint32_t len, uint8_t* out);
+uint8_t aes_cbc_mac(const uint8_t* key, const uint8_t* data, uint32_t len, uint8_t* out);
 
 #endif

@@ -78,7 +78,7 @@ uint8_t aes_decrypt_cbc(const uint8_t* key, const uint8_t* iv, const uint8_t* da
   return 1;
 }
 
-uint8_t aes_cmac(const uint8_t* key, const uint8_t* data, uint32_t len, uint8_t* out) {
+uint8_t aes_cbc_mac(const uint8_t* key, const uint8_t* data, uint32_t len, uint8_t* out) {
   uint8_t round_key[(AES_256_KEYROUND+1)*16] __attribute__((aligned(4)));
   _AES(256_keyschedule_enc(round_key, key));
 
@@ -128,7 +128,7 @@ uint8_t aes_decrypt_cbc(const uint8_t* key, const uint8_t* iv, const uint8_t* da
   return 1;
 }
 
-uint8_t aes_cmac(const uint8_t* key, const uint8_t* data, uint32_t len, uint8_t* out) {
+uint8_t aes_cbc_mac(const uint8_t* key, const uint8_t* data, uint32_t len, uint8_t* out) {
   hal_aes256_init(AES_ENCRYPT, AES_CBC, key, ZERO32);
 
   for(uint32_t i = 0; i < len; i += AES_BLOCK_SIZE) {
