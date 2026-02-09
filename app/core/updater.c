@@ -289,6 +289,11 @@ app_err_t updater_usb_db_upgrade(apdu_t* apdu) {
   uint8_t first_segment = APDU_P1(apdu) == 0;
 
   if (first_segment) {
+    if (len < 4) {
+      core_usb_err_sw(apdu, 0x6a, 0x80);
+      return ERR_DATA;
+    }
+
     g_core.data.msg.len = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
     g_core.data.msg.received = 0;
     data += 4;
