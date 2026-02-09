@@ -522,7 +522,8 @@ static app_err_t keycard_read_name(keycard_t* kc) {
   data[1 + name_len] = '\0';
 
   strncpy(kc->name, title, KEYCARD_NAME_MAX_LEN);
-
+  kc->name[KEYCARD_NAME_MAX_LEN] = '\0';
+  
   return ERR_OK;
 }
 
