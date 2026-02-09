@@ -354,7 +354,7 @@ static app_err_t core_btc_read_signature(uint8_t* data, uint8_t sighash, psbt_re
 }
 
 static app_err_t core_btc_set_path(uint8_t* btc_bip32_path, uint32_t btc_bip32_path_len) {
-  if (btc_bip32_path_len > BIP44_MAX_PATH_LEN) {
+  if ((btc_bip32_path_len > BIP44_MAX_PATH_LEN) || ((btc_bip32_path_len % 4) != 0)) {
     return ERR_DATA;
   }
 
