@@ -120,8 +120,10 @@ app_err_t securechannel_decrypt_apdu(secure_channel_t *sc, apdu_t* apdu) {
     return ERR_CRYPTO;
   }
 
+  if (apdu->lr < 2) {
+    return ERR_DATA;
+  }
   APDU_ASSERT_OK(apdu);
-
   apdu->lr -= 2;
 
   uint8_t cmac[AES_IV_SIZE] __attribute__((aligned(4)));
