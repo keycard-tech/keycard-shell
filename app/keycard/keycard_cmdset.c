@@ -246,7 +246,7 @@ app_err_t keycard_cmd_get_data(keycard_t* kc) {
   }
 }
 
-app_err_t keycard_cmd_set_data(keycard_t* kc, uint8_t* data, int8_t len) {
+app_err_t keycard_cmd_set_data(keycard_t* kc, uint8_t* data, uint8_t len) {
   APDU_RESET(&kc->apdu);
   APDU_CLA(&kc->apdu) = 0x80;
   APDU_INS(&kc->apdu) = 0xe2;
