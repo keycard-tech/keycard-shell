@@ -94,7 +94,7 @@ static psbt_result_t psbt_write_record(psbt_t *tx, psbt_record_t *rec) {
 }
 
 static psbt_result_t psbt_read_header(psbt_t *tx) {
-  ASSERT_SPACE(4);
+  ASSERT_SPACE(5);
 
   if (memcmp(tx->write_pos, PSBT_MAGIC, sizeof(PSBT_MAGIC)) != 0) {
     return PSBT_READ_ERROR;
