@@ -322,6 +322,8 @@ psbt_result_t psbt_read(const uint8_t *src, size_t src_size, psbt_t *tx, psbt_el
     }
   }
 
+  ASSERT_SPACE(1);
+
   if (tx->state != PSBT_ST_FINALIZED) {
     return PSBT_INVALID_STATE;
   } else if (*tx->write_pos != 0) {
