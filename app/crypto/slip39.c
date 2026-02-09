@@ -6,6 +6,7 @@
 //
 
 #include "slip39.h"
+#include "memzero.h"
 #include "pbkdf2.h"
 #include "shamir.h"
 #include "rand.h"
@@ -342,10 +343,10 @@ static int generate_shards(uint8_t group_threshold, const slip39_group_desc_t *g
       shard_count++;
     }
 
-    memset(member_shares, 0, sizeof(member_shares));
+    memzero(member_shares, sizeof(member_shares));
   }
 
-  memset(group_shares, 0, sizeof(group_shares));
+  memzero(group_shares, sizeof(group_shares));
 
   return shard_count;
 }
@@ -468,7 +469,7 @@ int slip39_combine(const slip39_shard_t shards[], uint8_t shard_count, uint8_t* 
   memcpy(secret, group.value, group.value_length);
 
   int ret = group.value_length;
-  memset(&group, 0, sizeof(slip39_group_t));
+  memzero(&group, sizeof(slip39_group_t));
 
   return ret;
 }

@@ -6,6 +6,7 @@
 #include "crypto/rand.h"
 #include "crypto/secp256k1.h"
 #include "crypto/util.h"
+#include "crypto/memzero.h"
 #include "error.h"
 
 #define SECP256K1_KEYLEN 32
@@ -46,7 +47,7 @@ app_err_t securechannel_open(secure_channel_t* sc, smartcard_t* card, apdu_t* ap
   APDU_P1(apdu) = pairing->idx;
   APDU_P2(apdu) = 0;
   if (ecdsa_get_public_key65(&secp256k1, priv, APDU_DATA(apdu)) != 0) {
-    memset(priv, 0, SECP256K1_KEYLEN);
+    memzero(priv, SECP256K1_KEYLEN);
     return ERR_CRYPTO;
   }
   APDU_SET_LC(apdu, SECP256K1_PUBLEN);
@@ -61,7 +62,7 @@ app_err_t securechannel_open(secure_channel_t* sc, smartcard_t* card, apdu_t* ap
   uint8_t secret[SECP256K1_PUBLEN];
 
   uint8_t res = ecdh_multiply(&secp256k1, priv, sc_pub, secret);
-  memset(priv, 0, SECP256K1_KEYLEN);
+  memzero(priv, SECP256K1_KEYLEN);
 
   if (res != 0) {
     return ERR_CRYPTO;
@@ -79,7 +80,7 @@ app_err_t securechannel_open(secure_channel_t* sc, smartcard_t* card, apdu_t* ap
   memcpy(sc->iv, &apduData[SHA256_DIGEST_LENGTH], AES_IV_SIZE);
   sc->open = 1;
 
-  memset(secret, 0, SECP256K1_PUBLEN);
+  memzero(secret, SECP256K1_PUBLEN);
   return securechannel_mutual_authenticate(sc, card, apdu);
 }
 
@@ -166,7 +167,7 @@ app_err_t securechannel_init(smartcard_t* card, apdu_t* apdu, uint8_t* sc_pub, u
   apduData[0] = SECP256K1_PUBLEN;
   res |= ecdsa_get_public_key65(&secp256k1, priv, &apduData[1]);
 
-  memset(priv, 0, SECP256K1_KEYLEN);
+  memzero(priv, SECP256K1_KEYLEN);
 
   if (res != 0) {
     return ERR_CRYPTO;
@@ -179,10 +180,10 @@ app_err_t securechannel_init(smartcard_t* card, apdu_t* apdu, uint8_t* sc_pub, u
   len = pad_iso9797_m1(data, SC_PAD, len);
   res = aes_encrypt_cbc(secret, iv, data, len, data);
 
-  memset(secret, 0, SECP256K1_KEYLEN+3);
+  memzero(secret, SECP256K1_KEYLEN+3);
 
   if (!res) {
-    memset(data, 0, len);
+    memzero(data, len);
     return ERR_CRYPTO;
   }
 
@@ -219,8 +220,8 @@ app_err_t securechannel_send_apdu(smartcard_t* card, secure_channel_t *sc, apdu_
 }
 
 void securechannel_close(secure_channel_t* sc) {
-  memset(sc->enc_key, 0, AES_256_KEY_SIZE);
-  memset(sc->mac_key, 0, AES_256_KEY_SIZE);
-  memset(sc->iv, 0, AES_IV_SIZE);
+  memzero(sc->enc_key, AES_256_KEY_SIZE);
+  memzero(sc->mac_key, AES_256_KEY_SIZE);
+  memzero(sc->iv, AES_IV_SIZE);
   sc->open = 0;
 }

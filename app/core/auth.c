@@ -4,6 +4,7 @@
 #include "crypto/sha2.h"
 #include "crypto/secp256k1.h"
 #include "crypto/rand.h"
+#include "crypto/memzero.h"
 #include "hal.h"
 #include "settings.h"
 #include "storage/keys.h"
@@ -53,7 +54,7 @@ void device_auth_run() {
 
   key_read_private(DEV_AUTH_PRIV_KEY, auth_key);
   ecdsa_sign(&secp256k1, auth_key, digest, g_core.data.sig.plain_sig);
-  memset(auth_key, 0, ECC256_ELEMENT_SIZE);
+  memzero(auth_key, ECC256_ELEMENT_SIZE);
 
   // Response
   random_buffer((uint8_t*) auth.dev_auth_challenge.dev_auth_challenge.value, AUTH_CHALLENGE_LEN);

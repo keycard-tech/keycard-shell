@@ -1,5 +1,6 @@
 #include <string.h>
 #include "aes.h"
+#include "memzero.h"
 #include "hal.h"
 #include "mem.h"
 
@@ -43,6 +44,8 @@ uint8_t aes_encrypt_cbc(const uint8_t* key, const uint8_t* iv, const uint8_t* da
     data_in_p += 4;
   }
   
+  memzero(round_key, sizeof(round_key));
+
   return 1;
 }
 
@@ -70,6 +73,8 @@ uint8_t aes_decrypt_cbc(const uint8_t* key, const uint8_t* iv, const uint8_t* da
     data += 16;
   }
 
+  memzero(round_key, sizeof(round_key));
+
   return 1;
 }
 
@@ -93,6 +98,8 @@ uint8_t aes_cmac(const uint8_t* key, const uint8_t* data, uint32_t len, uint8_t*
     iv_p = data_out_p;
     data_in_p += 4;
   }
+
+  memzero(round_key, sizeof(round_key));
 
   return 1;
 }

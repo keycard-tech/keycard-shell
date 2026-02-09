@@ -1,5 +1,6 @@
 #include "card.h"
 #include "core.h"
+#include "crypto/memzero.h"
 #include "keycard/keycard_cmdset.h"
 #include "pwr.h"
 #include "settings.h"
@@ -27,7 +28,7 @@ void card_change_pin() {
   }
 
   app_err_t err = keycard_cmd_change_credential(&g_core.keycard, KEYCARD_PIN, pin, KEYCARD_PIN_LEN);
-  memset(pin, 0, KEYCARD_PIN_LEN);
+  memzero(pin, KEYCARD_PIN_LEN);
 
   if (err == ERR_OK) {
     ui_info(ICON_INFO_SUCCESS, LSTR(PIN_CHANGE_SUCCESS), NULL, 0);
@@ -48,7 +49,7 @@ void card_change_puk() {
   }
 
   app_err_t err = keycard_cmd_change_credential(&g_core.keycard, KEYCARD_PUK, puk, KEYCARD_PUK_LEN);
-  memset(puk, 0, KEYCARD_PUK_LEN);
+  memzero(puk, KEYCARD_PUK_LEN);
 
   if (err == ERR_OK) {
     ui_info(ICON_INFO_SUCCESS, LSTR(PUK_CHANGE_SUCCESS), LSTR(INFO_WRITE_KEEP_SAFE), 0);
@@ -72,7 +73,7 @@ void card_change_pairing() {
   uint8_t pairing[32];
 
   keycard_pairing_password_hash(password, len, pairing);
-  memset(password, 0, len);
+  memzero(password, len);
 
   app_err_t err = keycard_cmd_change_credential(&g_core.keycard, KEYCARD_PAIRING, pairing, 32);
 

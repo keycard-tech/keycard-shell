@@ -2,6 +2,7 @@
 
 #include "keycard_cmdset.h"
 #include "error.h"
+#include "crypto/memzero.h"
 #include "crypto/rand.h"
 #include "crypto/sha2.h"
 #include "crypto/util.h"
@@ -129,8 +130,8 @@ app_err_t keycard_cmd_unblock_pin(keycard_t* kc, uint8_t* pin, uint8_t* puk) {
   memcpy(data, puk, KEYCARD_PUK_LEN);
   memcpy(&data[KEYCARD_PUK_LEN], pin, KEYCARD_PIN_LEN);
 
-  memset(puk, 0, KEYCARD_PUK_LEN);
-  memset(pin, 0, KEYCARD_PIN_LEN);
+  memzero(puk, KEYCARD_PUK_LEN);
+  memzero(pin, KEYCARD_PIN_LEN);
   
   return securechannel_send_apdu(&kc->sc, &kc->ch, &kc->apdu, data, (KEYCARD_PUK_LEN + KEYCARD_PIN_LEN));
 }
@@ -157,7 +158,7 @@ app_err_t keycard_cmd_init(keycard_t* kc, uint8_t* sc_pub, uint8_t* pin, uint8_t
   memcpy(&data[KEYCARD_PIN_LEN+KEYCARD_PUK_LEN+SHA256_DIGEST_LENGTH + 2], duress_pin, KEYCARD_PIN_LEN);
 
   if (psk != KEYCARD_DEFAULT_PSK) {
-    memset(psk, 0, SHA256_DIGEST_LENGTH);
+    memzero(psk, SHA256_DIGEST_LENGTH);
   }
 
   return securechannel_init(&kc->sc, &kc->apdu, sc_pub, data, KEYCARD_INIT_CMD_LEN);
