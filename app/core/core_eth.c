@@ -131,6 +131,7 @@ static app_err_t core_eth_process_msg(const uint8_t* data, uint32_t len, uint8_t
   }
 }
 
+/** Data must be within g_mem_heap */
 static app_err_t core_eth_process_eip712(const uint8_t* data, uint32_t len) {
   core_eth_set_is_message();
 
