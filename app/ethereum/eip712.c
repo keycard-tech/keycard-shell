@@ -216,6 +216,11 @@ static app_err_t eip712_copy_uint(int field_index, bool pad_right, uint8_t out[3
 
   if ((tmpstr.len >= 2) && (tmpstr.str[0] == '0') && (tmpstr.str[1] == 'x')) {
     int out_len = ((tmpstr.len - 2) + 1) / 2;
+
+    if (out_len > 32) {
+      return ERR_DATA;
+    }
+
     int padding = 32 - out_len;
     int offset;
 
