@@ -44,6 +44,11 @@ app_err_t pps_negotiate(smartcard_t* sc) {
   uint32_t F = F_Table[fi];
   uint32_t D = D_Table[di];
   uint32_t freq = F_freq_Table[fi];
+
+  if ((D == 0) || (F == 0)) {
+    return ERR_DATA;
+  }
+
   uint32_t fd = F/D;
 
   uint32_t baud = ((freq * D) / F);
