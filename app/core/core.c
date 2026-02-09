@@ -517,7 +517,7 @@ void core_display_public_multicoin() {
   accounts.crypto_multi_accounts_device_present = 1;
 
   uint8_t uid[CRYPTO_MULTIACCOUNT_SN_LEN/2];
-  memset(uid, 0, CRYPTO_MULTIACCOUNT_SN_LEN/20);
+  memset(uid, 0, sizeof(uid));
   hal_device_uid(uid);
   uint8_t sn[CRYPTO_MULTIACCOUNT_SN_LEN];
   base16_encode(uid, (char*) sn, (CRYPTO_MULTIACCOUNT_SN_LEN/2));
