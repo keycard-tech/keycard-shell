@@ -82,7 +82,7 @@ int ecdsa_recover_pub_from_sig(const ecdsa_curve *curve, uint8_t *pub_key, const
     return 1;
   }
 
-  if ((hal_bn_cmp(s, curve->order) >= 0) || all_zero(r, ECC256_ELEMENT_SIZE)) {
+  if ((hal_bn_cmp(s, curve->order) >= 0) || all_zero(s, ECC256_ELEMENT_SIZE)) {
     return 1;
   }
 
