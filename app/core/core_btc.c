@@ -86,6 +86,10 @@ static void core_btc_psbt_input_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index, 
     tx_ctx->input_data[index].witness = true;
     break;
   case PSBT_IN_BIP32_DERIVATION:
+    if (rec->val_size < 4) {
+      tx_ctx->error = ERR_DECODE;
+      return;
+    }
     if (tx_ctx->input_data[index].master_fingerprint != tx_ctx->mfp) {
       memcpy(&tx_ctx->input_data[index].master_fingerprint, rec->val, sizeof(uint32_t));
       tx_ctx->input_data[index].bip32_path = &rec->val[4];
@@ -105,6 +109,11 @@ static void core_btc_psbt_output_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index,
   }
 
   if (rec->type == PSBT_OUT_BIP32_DERIVATION) {
+    if (rec->val_size < 4) {
+      tx_ctx->error = ERR_DECODE;
+      return;
+    }
+
     if (tx_ctx->output_data[index].master_fingerprint != tx_ctx->mfp) {
       memcpy(&tx_ctx->output_data[index].master_fingerprint, rec->val, sizeof(uint32_t));
       tx_ctx->output_data[index].bip32_path = &rec->val[4];
