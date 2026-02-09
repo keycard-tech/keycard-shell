@@ -97,6 +97,10 @@ static void core_btc_psbt_input_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index, 
     }
     break;
   case PSBT_IN_SIGHASH_TYPE:
+    if (rec->val_size < sizeof(uint32_t)) {
+      tx_ctx->error = ERR_DECODE;
+      return;
+    }
     memcpy(&tx_ctx->input_data[index].sighash_flag, rec->val, sizeof(uint32_t));
     break;
   }
