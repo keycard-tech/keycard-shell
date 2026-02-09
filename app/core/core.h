@@ -23,6 +23,8 @@
 #define CBOR_SIG_MAX_LEN 192
 #define CBOR_KEY_MAX_LEN 192
 
+#define DER_ECDSA_MAX_SIGNATURE_LEN 72
+
 typedef struct {
   txContext_t ctx;
   txContent_t content;

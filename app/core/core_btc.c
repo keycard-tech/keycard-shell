@@ -343,6 +343,10 @@ static app_err_t core_btc_read_signature(uint8_t* data, uint8_t sighash, psbt_re
     return ERR_DATA;
   }
 
+  if (rec->val[1] > DER_ECDSA_MAX_SIGNATURE_LEN) {
+    return ERR_DATA;
+  }
+
   rec->val_size = 3 + rec->val[1];
   rec->val[rec->val_size - 1] = sighash;
 
