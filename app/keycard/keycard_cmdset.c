@@ -48,7 +48,7 @@ app_err_t keycard_cmd_autopair(keycard_t* kc, const uint8_t* psk, pairing_t* pai
   uint16_t sw = APDU_SW(&kc->apdu);
   if (sw == 0x6a84) {
     return ERR_FULL;
-  } else if (sw != SW_OK) {
+  } else if ((sw != SW_OK) || (kc->apdu.lr < (SHA256_DIGEST_LENGTH*2))) {
     return ERR_HW;
   }
 
@@ -75,6 +75,10 @@ app_err_t keycard_cmd_autopair(keycard_t* kc, const uint8_t* psk, pairing_t* pai
   }
 
   APDU_ASSERT_OK(&kc->apdu);
+
+  if (kc->apdu.lr < (1 + SHA256_DIGEST_LENGTH)) {
+    return ERR_HW;
+  }
 
   pairing->idx = APDU_RESP(&kc->apdu)[0];
   uint8_t *salt = APDU_RESP(&kc->apdu) + 1;
