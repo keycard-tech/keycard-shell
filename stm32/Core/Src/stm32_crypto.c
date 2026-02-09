@@ -1,4 +1,5 @@
 #include "stm32_internal.h"
+#include "crypto/memzero.h"
 
 const uint8_t BN_ONE[BN_SIZE] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -20,6 +21,7 @@ hal_err_t hal_rng_next(uint8_t *buf, size_t len) {
     memcpy(buf, &rnd, len);
   }
 
+  memzero(&rnd, sizeof(rnd));
   return HAL_SUCCESS;
 }
 
