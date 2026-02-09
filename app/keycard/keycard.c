@@ -714,6 +714,9 @@ app_err_t keycard_set_name(keycard_t* kc, const char* name) {
 
     if ((data[0] >> 5) == 1) {
       uint8_t copy_off =  1 + (data[0] & 0x1f);
+      if (copy_off >= kc->apdu.lr) {
+        return ERR_DATA;
+      }
       uint8_t copy_len = kc->apdu.lr - copy_off;
       memcpy(&metadata[metadata_len], &data[copy_off], copy_len);
       metadata_len += copy_len;
