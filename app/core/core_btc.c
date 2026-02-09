@@ -72,6 +72,10 @@ static void core_btc_psbt_input_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index, 
     tx_ctx->input_data[index].witness_script_len = rec->val_size;
     break;
   case PSBT_IN_WITNESS_UTXO:
+    if (rec->val_size < 9) {
+        tx_ctx->error = ERR_DECODE;
+        return;
+    }
     if (rec->val[8] >= 253) {
       tx_ctx->error = ERR_DECODE;
       return;
