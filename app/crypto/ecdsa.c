@@ -67,7 +67,10 @@ int ecdsa_get_public_key65(const ecdsa_curve *curve, const uint8_t *priv_key, ui
 }
 
 int ecdsa_get_public_key33(const ecdsa_curve *curve, const uint8_t *priv_key, uint8_t *pub_key) {
-  ecdsa_get_public_key65(curve, priv_key, pub_key);
+  if (ecdsa_get_public_key65(curve, priv_key, pub_key) != 0) {
+    return 1;
+  }
+
   pub_key[0] = 0x02 | (pub_key[64] & 1);
   return 0;
 }
