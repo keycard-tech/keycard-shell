@@ -399,6 +399,7 @@ void keccak_512(const unsigned char* data, size_t len, unsigned char* digest)
 void sha3_256(const unsigned char* data, size_t len, unsigned char* digest)
 {
   SHA3_CTX ctx;
+	sha3_256_Init(&ctx);
 	sha3_Update(&ctx, data, len);
 	sha3_Final(&ctx, digest);
 }
