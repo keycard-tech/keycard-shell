@@ -137,6 +137,10 @@ app_err_t core_export_public(uint8_t* pub, uint8_t* chain, uint32_t* fingerprint
   }
 
   if (parent_fingerprint) {
+    if (g_core.bip44_path_len < 4) {
+      return ERR_DATA;
+    }
+
     memcpy(path, g_core.bip44_path, (g_core.bip44_path_len - 4));
     err = core_get_fingerprint(path, (g_core.bip44_path_len - 4), parent_fingerprint);
     if (err != ERR_OK) {
