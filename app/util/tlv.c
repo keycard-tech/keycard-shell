@@ -22,6 +22,7 @@
 
 #include <string.h>
 #include "tlv.h"
+#include "common.h"
 
 uint16_t tlv_read_tag(uint8_t *buf, uint16_t *out_tag) {
   uint16_t i = 0;
@@ -29,9 +30,7 @@ uint16_t tlv_read_tag(uint8_t *buf, uint16_t *out_tag) {
   *out_tag = buf[i++];
 
   if((*out_tag & 0x1F) == 0x1F) {
-    do {
-      *out_tag = *out_tag << 8 | buf[i++];
-    } while(*out_tag & 0x80);
+    *out_tag = *out_tag << 8 | buf[i++];
   }
 
   return i;
@@ -42,7 +41,7 @@ uint16_t tlv_read_length(uint8_t *buf, uint16_t *out_len) {
   *out_len = buf[i++];
 
   if (*out_len > 0x7f) {
-    uint16_t lenOfLen = *out_len & 0x7f;
+    uint16_t lenOfLen = APP_MIN((*out_len & 0x7f), 2);
     *out_len = 0;
 
     while(lenOfLen--) {
