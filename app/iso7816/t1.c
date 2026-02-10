@@ -117,7 +117,7 @@ static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
     return ERR_TXRX;
   }
 
-  uint8_t blen = header[2];
+  uint16_t blen = header[2];
 
   hal_smartcard_set_blocklen(blen);
   hal_smartcard_set_timeout(sc->t1_cwt);
@@ -126,11 +126,11 @@ static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
   uint8_t s;
 
   if ((header[1] & T1_R_BLOCK) == 0) {
-    if ((apdu->lr + 1 + blen) > APDU_BUF_LEN) {
+    if ((apdu->lr + blen) > APDU_BUF_LEN) {
       return ERR_TXRX;
     }
 
-    data = &apdu->data[(apdu->lr+1)];
+    data = &apdu->data[apdu->lr];
     apdu->lr += blen;
   } else if ((header[1] & T1_S_BLOCK) == T1_S_BLOCK) {
     data = &s;
@@ -218,7 +218,7 @@ app_err_t t1_transmit(smartcard_t* sc, apdu_t* apdu) {
     }
   }
 
-  return to_send == 0 ? ERR_OK : ERR_TXRX;
+  return (to_send == 0) && (apdu->lr >= 2) ? ERR_OK : ERR_TXRX;
 }
 
 app_err_t t1_negotiate_ifsd(smartcard_t* sc, int retry) {

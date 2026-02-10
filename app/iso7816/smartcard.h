@@ -12,14 +12,14 @@
 #define APDU_P2(__APDU__) ((__APDU__)->data[3])
 #define APDU_LC(__APDU__) ((__APDU__)->has_lc ? (__APDU__)->data[4] : -1)
 #define APDU_DATA(__APDU__)(&((__APDU__)->data[5]))
-#define APDU_RESP(__APDU__)(&((__APDU__)->data[1]))
+#define APDU_RESP(__APDU__)(&((__APDU__)->data[0]))
 #define APDU_LE(__APDU__) ((__APDU__)->has_le ? (__APDU__)->data[(__APDU__)->has_lc ? 5 : 4] : -1)
 #define APDU_SET_LC(__APDU__, __val__) {(__APDU__)->data[4] = __val__; (__APDU__)->has_lc = 1;}
 #define APDU_SET_LE(__APDU__, __val__) {(__APDU__)->data[5 + APDU_LC(__APDU__)] = __val__; (__APDU__)->has_le = 1;}
 #define APDU_RESET(__APDU__) {(__APDU__)->has_lc = 0; (__APDU__)->has_le = 0; (__APDU__)->lr = 0;}
 #define APDU_LEN(__APDU__) (4 + (__APDU__)->has_le + ((__APDU__)->has_lc ? (1 + (__APDU__)->data[4]) : 0))
-#define APDU_SW1(__APDU__) ((__APDU__)->data[(__APDU__)->lr - 1])
-#define APDU_SW2(__APDU__) ((__APDU__)->data[(__APDU__)->lr])
+#define APDU_SW1(__APDU__) ((__APDU__)->data[(__APDU__)->lr - 2])
+#define APDU_SW2(__APDU__) ((__APDU__)->data[(__APDU__)->lr - 1])
 #define APDU_SW(__APDU__) ((APDU_SW1(__APDU__) << 8) | APDU_SW2(__APDU__))
 #define APDU_BUF_LEN (255 + 6)
 
@@ -52,7 +52,7 @@ typedef struct {
 typedef struct __attribute__((packed,aligned(4))) {
   uint8_t has_lc;
   uint8_t has_le;
-  uint8_t lr;
+  uint16_t lr;
   uint8_t data[APDU_BUF_LEN];
 } apdu_t;
 
