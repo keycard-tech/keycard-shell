@@ -507,7 +507,7 @@ static app_err_t keycard_read_name(keycard_t* kc) {
     return ERR_TXRX;
   }
 
-  if ((APDU_SW(&kc->apdu) != SW_OK) || (kc->apdu.lr == 0)) {
+  if ((APDU_SW(&kc->apdu) != SW_OK) || (kc->apdu.lr == 2)) {
     return ERR_OK;
   }
 
@@ -710,15 +710,16 @@ app_err_t keycard_set_name(keycard_t* kc, const char* name) {
     return ERR_DATA;
   }
 
-  if (kc->apdu.lr != 0) {
+  if (kc->apdu.lr > 2) {
     uint8_t* data = APDU_RESP(&kc->apdu);
+    uint8_t data_len = kc->apdu.lr - 2;
 
     if ((data[0] >> 5) == 1) {
       uint8_t copy_off =  1 + (data[0] & 0x1f);
-      if (copy_off >= kc->apdu.lr) {
+      if (copy_off >= data_len) {
         return ERR_DATA;
       }
-      uint8_t copy_len = kc->apdu.lr - copy_off;
+      uint8_t copy_len = data_len - copy_off;
       memcpy(&metadata[metadata_len], &data[copy_off], copy_len);
       metadata_len += copy_len;
     }
