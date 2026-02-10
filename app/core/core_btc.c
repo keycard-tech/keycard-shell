@@ -179,7 +179,7 @@ static app_err_t core_btc_hash_legacy(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
   sha256_Update(&sha256, (uint8_t*) &tx_ctx->tx.version, sizeof(uint32_t));
 
   uint8_t* script;
-  uint8_t script_len;
+  size_t script_len;
 
   if (tx_ctx->input_data[index].input_type == BTC_INPUT_TYPE_LEGACY_WITH_REDEEM) {
     script = tx_ctx->input_data[index].redeem_script;
@@ -189,12 +189,16 @@ static app_err_t core_btc_hash_legacy(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
     script_len = tx_ctx->input_data[index].script_pubkey_len;
   }
 
+  uint8_t cscript_len[sizeof(uint64_t)];
+  uint8_t csize_len = compactsize_length(script_len);
+  compactsize_write(cscript_len, script_len);
+
   if (anyonecanpay) {
     uint8_t tmp = 1;
     sha256_Update(&sha256, (uint8_t*) &tmp, sizeof(uint8_t));
     sha256_Update(&sha256, tx_ctx->inputs[index].txid, BTC_TXID_LEN);
     sha256_Update(&sha256, (uint8_t*) &tx_ctx->inputs[index].index, sizeof(uint32_t));
-    sha256_Update(&sha256, &script_len, sizeof(uint8_t));
+    sha256_Update(&sha256, cscript_len, csize_len);
     sha256_Update(&sha256, script, script_len);
     sha256_Update(&sha256, (uint8_t*) &tx_ctx->inputs[index].sequence_number, sizeof(uint32_t));
   } else{
@@ -204,7 +208,7 @@ static app_err_t core_btc_hash_legacy(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
       sha256_Update(&sha256, (uint8_t*) &tx_ctx->inputs[i].index, sizeof(uint32_t));
 
       if (i == index) {
-        sha256_Update(&sha256, (uint8_t*) &script_len, sizeof(uint8_t));
+        sha256_Update(&sha256, cscript_len, csize_len);
         sha256_Update(&sha256, script, script_len);
       } else {
         uint8_t tmp = 0;
