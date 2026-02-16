@@ -43,15 +43,15 @@
 #define KEYBOARD_NUMERIC_LINE_LAST_LEN 3
 
 #define KEYBOARD_EXTRA_LINE_LEN 9
-#define KEYBOARD_EXTRA_LINE_LAST_LEN 6
+#define KEYBOARD_EXTRA_LINE_LAST_LEN 7
 
 #define KEYBOARD_NUMERIC_ALPHA_IDX 10
 #define KEYBOARD_NUMERIC_EXTRA_IDX 11
 #define KEYBOARD_NUMERIC_SPACE_IDX 12
 
-#define KEYBOARD_EXTRA_NUM_IDX 30
-#define KEYBOARD_EXTRA_ALPHA_IDX 31
-#define KEYBOARD_EXTRA_SPACE_IDX 32
+#define KEYBOARD_EXTRA_NUM_IDX 31
+#define KEYBOARD_EXTRA_ALPHA_IDX 32
+#define KEYBOARD_EXTRA_SPACE_IDX 33
 
 #define KEYBOARD_ALPHA_NUMERIC_IDX 26
 #define KEYBOARD_ALPHA_EXTRA_IDX 27
@@ -96,7 +96,7 @@ const char KEYBOARD_EXTRA_LAYOUT[] = {
     '@', '!', '#', '$', '%', '^', '&', '*', '~',
     '(', ')', '-', '+', '=', '"', '.', ':', ';',
     '<', '>', ',', '.', '/', '?', '|', '{', '}',
-    '[', ']', '_'
+    '[', ']', '_', '\\'
 };
 
 const secret_spec_t SECRET_SPEC[] = {
@@ -384,7 +384,7 @@ static void input_keyboard_render_extra(keyboard_state_t* keyboard) {
   _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_EXTRA_LINE_LEN, (KEYBOARD_ROW0_LEN * 2), KEYBOARD_EXTRA_LAYOUT[i]);
   _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_EXTRA_LINE_LEN, (KEYBOARD_ROW0_LEN * 3), KEYBOARD_EXTRA_LAYOUT[i]);
   uint16_t y_back = y;
-  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_EXTRA_LINE_LEN, ((KEYBOARD_ROW0_LEN * 3) + 3), KEYBOARD_EXTRA_LAYOUT[i]);
+  _INPUT_KEYBOARD_RENDER_LINE(KEYBOARD_EXTRA_LINE_LEN, ((KEYBOARD_ROW0_LEN * 3) + 4), KEYBOARD_EXTRA_LAYOUT[i]);
   y = y_back;
 
   input_keyboard_render_key(KEYBOARD_NUM_SYM, x, y, keyboard->idx == i++, true);
@@ -393,7 +393,7 @@ static void input_keyboard_render_extra(keyboard_state_t* keyboard) {
   input_keyboard_render_key(KEYBOARD_ALPHA_SYM, x, y, keyboard->idx == i++, true);
   x += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN;
 
-  input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_EXTRA_LINE_LEN) - KEYBOARD_LINE_WIDTH(5) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
+  input_keyboard_render_spacebar(x, y, (KEYBOARD_LINE_WIDTH(KEYBOARD_EXTRA_LINE_LEN) - KEYBOARD_LINE_WIDTH(6) - TH_KEYBOARD_KEY_MARGIN), keyboard->idx == i++);
 }
 
 #undef _INPUT_KEYBOARD_RENDER_LINE
