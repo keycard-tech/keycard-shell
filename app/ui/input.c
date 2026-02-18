@@ -69,6 +69,8 @@
 
 #define MNEMONIC_BACKUP_REFRESH_MS 60000
 
+#define TEXT_INPUT_MAX_LEN 32
+
 typedef enum {
   KEYBOARD_MNEMONIC,
   KEYBOARD_LOWERCASE,
@@ -804,7 +806,8 @@ static void input_render_text_field(const char* str, const char* prompt, screen_
 
   screen_fill_area(field_area, ctx.bg);
 
-  screen_draw_chars(&ctx, str, len);
+  int off = APP_MAX((len - TEXT_INPUT_MAX_LEN), 0);
+  screen_draw_chars(&ctx, &str[off], APP_MIN(len, TEXT_INPUT_MAX_LEN));
 
   screen_area_t cursor_area = {
       .x = ctx.x + (TH_TEXT_FIELD_CURSOR_MARGIN/2),
