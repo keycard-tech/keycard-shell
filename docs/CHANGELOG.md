@@ -1,6 +1,7 @@
 # Keycard Shell Dev Firmware
 
 ## 1.1.1 (2026-02-27)
+
 * [ui] add backslash to symbol keyboard
 * [ui] raise BIP39 passphrase max length to 255 chars
 * [misc] small fixes
