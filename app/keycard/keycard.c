@@ -716,7 +716,7 @@ app_err_t keycard_set_name(keycard_t* kc, const char* name) {
 
     if ((data[0] >> 5) == 1) {
       uint8_t copy_off =  1 + (data[0] & 0x1f);
-      if (copy_off >= data_len) {
+      if (copy_off > data_len) {
         return ERR_DATA;
       }
       uint8_t copy_len = data_len - copy_off;
