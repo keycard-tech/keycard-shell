@@ -65,12 +65,15 @@ void ui_task_entry(void* pvParameters) {
       break;
     case UI_CMD_DISPLAY_QR:
       g_ui_cmd.result = qrout_display_ur();
+      hal_pwm_set_dutycycle(PWM_BACKLIGHT, g_settings.lcd_brightness);
       break;
     case UI_CMD_DISPLAY_ADDRESS_QR:
       g_ui_cmd.result = qrout_display_address();
+      hal_pwm_set_dutycycle(PWM_BACKLIGHT, g_settings.lcd_brightness);
       break;
     case UI_CMD_DISPLAY_MSG_QR:
       g_ui_cmd.result = qrout_display_msg();
+      hal_pwm_set_dutycycle(PWM_BACKLIGHT, g_settings.lcd_brightness);
       break;
     case UI_CMD_QRSCAN:
       g_ui_cmd.result = qrscan_scan();

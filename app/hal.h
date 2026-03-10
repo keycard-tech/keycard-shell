@@ -56,6 +56,9 @@ hal_err_t hal_camera_submit(uint8_t* fb);
 // Screen
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
+#define LCD_MAX_BRIGHTNESS 100
+#define LCD_MIN_BRIGHTNESS 5
+#define LCD_BRIGHTNESS_STEP 5
 #define SCREEN_TASK_NOTIFICATION_IDX 1
 #define UI_NOTIFICATION_IDX 2
 #define UI_CMD_EVT 1

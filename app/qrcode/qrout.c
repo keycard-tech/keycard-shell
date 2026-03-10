@@ -1,5 +1,6 @@
 #include "qrcodegen.h"
 #include "qrout.h"
+#include "core/settings.h"
 #include "crypto/util.h"
 #include "screen/screen.h"
 #include "ur/ur.h"
@@ -12,6 +13,22 @@
 #define QR_MAX_VERSION 21
 #define QR_BUF_LEN qrcodegen_BUFFER_LEN_FOR_VERSION(QR_MAX_VERSION)
 #define QR_MAX_SEGMENT_LENGTH 200
+
+static inline void qrout_brightness_up(uint8_t* brightness) {
+  if (*brightness < LCD_MAX_BRIGHTNESS) {
+    *brightness += LCD_BRIGHTNESS_STEP;
+  }
+
+  hal_pwm_set_dutycycle(PWM_BACKLIGHT, *brightness);
+}
+
+static inline void qrout_brightness_down(uint8_t* brightness) {
+  if (*brightness > LCD_MIN_BRIGHTNESS) {
+    *brightness -= LCD_BRIGHTNESS_STEP;
+  }
+
+  hal_pwm_set_dutycycle(PWM_BACKLIGHT, *brightness);
+}
 
 app_err_t qrout_display(const char* str, uint16_t start_y, uint16_t max_y) {
   uint8_t tmpBuf[QR_BUF_LEN];
@@ -58,6 +75,8 @@ static app_err_t qrout_display_single_ur(ur_out_t* ur, uint16_t start_y) {
     return ERR_DATA;
   }
 
+  uint8_t brightness = g_settings.lcd_brightness;
+
   while(1) {
     switch(ui_wait_keypress(pdMS_TO_TICKS(QR_DISPLAY_TIMEOUT))) {
     case KEYPAD_KEY_BACK:
@@ -66,6 +85,12 @@ static app_err_t qrout_display_single_ur(ur_out_t* ur, uint16_t start_y) {
       return ERR_CANCEL;
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
+    case KEYPAD_KEY_UP:
+      qrout_brightness_up(&brightness);
+      break;
+    case KEYPAD_KEY_DOWN:
+      qrout_brightness_down(&brightness);
+      break;
     default:
       break;
     }
@@ -84,12 +109,20 @@ static app_err_t qrout_display_animated_ur(ur_out_t* ur, uint16_t start_y) {
       return ERR_DATA;
     }
 
+    uint8_t brightness = g_settings.lcd_brightness;
+
     switch(ui_wait_keypress(QR_FRAME_DURATION)) {
     case KEYPAD_KEY_CANCEL:
     case KEYPAD_KEY_BACK:
       return ERR_CANCEL;
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
+    case KEYPAD_KEY_UP:
+      qrout_brightness_up(&brightness);
+      break;
+    case KEYPAD_KEY_DOWN:
+      qrout_brightness_down(&brightness);
+      break;
     default:
       break;
     }
@@ -132,6 +165,8 @@ app_err_t qrout_display_address() {
 
   dialog_pager_colors(*g_ui_cmd.params.address.index, UINT32_MAX, 0, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK, true);
 
+  uint8_t brightness = g_settings.lcd_brightness;
+
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:
@@ -151,6 +186,12 @@ app_err_t qrout_display_address() {
         (*g_ui_cmd.params.address.index)++;
         return ERR_OK;
       }
+      break;
+    case KEYPAD_KEY_UP:
+      qrout_brightness_up(&brightness);
+      break;
+    case KEYPAD_KEY_DOWN:
+      qrout_brightness_down(&brightness);
       break;
     default:
       break;
@@ -193,6 +234,8 @@ app_err_t qrout_display_msg() {
   screen_fill_area(&label_box, TH_COLOR_BG);
   screen_draw_glyphs(&ctx, label_glyphs, label_len);
 
+  uint8_t brightness = g_settings.lcd_brightness;
+
   while(1) {
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:
@@ -201,6 +244,12 @@ app_err_t qrout_display_msg() {
       return ERR_CANCEL;
     case KEYPAD_KEY_CONFIRM:
       return ERR_OK;
+    case KEYPAD_KEY_UP:
+      qrout_brightness_up(&brightness);
+      break;
+    case KEYPAD_KEY_DOWN:
+      qrout_brightness_down(&brightness);
+      break;
     default:
       break;
     }
