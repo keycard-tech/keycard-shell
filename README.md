@@ -52,7 +52,7 @@ This repo contains everything needed to build a Keycard Shell.
 
 ### Building the firmware
 
-The build is fully reproducibile although not yet in an automated way. You just need to download STM32CubeIDE, import the project and make sure you use `GNU Tools for STM32 (13.3.rel1)` as your toolchain.
+The build is fully reproducibile although not yet in an automated way. You just need to download STM32CubeIDE, import the project and make sure you use `GNU Tools for STM32 (14.1.rel1)` as your toolchain.
 
 In your `deployment` directory you also need to have a `bootloader-pubkey.txt` file containing the public key the bootloader will use to verify the firmware. The key will be hex-encoded, uncompressed and without leading `04` byte. You also need a `fw-test-key.txt` containin a hex encoded private key (the private part of the key in `bootloader-pubkey.txt`) used to sign the firmware. We use this signing method in our internal development units. Shipped units will have different keys and the signing process is handled in a secure environment.
 

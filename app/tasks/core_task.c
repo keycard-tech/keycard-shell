@@ -6,6 +6,7 @@
 #include "pwr.h"
 #include "usb/usb.h"
 #include "crypto/aes.h"
+#include "crypto/util.h"
 
 static inline void core_action_run(i18n_str_id_t menu) {
   switch(menu) {
@@ -74,6 +75,13 @@ static inline void core_action_run(i18n_str_id_t menu) {
   }
 }
 
+static inline void core_print_fingerprint(char fingerprint[sizeof(uint32_t) + 1]) {
+  uint32_t mfp;
+  core_get_fingerprint(g_core.bip44_path, 0, &mfp);
+  mfp = rev32(mfp);
+  base16_encode((uint8_t*) &mfp, fingerprint, sizeof(uint32_t));
+}
+
 void core_task_entry(void* pvParameters) {
   if (hal_gpio_get(GPIO_SMARTCARD_PRESENT) == GPIO_RESET) {
     pwr_shutdown();
@@ -92,8 +100,11 @@ void core_task_entry(void* pvParameters) {
 
   i18n_str_id_t selected = MENU_QRCODE;
 
+  char fingerprint[sizeof(uint32_t) + 1];
+  core_print_fingerprint(fingerprint);
+
   while(1) {
-    switch(ui_menu(core_get_device_name(), &menu_mainmenu, &selected, -1, 1, UI_MENU_NOCANCEL, 0, 0)) {
+    switch(ui_menu((g_core.keycard.name[0] ? g_core.keycard.name : fingerprint), &menu_mainmenu, &selected, -1, 1, UI_MENU_NOCANCEL, 0, 0)) {
     case CORE_EVT_USB_CMD:
       core_usb_run();
       break;
