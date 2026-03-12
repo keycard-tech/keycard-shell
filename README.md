@@ -52,12 +52,99 @@ This repo contains everything needed to build a Keycard Shell.
 
 ### Building the firmware
 
-The build is fully reproducibile although not yet in an automated way. You just need to download STM32CubeIDE, import the project and make sure you use `GNU Tools for STM32 (14.1.rel1)` as your toolchain.
+The build is fully reproducible, although not yet in an automated way.
 
-In your `deployment` directory you also need to have a `bootloader-pubkey.txt` file containing the public key the bootloader will use to verify the firmware. The key will be hex-encoded, uncompressed and without leading `04` byte. You also need a `fw-test-key.txt` containin a hex encoded private key (the private part of the key in `bootloader-pubkey.txt`) used to sign the firmware. We use this signing method in our internal development units. Shipped units will have different keys and the signing process is handled in a secure environment.
+---
 
-At this point you can build the BL (bootloader), Release and (optionally) TestApp target
+#### Getting the Code
 
-Verifying the firmware is as easy as matching the hashes between the released firmware and the one you built yourself using the matching git tag. The hash must exclude the signature from the calculation, since that obviosly depends on the signing keys, and the firmware must be padded with 0xff bytes up to its maximum size. A script to get a valid hash is in `tools/firmware-hash.py`.
+First, clone the repository and switch to the release tag you want to build:
+
+```bash
+git clone https://github.com/keycard-tech/keycard-shell.git
+cd keycard-shell
+git checkout v1.1.1   # use the tag matching the official release you want to verify
+```
+
+---
+
+#### Prerequisites
+
+**1. Install STM32CubeIDE**
+
+Download and install [STM32CubeIDE](https://www.st.com/en/development-tools/stm32cubeide.html).
+
+**2. Configure the Toolchain**
+
+After importing the project, verify you are using `GNU Tools for STM32 (14.3.rel1)` by checking the Toolchain manager in the IDE settings:
+- Go to `Window → Preferences → STM32CubeIDE → Build → Settings`
+- Select `GNU Tools for STM32 (14.3.rel1)` as your toolchain
+
+**3. Install Python Dependencies**
+
+Install the required Python packages:
+
+```bash
+pip install -r tools/requirements.txt
+```
+
+> **Note:** Depending on your platform, you may need additional steps to get Python set up correctly.
+
+**4. Set up Signing Keys**
+
+In your `deployment` directory, you need two files:
+
+- `bootloader-pubkey.txt`: Contains the public key the bootloader will use to verify the firmware. The key must be hex-encoded, uncompressed, and without the leading `04` byte.
+- `fw-test-key.txt`: Contains a hex-encoded private key (the private part of the key in `bootloader-pubkey.txt`) used to sign the firmware.
+
+> **Note:** We use this signing method in our internal development units. Shipped units will have different keys and the signing process is handled in a secure environment.
+
+---
+
+#### Build Steps
+
+1. **Import the Project**
+   - Open STM32CubeIDE
+   - Go to `File → Import → Existing Projects into Workspace`
+   - Select the `stm32` directory and import the project
+
+2. **Build the Bootloader (BL)**
+   - Select the **BL** build configuration
+   - Right-click on the project → `Build Project`
+   - The bootloader binary will be generated in `stm32/BL/`
+
+3. **Build the Release Firmware**
+   - Select the **Release** build configuration
+   - Right-click on the project → `Build Project`
+   - The firmware binary will be generated in `stm32/Release/`
+
+4. **(Optional) Build the TestApp**
+   - Select the **TestApp** build configuration
+   - Right-click on the project → `Build Project`
+   - The test application binary will be generated in `stm32/TestApp/`
+
+---
+
+#### Verifying the Firmware
+
+Build the **Release** target in STM32CubeIDE, and run:
+
+```bash
+python3 tools/firmware-hash.py -b stm32/Release/stm32.bin
+```
+
+Download the official binary from the [GitHub releases page](https://github.com/keycard-tech/keycard-shell/releases) and hash it the same way:
+
+```bash
+python3 tools/firmware-hash.py -b ~/Downloads/shellos-<date>-<version>.bin
+```
+
+The two hashes must match.
+
+> **Note:** Use `-b` before the file path — it is required by the script.
+
+---
+
+#### Creating a Full Firmware Image
 
 If you want to generate a full image to load on a device you built yourself, take a look at the `tools/create-image.py` script.
