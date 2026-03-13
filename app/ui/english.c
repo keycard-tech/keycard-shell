@@ -114,6 +114,9 @@ const char *const i18n_english_strings[] = {
     "Your ETH address",
     "Your BTC address",
 
+    // Address picker
+    "Input address index",
+
     // PIN input
     "Keycard PIN",
     "Wrong PIN",
@@ -280,6 +283,7 @@ const char *const i18n_english_strings[] = {
     "Enter new card name",
     "Enter Keycard pairing pass",
     "Enter new Keycard pairing pass",
+    "Type the number",
 
     // QR seed scanning
     "Invalid QR",

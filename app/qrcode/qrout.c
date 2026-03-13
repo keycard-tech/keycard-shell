@@ -54,14 +54,18 @@ app_err_t qrout_display(const char* str, uint16_t start_y, uint16_t max_y) {
   return ERR_OK;
 }
 
-static void qrout_prepare_canvas(const char* title) {
+static void qrout_prepare_canvas_options(const char* title, icon_t right) {
   dialog_blank_color(0, SCREEN_COLOR_WHITE);
 
   if (title) {
     dialog_title_colors(title, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
   }
 
-  dialog_nav_hints_colors(ICON_NAV_CANCEL, ICON_NAV_NEXT, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
+  dialog_nav_hints_colors(ICON_NAV_CANCEL, right, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK);
+}
+
+static inline void qrout_prepare_canvas(const char* title) {
+  qrout_prepare_canvas_options(title, ICON_NAV_NEXT);
 }
 
 static app_err_t qrout_display_single_ur(ur_out_t* ur, uint16_t start_y) {
@@ -145,7 +149,7 @@ app_err_t qrout_display_ur() {
 }
 
 app_err_t qrout_display_address() {
-  qrout_prepare_canvas(g_ui_cmd.params.address.title);
+  qrout_prepare_canvas_options(g_ui_cmd.params.address.title, ICON_NAV_NUM);
 
   uint16_t qr_height = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - ((TH_FONT_DATA)->yAdvance * 2);
 
@@ -171,9 +175,10 @@ app_err_t qrout_display_address() {
     switch(ui_wait_keypress(portMAX_DELAY)) {
     case KEYPAD_KEY_CANCEL:
     case KEYPAD_KEY_BACK:
-    case KEYPAD_KEY_CONFIRM:
       *g_ui_cmd.params.address.index = UINT32_MAX;
       return ERR_OK;
+    case KEYPAD_KEY_CONFIRM:
+      return ERR_CANCEL;
     case KEYPAD_KEY_LEFT:
       if (*g_ui_cmd.params.address.index) {
         (*g_ui_cmd.params.address.index)--;

@@ -757,7 +757,7 @@ static char input_keyboard(keyboard_state_t* keyboard, uint16_t suggestion_idx) 
   return c;
 }
 
-static void input_nav_hints(uint8_t len, bool allow_dismiss, bool valid) {
+static void input_nav_hints_options(uint8_t len, bool allow_dismiss, bool valid, bool hold) {
   icon_t nav_left;
 
   if (len > 0) {
@@ -771,7 +771,7 @@ static void input_nav_hints(uint8_t len, bool allow_dismiss, bool valid) {
   icon_t nav_right;
 
   if (valid) {
-    nav_right = ICON_NAV_NEXT_HOLD;
+    nav_right = hold ? ICON_NAV_NEXT_HOLD : ICON_NAV_NEXT;
   } else {
     nav_right = ICON_NONE;
   }
@@ -787,12 +787,18 @@ static void input_nav_hints(uint8_t len, bool allow_dismiss, bool valid) {
   }
 
   if (valid) {
-    screen_text_ctx_t ctx = { .font = TH_FONT_TEXT, .bg = TH_COLOR_BG, .fg = TH_COLOR_ACCENT, .x = TH_NAV_HINT_INPUT_RIGHT_X, .y = TH_NAV_HINT_INPUT_TOP };
-    screen_draw_string(&ctx, LSTR(INPUT_NAV_SAVE));
+    if (hold) {
+      screen_text_ctx_t ctx = { .font = TH_FONT_TEXT, .bg = TH_COLOR_BG, .fg = TH_COLOR_ACCENT, .x = TH_NAV_HINT_INPUT_RIGHT_X, .y = TH_NAV_HINT_INPUT_TOP };
+      screen_draw_string(&ctx, LSTR(INPUT_NAV_SAVE));
+    }
   } else {
     screen_area_t hint_area = { .x = TH_NAV_HINT_INPUT_RIGHT_X, .y = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT, .width = TH_NAV_HINT_INPUT_RIGHT_WIDTH, .height = TH_NAV_HINT_HEIGHT };
     screen_fill_area(&hint_area, TH_COLOR_BG);
   }
+}
+
+static inline void input_nav_hints(uint8_t len, bool allow_dismiss, bool valid) {
+  input_nav_hints_options(len, allow_dismiss, valid, true);
 }
 
 static void input_render_text_field(const char* str, const char* prompt, screen_area_t* field_area, int len, int suggestion_len) {
@@ -1085,6 +1091,68 @@ app_err_t input_string() {
 
     valid = (len > 0) || allow_empty;
     input_nav_hints(len, allow_dismiss, valid);
+  }
+}
+
+static void input_number_direct_render(uint64_t num, bool valid) {
+  uint8_t num_str[UINT64_STRING_LEN + 1];
+  uint8_t len;
+  char* p;
+
+  if (valid || (num > 0)) {
+    p = (char *) u64toa(num, num_str, sizeof(num_str));
+    len = strlen(p);
+  } else {
+    p = (char *) num_str;
+    len = 0;
+  }
+
+  screen_area_t field_area = {
+      .x = TH_TEXT_FIELD_MARGIN,
+      .y = (SCREEN_HEIGHT - TH_TEXT_FIELD_HEIGHT) / 2,
+      .width = SCREEN_WIDTH - (TH_TEXT_FIELD_MARGIN * 2),
+      .height = TH_TEXT_FIELD_HEIGHT
+  };
+  input_render_text_field(p, LSTR(PROMPT_NUMBER), &field_area, len, 0);
+  input_nav_hints_options(len, true, valid, false);
+}
+
+app_err_t input_number_direct() {
+  dialog_title(g_ui_cmd.params.input_number_direct.title);
+  dialog_blank(TH_TITLE_HEIGHT);
+
+  uint64_t num = 0;
+  bool valid = false;
+
+  while(1) {
+    input_number_direct_render(num, valid);
+
+    keypad_key_t key = ui_wait_keypress(portMAX_DELAY);
+    char digit = KEYPAD_TO_DIGIT[key];
+
+    if (digit != DIG_INV) {
+      if (valid || (num == 0)) {
+        num = num * 10 + (digit - '0');
+        valid = (num <= INT32_MAX);
+      }
+    } else if (key == KEYPAD_KEY_BACK) {
+      if (g_ui_ctx.keypad.last_key_long) {
+        return ERR_CANCEL;
+      } else if (num > 9) {
+        num /= 10;
+        valid = (num <= INT32_MAX);
+      } else {
+        num = 0;
+        valid = false;
+      }
+    } else if (key == KEYPAD_KEY_CANCEL) {
+      return ERR_CANCEL;
+    } else if (key == KEYPAD_KEY_CONFIRM) {
+      if (valid) {
+        *g_ui_cmd.params.input_number_direct.num = num;
+        return ERR_OK;
+      }
+    }
   }
 }
 

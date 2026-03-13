@@ -568,7 +568,9 @@ static void core_addresses(const char* title, uint32_t purpose, uint32_t coin, c
     }
 
     encoder(g_core.data.key.pub, (char*) g_mem_heap);
-    ui_display_address_qr(title, (char*) g_mem_heap, &index);
+    if (ui_display_address_qr(title, (char*) g_mem_heap, &index) == CORE_EVT_UI_CANCELLED) {
+      ui_read_number_direct(LSTR(ADDRESS_INDEX_TITLE), &index);
+    }
   } while(index != UINT32_MAX);
 }
 

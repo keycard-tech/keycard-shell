@@ -305,6 +305,14 @@ core_evt_t ui_read_number(const char* title, uint32_t min, uint32_t max, uint32_
   return ui_signal_wait(0);
 }
 
+core_evt_t ui_read_number_direct(const char* title, uint32_t* num) {
+  g_ui_cmd.type = UI_CMD_INPUT_NUMBER_DIRECT;
+  g_ui_cmd.params.input_number_direct.title = title;
+  g_ui_cmd.params.input_number_direct.num = num;
+
+  return ui_signal_wait(0);
+}
+
 void ui_seed_loaded() {
   ui_info(ICON_INFO_SUCCESS, LSTR(INFO_KEYCARD_LOADED_MSG), LSTR(INFO_KEYCARD_LOADED_SUB), 0);
 }

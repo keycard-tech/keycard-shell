@@ -118,6 +118,9 @@ typedef enum {
   QR_ADDRESS_ETH_TITLE,
   QR_ADDRESS_BTC_TITLE,
 
+  // Address picker
+  ADDRESS_INDEX_TITLE,
+
   // PIN input
   PIN_INPUT_TITLE,
   PIN_WRONG_WARNING,
@@ -284,6 +287,7 @@ typedef enum {
   PROMPT_CARD_NAME,
   PROMPT_PAIRING,
   PROMPT_NEW_PAIRING,
+  PROMPT_NUMBER,
 
   // QR seed scanning
   QRSEED_INVALID_MSG,

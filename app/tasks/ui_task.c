@@ -87,6 +87,9 @@ void ui_task_entry(void* pvParameters) {
     case UI_CMD_INPUT_NUMBER:
       g_ui_cmd.result = input_number();
       break;
+    case UI_CMD_INPUT_NUMBER_DIRECT:
+      g_ui_cmd.result = input_number_direct();
+      break;
     case UI_CMD_INPUT_MNEMO:
       g_ui_cmd.result = input_mnemonic();
       break;
