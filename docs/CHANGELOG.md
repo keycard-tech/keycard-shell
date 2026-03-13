@@ -1,5 +1,12 @@
 # Keycard Shell Dev Firmware
 
+## 1.1.2 (2026-03-13)
+
+* [ui] show fingerprint in main menu title bar if no card name set
+* [ui] up/down keys allow changing brightness in QR output screen (indicator to come)
+* [keycard] fix regression when setting card name
+* [stm32] update toolchain to GNU Tools for STM32 (14.3.rel1)
+
 ## 1.1.1 (2026-02-27)
 
 * [ui] add backslash to symbol keyboard
