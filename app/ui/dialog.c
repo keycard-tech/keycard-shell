@@ -701,10 +701,6 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
     char* idx = (char *) u32toa(i, (uint8_t *) buf, BIGNUM_STRING_LEN);
     dialog_data(&ctx, idx);
 
-    dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
-    script_output_to_address(tx->input_data[i].script_pubkey, tx->input_data[i].script_pubkey_len, buf);
-    dialog_data_2lines(&ctx, buf);
-
     uint64_t t;
     memcpy(&t, tx->input_data[i].amount, sizeof(uint64_t));
     dialog_btc_amount(&ctx, TX_AMOUNT, t);
@@ -715,6 +711,10 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
 
     dialog_label(&ctx, LSTR(TX_SIGNED));
     dialog_data(&ctx, tx->input_data[i].can_sign ? LSTR(TX_YES) : LSTR(TX_NO));
+
+    dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
+    script_output_to_address(tx->input_data[i].script_pubkey, tx->input_data[i].script_pubkey_len, buf);
+    dialog_data_2lines(&ctx, buf);
 
     i++;
     displayed++;
@@ -727,16 +727,16 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
     char* idx = (char *) u32toa(i, (uint8_t *) buf, BIGNUM_STRING_LEN);
     dialog_data(&ctx, idx);
 
-    dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
-    script_output_to_address(tx->outputs[i].script, tx->outputs[i].script_len, buf);
-    dialog_data_2lines(&ctx, buf);
-
     uint64_t t;
     memcpy(&t, tx->outputs[i].amount, sizeof(uint64_t));
     dialog_btc_amount(&ctx, TX_AMOUNT, t);
 
     dialog_label(&ctx, LSTR(TX_CHANGE));
     dialog_data(&ctx, tx->output_data[i].change ? LSTR(TX_YES) : LSTR(TX_NO));
+
+    dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
+    script_output_to_address(tx->outputs[i].script, tx->outputs[i].script_len, buf);
+    dialog_data_2lines(&ctx, buf);
 
     i++;
     displayed++;
