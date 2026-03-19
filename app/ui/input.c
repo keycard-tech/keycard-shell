@@ -167,7 +167,7 @@ static app_err_t input_secret_entry(const char* title, char* out, char* compare,
   };
 
   screen_draw_centered_string(&ctx, title);
-  start_y = ctx.y;
+  start_y = ctx.y + ctx.font->yAdvance;
 
   while(1) {
     ctx.x = 0;

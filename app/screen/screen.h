@@ -79,10 +79,14 @@ hal_err_t screen_draw_chars(screen_text_ctx_t* ctx, const char* str, int len);
 hal_err_t screen_draw_string(screen_text_ctx_t* ctx, const char* str);
 size_t screen_string_width(screen_text_ctx_t* ctx, const char* str);
 hal_err_t screen_draw_centered_string(screen_text_ctx_t* ctx, const char* str);
-size_t screen_draw_text(screen_text_ctx_t* ctx, uint16_t max_x, uint16_t max_y, const uint8_t* text, size_t len, bool dry_run, bool centered);
+size_t screen_draw_text_offset(screen_text_ctx_t* ctx, uint16_t start_x, uint16_t max_x, uint16_t max_y, const uint8_t* text, size_t len, bool dry_run, bool centered);
 hal_err_t screen_fill_area(const screen_area_t* area, uint16_t color);
 hal_err_t screen_draw_area(const screen_area_t* area, const uint16_t* pixels);
 hal_err_t screen_camera_passthrough(const uint8_t* fb);
 hal_err_t screen_draw_qrcode(const screen_area_t* area, const uint8_t* qrcode, int qrsize, int scale);
+
+static inline size_t screen_draw_text(screen_text_ctx_t* ctx, uint16_t max_x, uint16_t max_y, const uint8_t* text, size_t len, bool dry_run, bool centered) {
+  return screen_draw_text_offset(ctx, ctx->x, max_x, max_y, text, len, dry_run, centered);
+}
 
 #endif

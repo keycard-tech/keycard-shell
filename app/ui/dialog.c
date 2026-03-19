@@ -338,15 +338,35 @@ static inline void dialog_data(screen_text_ctx_t *ctx, const char* data) {
   dialog_end_line(ctx);
 }
 
-static inline void dialog_data_2lines(screen_text_ctx_t *ctx, const char* data) {
-  dialog_data_ctx(ctx);
-  screen_draw_text(ctx, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y + (TH_LABEL_HEIGHT * 2), (uint8_t*) data, strlen(data), false, false);
-  dialog_end_line(ctx);
-}
-
 static void dialog_chain(screen_text_ctx_t *ctx, const char* name) {
   dialog_label(ctx, LSTR(TX_CHAIN));
   dialog_data(ctx, name);
+}
+
+static void dialog_long_data(screen_text_ctx_t *ctx, const char* str, uint16_t max_x, uint16_t max_y) {
+  size_t len = strlen(str);
+  size_t offset = 0;
+  uint16_t start_x = ctx->x;
+
+  ctx->fg = TH_COLOR_INACTIVE;
+
+  if ((len >= 2) && (str[0] == '0') && (str[1] == 'x')) {
+    screen_draw_text_offset(ctx, start_x, max_x, max_y, (uint8_t*) str, 2, false, false);
+    offset += 2;
+  }
+
+  while (offset < len) {
+    size_t to_print = APP_MIN(4, len - offset);
+    ctx->fg = (ctx->fg == TH_COLOR_DATA_FG) ? TH_COLOR_INACTIVE : TH_COLOR_DATA_FG;
+    screen_draw_text_offset(ctx, start_x, max_x, max_y, (uint8_t*) &str[offset], to_print, false, false);
+    offset += to_print;
+  }
+}
+
+static inline void dialog_data_2lines(screen_text_ctx_t *ctx, const char* data) {
+  dialog_data_ctx(ctx);
+  dialog_long_data(ctx, data, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y + (TH_DATA_HEIGHT * 2));
+  dialog_end_line(ctx);
 }
 
 static void dialog_address(screen_text_ctx_t *ctx, i18n_str_id_t label, addr_type_t addr_type, const uint8_t* addr) {
@@ -367,7 +387,7 @@ static void dialog_address_block(screen_text_ctx_t *ctx, i18n_str_id_t label, ad
   ctx->y = ctx->v1;
   ctx->x = TH_TEXT_HORIZONTAL_MARGIN;
 
-  screen_draw_text(ctx, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y + (TH_DATA_HEIGHT * 2), (uint8_t*) str, strlen(str), false, false);
+  dialog_long_data(ctx, str, (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN), ctx->y + (TH_DATA_HEIGHT * 2));
   dialog_end_line(ctx);
 }
 
@@ -1039,7 +1059,7 @@ app_err_t dialog_info() {
 
   if (g_ui_cmd.params.info.subtext) {
     ctx.x = TH_SCREEN_MARGIN;
-    ctx.y += TH_INFO_SUBTEXT_MARGIN;
+    ctx.y += ctx.font->yAdvance + TH_INFO_SUBTEXT_MARGIN;
     ctx.fg = TH_COLOR_INACTIVE;
     ctx.font = TH_FONT_TEXT;
     screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (uint8_t*) g_ui_cmd.params.info.subtext, strlen(g_ui_cmd.params.info.subtext), false, true);

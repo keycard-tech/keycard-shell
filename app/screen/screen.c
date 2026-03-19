@@ -276,9 +276,7 @@ hal_err_t screen_draw_glyphs(screen_text_ctx_t* ctx, const glyph_t* glyphs[], si
   return HAL_SUCCESS;
 }
 
-size_t screen_draw_text(screen_text_ctx_t* ctx, uint16_t max_x, uint16_t max_y, const uint8_t* text, size_t len, bool dry_run, bool centered) {
-  uint16_t start_x = ctx->x;
-
+size_t screen_draw_text_offset(screen_text_ctx_t* ctx, uint16_t start_x, uint16_t max_x, uint16_t max_y, const uint8_t* text, size_t len, bool dry_run, bool centered) {
   while(len) {
     if (ctx->y > max_y) {
       return len;
@@ -292,8 +290,8 @@ size_t screen_draw_text(screen_text_ctx_t* ctx, uint16_t max_x, uint16_t max_y, 
     }
 
     size_t line_len = 0;
-    size_t current_x = start_x;
-    size_t line_end_x = 0;
+    size_t current_x = ctx->x;
+    size_t line_end_x = current_x;
     const glyph_t* line[MAX_GLYPHS_PER_LINE];
 
     size_t lim = APP_MIN(MAX_GLYPHS_PER_LINE, len);
@@ -316,7 +314,7 @@ size_t screen_draw_text(screen_text_ctx_t* ctx, uint16_t max_x, uint16_t max_y, 
       line[i] = screen_lookup_glyph(ctx->font, (uint32_t) c);
       current_x += line[i]->xAdvance;
       if (current_x > max_x) {
-        if (line_len == 0) {
+        if ((line_len == 0) && (i > 0)) {
           line_end_x = current_x - line[i]->xAdvance;
           line_len = i - 1;
         }
@@ -344,8 +342,10 @@ size_t screen_draw_text(screen_text_ctx_t* ctx, uint16_t max_x, uint16_t max_y, 
     text += line_len;
     len -= line_len;
 
-    ctx->x = start_x;
-    ctx->y += ctx->font->yAdvance;
+    if (len > 0) {
+      ctx->x = start_x;
+      ctx->y += ctx->font->yAdvance;
+    }
   }
 
   return 0;
