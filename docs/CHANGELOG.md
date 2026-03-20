@@ -1,5 +1,11 @@
 # Keycard Shell Dev Firmware
 
+## 1.1.3 (2026-03-20)
+
+* [ui] add quick index selection in address screen
+* [ui] fix multisig address display for BTC
+* [ui] show addresses in quadruplets of alternating colors in signing screen
+
 ## 1.1.2 (2026-03-13)
 
 * [ui] show fingerprint in main menu title bar if no card name set
