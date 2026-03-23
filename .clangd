@@ -1,0 +1,5 @@
+CompileFlags:
+  BuiltinHeaders: QueryDriver
+  CompilationDatabase: build
+Index:
+  Background: Build

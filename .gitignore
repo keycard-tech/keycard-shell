@@ -5,3 +5,4 @@ stm32/.settings
 deployment
 __pycache__
 .DS_Store
+.vscode
