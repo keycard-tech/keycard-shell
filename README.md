@@ -52,7 +52,7 @@ This repo contains everything needed to build a Keycard Shell.
 
 ### Building the firmware
 
-The build is fully reproducible, although not yet in an automated way.
+The Keycard Shell firmware build system uses CMake for the main firmware compilation and Python tools for post-processing (signing, image creation, database generation).
 
 ---
 
@@ -66,82 +66,55 @@ cd keycard-shell
 git checkout v1.1.1   # use the tag matching the official release you want to verify
 ```
 
+make sure you follow the build instructions directly for the tag you checked out since some steps and toolchain versions can differ.
+
 ---
 
 #### Prerequisites
 
-**1. Install STM32CubeIDE**
-
-Download and install [STM32CubeIDE](https://www.st.com/en/development-tools/stm32cubeide.html).
-
-**2. Configure the Toolchain**
-
-After importing the project, verify you are using `GNU Tools for STM32 (14.3.rel1)` by checking the Toolchain manager in the IDE settings:
-- Go to `Window → Preferences → STM32CubeIDE → Build → Settings`
-- Select `GNU Tools for STM32 (14.3.rel1)` as your toolchain
-
-**3. Install Python Dependencies**
-
-Install the required Python packages:
+##### Install uv
 
 ```bash
-pip install -r tools/requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-> **Note:** Depending on your platform, you may need additional steps to get Python set up correctly.
+or follow your OS instructions for installing uv.
 
-**4. Set up Signing Keys**
+##### Install STM32 ARM GCC Toolchain
 
-In your `deployment` directory, you need two files:
+Required for compiling STM32 firmware. Install [STM32CubeCLT
+1.21.0](https://www.st.com/en/development-tools/stm32cubeclt.html). It is import to use this exact version to reproduce the build. After installing make sure the tools are added to you `PATH`
 
-- `bootloader-pubkey.txt`: Contains the public key the bootloader will use to verify the firmware. The key must be hex-encoded, uncompressed, and without the leading `04` byte.
-- `fw-test-key.txt`: Contains a hex-encoded private key (the private part of the key in `bootloader-pubkey.txt`) used to sign the firmware.
 
-> **Note:** We use this signing method in our internal development units. Shipped units will have different keys and the signing process is handled in a secure environment.
+#### 1. Setup Virtual Environment
 
----
+```bash
+uv venv
+uv sync
+```
 
-#### Build Steps
+#### 2. Build Firmware
 
-1. **Import the Project**
-   - Open STM32CubeIDE
-   - Go to `File → Import → Existing Projects into Workspace`
-   - Select the `stm32` directory and import the project
-
-2. **Build the Bootloader (BL)**
-   - Select the **BL** build configuration
-   - Right-click on the project → `Build Project`
-   - The bootloader binary will be generated in `stm32/BL/`
-
-3. **Build the Release Firmware**
-   - Select the **Release** build configuration
-   - Right-click on the project → `Build Project`
-   - The firmware binary will be generated in `stm32/Release/`
-
-4. **(Optional) Build the TestApp**
-   - Select the **TestApp** build configuration
-   - Right-click on the project → `Build Project`
-   - The test application binary will be generated in `stm32/TestApp/`
-
----
+```bash
+cmake --preset release
+cmake --build --preset release
+```
 
 #### Verifying the Firmware
 
 Build the **Release** target in STM32CubeIDE, and run:
 
 ```bash
-python3 tools/firmware-hash.py -b stm32/Release/stm32.bin
+uv run python tools/firmware-hash.py -b build/shellos.bin
 ```
 
 Download the official binary from the [GitHub releases page](https://github.com/keycard-tech/keycard-shell/releases) and hash it the same way:
 
 ```bash
-python3 tools/firmware-hash.py -b ~/Downloads/shellos-<date>-<version>.bin
+uv run python tools/firmware-hash.py -b ~/Downloads/shellos-<date>-<version>.bin
 ```
 
 The two hashes must match.
-
-> **Note:** Use `-b` before the file path — it is required by the script.
 
 ---
 
