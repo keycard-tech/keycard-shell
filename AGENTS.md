@@ -145,12 +145,12 @@ QR scanning uses the camera in a dedicated task:
 
 1. Camera captures frames via DMA
 2. QR scan task processes frames using `quirc` library
-3. Decoded data is passed to UR decoder
+3. Decoded data is passed to UR (Unrestricted Resource) decoder
 4. CBOR data is deserialized for display/approval
 
 Key files:
 - [`app/qrcode/qrscan.c`](app/qrcode/qrscan.c) - QR scanning logic
-- [`app/qrcode/qrcodegen.c`](app/qrcode/qrcodegen.c) - QR code generation
+- [`app/qrcode/qrcodegen.c`](app/qrcode/qrcodegen.c) - QR code generation (OpenMV port)
 
 ## Cryptographic Operations
 
@@ -162,6 +162,16 @@ The project uses hardware acceleration where available:
 - **AES**: Hardware AES accelerator
 
 Software fallbacks are available via `SOFT_` macros.
+
+## SmartCard Protocol
+
+The smartcard interface communicates with a Keycard device. The Keycard protocol documentation is available at https://keycard.tech/en/developers/overview.
+
+**CRITICAL**: Agents must **NOT** invent or create new APDU commands. All APDU commands must be defined in the existing Keycard protocol specification. Refer to the Keycard documentation and existing implementations in the codebase for the complete list of supported commands.
+
+Key files:
+- [`app/iso7816/smartcard.c`](app/iso7816/smartcard.c) - Smartcard communication implementation
+- [`app/keycard/`](app/keycard/) - Keycard protocol implementation
 
 ## Build System
 
