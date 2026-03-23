@@ -1,0 +1,13 @@
+[project]
+name = "keycard-shell"
+version = "0.1.0"
+description = "Keycard Shell firmware build tools"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.32",
+    "secp256k1Crypto>=0.0.1",
+    "freetype-py>=2.5.1",
+    "eth-utils>=5.3.0",
+    "pycryptodome>=3.22.0",
+    "keycard>=0.3.0",
+]

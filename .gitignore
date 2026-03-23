@@ -6,3 +6,8 @@ deployment
 __pycache__
 .DS_Store
 .vscode
+.venv
+# uv
+uv.lock
+.pytest_cache
+.mypy_cache

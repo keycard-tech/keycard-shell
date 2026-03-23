@@ -298,7 +298,7 @@ set_target_properties(shellos-bootloader.elf PROPERTIES
 
 # Custom command to convert bootloader ELF to binary (always runs after build)
 add_custom_command(TARGET shellos-bootloader.elf POST_BUILD
-    COMMAND python ${CMAKE_SOURCE_DIR}/tools/bootloader-perso.py
+    COMMAND uv run python ${CMAKE_SOURCE_DIR}/tools/bootloader-perso.py
         -p ${CMAKE_SOURCE_DIR}/deployment/bootloader-pubkey.txt
         -e shellos-bootloader.elf
         -o shellos-bootloader.bin
@@ -328,7 +328,7 @@ set_target_properties(shellos-test.elf PROPERTIES
 
 # Custom command for testapp signing
 add_custom_command(TARGET shellos-test.elf POST_BUILD
-    COMMAND python ${CMAKE_SOURCE_DIR}/tools/firmware-sign.py 
+    COMMAND uv run python ${CMAKE_SOURCE_DIR}/tools/firmware-sign.py 
         -s ${CMAKE_SOURCE_DIR}/deployment/fw-test-key.txt 
         -e shellos-test.elf 
         -o shellos-test.bin
@@ -348,7 +348,7 @@ add_executable(shellos.elf
 
 # Custom command for firmware signing
 add_custom_command(TARGET shellos.elf POST_BUILD
-    COMMAND python ${CMAKE_SOURCE_DIR}/tools/firmware-sign.py 
+    COMMAND uv run python ${CMAKE_SOURCE_DIR}/tools/firmware-sign.py 
         -s ${CMAKE_SOURCE_DIR}/deployment/fw-test-key.txt 
         -e shellos.elf 
         -o shellos.bin
