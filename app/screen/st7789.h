@@ -1,9 +1,6 @@
 #ifndef _ST7789_H_
 #define _ST7789_H_
 
-
-#include <stdint.h>
-
 #define ST7789_CMD_DELAY_MS 10
 #define ST7789_RST_PULSE_US 12
 

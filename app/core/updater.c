@@ -10,7 +10,6 @@
 #include "storage/keys.h"
 #include "pwr.h"
 #include "ui/ui.h"
-#include "ur/ur.h"
 
 #define SIG_LEN 64
 #define MIN_DB_LEN (SIG_LEN + 8)

@@ -1,4 +1,3 @@
-#ifdef TEST_APP
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -7,7 +6,6 @@
 #include "qrcode/qrscan.h"
 #include "screen/screen.h"
 #include "ui/dialog.h"
-#include "ui/settings_ui.h"
 #include "ui/theme.h"
 #include "ui/ui_internal.h"
 
@@ -134,4 +132,3 @@ void ui_task_entry(void* pvParameters) {
     }
   }
 }
-#endif

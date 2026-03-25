@@ -1,7 +1,6 @@
 #ifndef __THEME__
 #define __THEME__
 
-#include "font/font.h"
 #include "screen/screen.h"
 
 #define TH_SCREEN_MARGIN 16

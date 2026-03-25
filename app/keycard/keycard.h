@@ -2,7 +2,6 @@
 #define __KEYCARD_H
 
 #include "secure_channel.h"
-#include "command.h"
 #include "iso7816/smartcard.h"
 
 #define KEYCARD_PIN_LEN 6

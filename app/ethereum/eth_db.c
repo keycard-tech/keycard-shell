@@ -1,4 +1,5 @@
 #include "eth_db.h"
+#include "storage/fs.h"
 #include <string.h>
 
 #define FS_CHAIN_MAGIC 0x4348

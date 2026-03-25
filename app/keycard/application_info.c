@@ -1,5 +1,3 @@
-#include <string.h>
-
 #include "application_info.h"
 #include "util/tlv.h"
 

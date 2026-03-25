@@ -21,7 +21,6 @@
  */
 
 #include "script.h"
-#include <string.h>
 #include "address.h"
 #include "sha2.h"
 

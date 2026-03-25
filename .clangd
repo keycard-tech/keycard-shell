@@ -1,5 +1,9 @@
 CompileFlags:
   BuiltinHeaders: QueryDriver
   CompilationDatabase: build
+  Remove: [-DBOOTLOADER, -DTEST_APP]
+Diagnostics:
+  Includes:
+    IgnoreHeader: (FreeRTOS|hal|common)\.h
 Index:
   Background: Build

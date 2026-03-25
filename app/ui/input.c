@@ -4,11 +4,8 @@
 #include "common.h"
 #include "dialog.h"
 #include "theme.h"
-#include "crypto/bip39.h"
 #include "crypto/util.h"
-#include "crypto/rand.h"
 #include "keypad/keypad.h"
-#include "ui/ui.h"
 #include "ui/ui_internal.h"
 
 #define PIN_LEN 6

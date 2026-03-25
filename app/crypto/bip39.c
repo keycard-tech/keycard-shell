@@ -25,11 +25,8 @@
 #include <string.h>
 
 #include "bip39.h"
-#include "hmac.h"
 #include "memzero.h"
-#include "options.h"
 #include "pbkdf2.h"
-#include "rand.h"
 #include "sha2.h"
 #include "util.h"
 

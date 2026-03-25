@@ -1,4 +1,5 @@
 #include "icons.h"
+#include "ui/theme.h"
 #include <string.h>
 
 #define ICON_ATTR_X_MASK 0x03

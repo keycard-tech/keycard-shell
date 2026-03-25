@@ -1,10 +1,11 @@
-#include <string.h>
 #include "aes.h"
-#include "memzero.h"
 #include "hal.h"
 #include "mem.h"
 
 #ifdef SOFT_AES
+#include <string.h>
+#include "memzero.h"
+
 #define AES_128_KEYROUND 10
 #define AES_192_KEYROUND 12
 #define AES_256_KEYROUND 14

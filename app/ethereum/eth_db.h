@@ -1,7 +1,8 @@
 #ifndef _ETH_DB_H_
 #define _ETH_DB_H_
 
-#include "storage/fs.h"
+#include <stdint.h>
+#include <stddef.h>
 #include "error.h"
 
 #define FS_ABI_MAGIC 0x4142

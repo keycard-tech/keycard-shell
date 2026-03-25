@@ -2,13 +2,12 @@
 #define _CORE_H_
 
 #include "FreeRTOS.h"
+#include "keycard/command.h"
 #include "task.h"
 
-#include "app_tasks.h"
 #include "crypto/sha3.h"
 #include "ethereum/ethUstream.h"
 #include "ethereum/eip712.h"
-#include "ethereum/ethUtils.h"
 #include "keycard/keycard.h"
 #include "iso7816/smartcard.h"
 #include "ui/ui.h"

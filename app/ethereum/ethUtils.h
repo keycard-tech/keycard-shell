@@ -20,7 +20,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "ethUstream.h"
+#include <stdbool.h>
 
 /**
  * @brief Decode an RLP encoded field - see

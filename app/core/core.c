@@ -1,7 +1,6 @@
 #include "app_tasks.h"
 #include "core.h"
 #include "crypto/address.h"
-#include "crypto/sha2.h"
 #include "crypto/ripemd160.h"
 #include "crypto/secp256k1.h"
 #include "crypto/util.h"

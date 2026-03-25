@@ -2,6 +2,7 @@
 #define _UI_INTERNAL_
 
 #include "FreeRTOS.h"
+#include "app_tasks.h"
 #include "task.h"
 
 #include "menu.h"
@@ -11,8 +12,6 @@
 #include "bitcoin/bitcoin.h"
 #include "core/core.h"
 #include "ethereum/ethUstream.h"
-#include "qrcode/qrcode.h"
-#include "ur/ur_types.h"
 #include "ur/ur.h"
 
 extern struct ui_cmd g_ui_cmd;
@@ -40,10 +39,10 @@ enum cmd_type {
   UI_CMD_PROGRESS,
   UI_CMD_DEVINFO,
   UI_CMD_DBINFO,
-#ifdef TEST_APP
+
+  // Testapp only
   UI_CMD_KEYPAD_TEST,
   UI_CMD_LCD_TEST,
-#endif
 };
 
 struct cmd_info {

@@ -1,4 +1,3 @@
-#ifndef TEST_APP
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -115,4 +114,3 @@ void ui_task_entry(void* pvParameters) {
     }
   }
 }
-#endif

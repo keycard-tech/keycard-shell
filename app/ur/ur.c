@@ -5,6 +5,7 @@
 #include "crypto/util.h"
 #include "sampler.h"
 #include "ur.h"
+#include "ur/ur_decode.h"
 #include "ur_encode.h"
 
 #define MIN_ENCODED_LEN 22

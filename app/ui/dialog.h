@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include "error.h"
 #include "screen/screen.h"
-#include "font/font.h"
 #include "icons.h"
 #include "theme.h"
 

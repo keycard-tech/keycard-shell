@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include "error.h"
-#include "ur_decode.h"
+#include "ur_types.h"
 
 #define UR_MAX_PART_COUNT 64
 #define UR_PART_DESC_COUNT (UR_MAX_PART_COUNT + 16)

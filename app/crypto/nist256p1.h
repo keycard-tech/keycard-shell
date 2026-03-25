@@ -24,8 +24,6 @@
 #ifndef __NIST256P1_H__
 #define __NIST256P1_H__
 
-#include <stdint.h>
-
 #include "ecdsa.h"
 
 extern const ecdsa_curve nist256p1;

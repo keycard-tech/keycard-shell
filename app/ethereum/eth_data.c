@@ -5,6 +5,7 @@
 #include "crypto/address.h"
 #include "eth_data.h"
 #include "mem.h"
+#include "storage/fs.h"
 
 struct eth_func_search_ctx {
   uint32_t selector;

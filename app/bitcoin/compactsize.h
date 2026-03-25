@@ -2,7 +2,7 @@
 #ifndef PSBT_COMPACTSIZE_H
 #define PSBT_COMPACTSIZE_H
 
-#include "psbt.h"
+#include "psbt_tx.h"
 
 uint64_t compactsize_read(uint8_t *data, psbt_result_t *err);
 uint32_t compactsize_length(uint64_t data);

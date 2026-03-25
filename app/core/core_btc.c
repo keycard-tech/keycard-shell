@@ -1,3 +1,4 @@
+#include "common.h"
 #include "core.h"
 #include "mem.h"
 #include "bitcoin/bitcoin.h"

@@ -6,7 +6,6 @@ worldwide. This software is distributed without any warranty.
 
 See <http://creativecommons.org/publicdomain/zero/1.0/>. */
 
-#include <string.h>
 #include "xoshiro256.h"
 
 /* This is xoshiro256** 1.0, one of our all-purpose, rock-solid

@@ -2,7 +2,6 @@
 #include "task.h"
 #include "common.h"
 #include "hal.h"
-#include "keypad/keypad.h"
 
 void vApplicationTickHook(void) {
   hal_tick();

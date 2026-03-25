@@ -27,7 +27,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
-#include "options.h"
 
 extern const char b58digits_ordered[];
 extern const int8_t b58digits_map[];

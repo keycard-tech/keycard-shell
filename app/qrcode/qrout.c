@@ -1,7 +1,6 @@
 #include "qrcodegen.h"
 #include "qrout.h"
 #include "core/settings.h"
-#include "crypto/util.h"
 #include "screen/screen.h"
 #include "ur/ur.h"
 #include "ui/dialog.h"

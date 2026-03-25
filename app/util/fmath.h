@@ -11,8 +11,7 @@
 #ifndef __FMATH_H__
 #define __FMATH_H__
 #include <stdlib.h>
-#include <stdint.h>
-#include <float.h>
+
 float fast_sqrtf(float x);
 int fast_floorf(float x);
 int fast_ceilf(float x);

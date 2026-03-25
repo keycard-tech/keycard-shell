@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include "error.h"
 #include "screen/screen.h"
-#include "font/font.h"
-#include "theme.h"
 
 typedef enum {
   ICON_BATTERY_ONE = 0x05,

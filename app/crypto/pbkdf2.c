@@ -23,6 +23,7 @@
 
 #include "pbkdf2.h"
 #include <string.h>
+#include "crypto/byte_order.h"
 #include "hmac.h"
 #include "memzero.h"
 #include "sha2.h"

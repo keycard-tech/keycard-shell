@@ -2,7 +2,6 @@
 #include "keypad/keypad.h"
 #include "ui/dialog.h"
 #include "ui/theme.h"
-#include "ui/ui.h"
 #include "ui/ui_internal.h"
 
 #include <stdbool.h>

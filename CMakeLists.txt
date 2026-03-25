@@ -311,6 +311,7 @@ set(TESTAPP_C_FLAGS "-DTEST_APP")
 set(TESTAPP_ASM_FLAGS "-DTEST_APP")
 set(TESTAPP_MAIN_SOURCES ${APP_SOURCES})
 list(REMOVE_ITEM TESTAPP_MAIN_SOURCES app/tasks/core_task.c)
+list(REMOVE_ITEM TESTAPP_MAIN_SOURCES app/tasks/ui_task.c)
 
 # Create testapp executable
 add_executable(shellos-test.elf 

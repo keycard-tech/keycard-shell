@@ -1,7 +1,6 @@
 #ifndef _ATR_H
 #define _ATR_H
 
-#include "atr_types.h"
 #include "smartcard.h"
 #include "error.h"
 

@@ -1,8 +1,6 @@
-#include <ctype.h>
 #include <string.h>
-#include <inttypes.h>
 #include "compactsize.h"
-#include "psbt_tx.h"
+#include "psbt.h"
 
 const uint8_t PSBT_MAGIC[4] = {0x70, 0x73, 0x62, 0x74};
 

@@ -1,6 +1,5 @@
 #include "hal.h"
 #include "iso7816/t1.h"
-#include <stdlib.h>
 
 #ifndef MIN
 #define MIN(a, b)  (((a) < (b)) ? (a) : (b))

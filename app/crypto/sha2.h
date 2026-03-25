@@ -33,9 +33,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "byte_order.h"
 #include "hal.h"
-#include "sha2_soft.h"
+#include "sha2_soft.h" // IWYU pragma: export
 
 #define SHA1_BLOCK_LENGTH		64
 #define SHA1_DIGEST_LENGTH		20

@@ -31,7 +31,6 @@
 #include <string.h>
 
 #include "memzero.h"
-#include "script.h"
 
 /*
  This library implements 256-bit numbers arithmetic.

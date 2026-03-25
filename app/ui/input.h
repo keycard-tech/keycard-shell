@@ -1,7 +1,6 @@
 #ifndef _UI_INPUT_
 #define _UI_INPUT_
 
-#include <stdint.h>
 #include "error.h"
 
 #define SECRET_NEW_CODE -1
