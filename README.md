@@ -102,7 +102,7 @@ cmake --build --preset release
 
 #### Verifying the Firmware
 
-Build the **Release** target in STM32CubeIDE, and run:
+After building, run:
 
 ```bash
 uv run python tools/firmware-hash.py -b build/shellos.bin
