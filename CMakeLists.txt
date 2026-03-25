@@ -306,21 +306,23 @@ add_custom_command(TARGET shellos-bootloader.elf POST_BUILD
     COMMENT "Converting bootloader with bootloader-perso.py"
 )
 
-# Bootloader target
+# Testapp target
 set(TESTAPP_C_FLAGS "-DTEST_APP")
 set(TESTAPP_ASM_FLAGS "-DTEST_APP")
+set(TESTAPP_MAIN_SOURCES ${APP_SOURCES})
+list(REMOVE_ITEM TESTAPP_MAIN_SOURCES app/tasks/core_task.c)
 
 # Create testapp executable
 add_executable(shellos-test.elf 
     ${ZCBOR_SOURCES}
     ${TEST_SOURCES}
     ${FREERTOS_SOURCES}
-    ${APP_SOURCES}
+    ${TESTAPP_MAIN_SOURCES}
     ${HAL_SOURCES}
     ${CORE_SOURCES}
 )
 
-# Set bootloader-specific flags
+# Set testapp-specific flags
 set_target_properties(shellos-test.elf PROPERTIES
     COMPILE_FLAGS "${TESTAPP_C_FLAGS}"
     ASM_FLAGS "${TESTAPP_ASM_FLAGS}"
@@ -339,7 +341,6 @@ add_custom_command(TARGET shellos-test.elf POST_BUILD
 # Create main executable
 add_executable(shellos.elf
     ${ZCBOR_SOURCES}
-    ${TEST_SOURCES}
     ${FREERTOS_SOURCES}
     ${APP_SOURCES}
     ${HAL_SOURCES}

@@ -1,10 +1,7 @@
-#ifdef TEST_APP
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include "common.h"
 #include "core/core.h"
-#include "core/settings.h"
 #include "keycard/keycard.h"
 #include "keycard/keycard_cmdset.h"
 #include "mem.h"
@@ -12,7 +9,6 @@
 #include "usb/usb.h"
 #include "ur/ur.h"
 #include "ur/ur_types.h"
-#include "ur/ur_encode.h"
 
 #define TEST_AID_LEN 9
 const uint8_t TEST_AID[] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01};
@@ -306,4 +302,3 @@ void core_task_entry(void* pvParameters) {
     usb_wait("Waiting for next command...");
   }
 }
-#endif

@@ -1,4 +1,3 @@
-#ifndef TEST_APP
 #include "core/core.h"
 #include "core/card.h"
 #include "core/settings.h"
@@ -120,4 +119,3 @@ void core_task_entry(void* pvParameters) {
     }
   }
 }
-#endif
