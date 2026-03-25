@@ -10,10 +10,8 @@
 #include "iso7816/smartcard.h"
 #include "qrcode/qrcode.h"
 
-#ifdef __MCUXPRESSO
-#include "nxp.h"
-#elif defined STM32_HAL
-#include "stm32.h"
+#ifdef STM32_HAL
+#include "stm32.h" // IWYU pragma: export
 #else
 #error "Unsupported platform"
 #endif

@@ -33,7 +33,6 @@
 #include "sha2.h"
 #include "memzero.h"
 #include "byte_order.h"
-#include "common.h"
 
 /*
  * ASSERT NOTE:

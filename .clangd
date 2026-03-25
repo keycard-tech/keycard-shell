@@ -4,6 +4,6 @@ CompileFlags:
   Remove: [-DBOOTLOADER, -DTEST_APP]
 Diagnostics:
   Includes:
-    IgnoreHeader: (FreeRTOS|hal|common)\.h
+    IgnoreHeader: FreeRTOS\.h
 Index:
   Background: Build

@@ -1,5 +1,4 @@
 #include "hal.h"
-#include "common.h"
 #include "camera.h"
 #include "FreeRTOS.h"
 #include "task.h"

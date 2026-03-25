@@ -1,4 +1,3 @@
-#include "common.h"
 #include "core.h"
 #include "crypto/ecdsa.h"
 #include "crypto/sha2.h"

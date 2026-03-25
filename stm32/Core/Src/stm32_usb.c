@@ -1,3 +1,4 @@
+#include "hal.h"
 #include "stm32_internal.h"
 
 void HAL_PCD_SetupStageCallback(PCD_HandleTypeDef *hpcd) {
@@ -45,7 +46,7 @@ hal_err_t hal_usb_start() {
   hpcd_USB_DRD_FS.Instance->ISTR = 0U;
   hpcd_USB_DRD_FS.Instance->CNTR = USB_CNTR_CTRM  | USB_CNTR_WKUPM | USB_CNTR_SUSPM | USB_CNTR_ERRM | USB_CNTR_RESETM | USB_CNTR_L1REQM;
 
-  return HAL_OK;
+  return HAL_SUCCESS;
 }
 
 hal_err_t hal_usb_stop() {
@@ -56,7 +57,7 @@ hal_err_t hal_usb_stop() {
     HAL_PWREx_DisableVddUSB();
   }
 
-  return HAL_OK;
+  return HAL_SUCCESS;
 }
 
 hal_err_t hal_usb_send(uint8_t epaddr, const uint8_t* data, size_t len) {

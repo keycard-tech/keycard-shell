@@ -26,7 +26,7 @@ hal_err_t hal_flash_wait_program() {
 hal_err_t hal_flash_program(const uint8_t* data, uint8_t* addr, size_t len) {
   size_t write_len = (16 - (((uint32_t) addr) & 0xf)) & 0xf;
 
-  app_err_t err = HAL_SUCCESS;
+  hal_err_t err = HAL_SUCCESS;
 
   if (!write_len) {
     SET_BIT(FLASH_NS->NSCR, FLASH_CR_PG);

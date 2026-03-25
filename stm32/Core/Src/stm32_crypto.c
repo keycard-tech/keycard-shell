@@ -256,7 +256,7 @@ static hal_err_t _hal_bn_r2(const uint8_t mod[BN_SIZE], uint32_t* r2_mod) {
 
   HAL_PKA_MontgomeryParam_GetResult(&hpka, r2_mod);
 
-  return HAL_OK;
+  return HAL_SUCCESS;
 }
 
 
@@ -418,7 +418,7 @@ static inline hal_err_t _hal_pka_ari_do(uint32_t op, const uint8_t a[BN_SIZE], c
 
   PKA_Memcpy_u32_to_u8(r, &hpka.Instance->RAM[PKA_ARITHMETIC_ALL_OPS_OUT_RESULT], BN_SIZE);
 
-  return HAL_OK;
+  return HAL_SUCCESS;
 }
 
 hal_err_t hal_bn_mul_r2(const uint8_t a[BN_SIZE], const uint8_t mod[BN_SIZE], uint8_t r[BN_SIZE]) {
@@ -510,7 +510,7 @@ hal_err_t hal_bn_inv_mod(const uint8_t a[BN_SIZE], const uint8_t mod[BN_SIZE], u
 
   PKA_Memcpy_u32_to_u8(r, &hpka.Instance->RAM[PKA_ARITHMETIC_ALL_OPS_OUT_RESULT], BN_SIZE);
 
-  return HAL_OK;
+  return HAL_SUCCESS;
 }
 
 int hal_bn_cmp(const uint8_t a[BN_SIZE], const uint8_t b[BN_SIZE]) {

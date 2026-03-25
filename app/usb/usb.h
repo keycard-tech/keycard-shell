@@ -1,7 +1,6 @@
 #ifndef __USB__
 #define __USB__
 
-#include "common.h"
 #include "hal.h"
 #include "pwr.h"
 

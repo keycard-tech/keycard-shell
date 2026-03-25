@@ -1,4 +1,5 @@
 #include "usb.h"
+#include "common.h"
 #include "hal.h"
 #include "core/core.h"
 #include "crypto/util.h"

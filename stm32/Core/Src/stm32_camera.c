@@ -79,7 +79,7 @@ hal_err_t hal_camera_next_frame(uint8_t** fb) {
   int ready = -1;
 
   for (int i = 0; i < CAMERA_FB_COUNT; i++) {
-    if ((g_dcmi_bufs[i].status == DCMI_ACQUIRED)) {
+    if (g_dcmi_bufs[i].status == DCMI_ACQUIRED) {
       g_dcmi_bufs[i].status = DCMI_PROCESSING;
       *fb = g_dcmi_bufs[i].addr;
       return HAL_SUCCESS;

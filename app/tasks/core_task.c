@@ -1,3 +1,4 @@
+#include "common.h"
 #include "core/core.h"
 #include "core/card.h"
 #include "core/settings.h"

@@ -2,6 +2,8 @@
 #define __HAL_STM32__
 
 #include "stm32h573xx.h"
+#include "common.h"
+#include <stdbool.h>
 
 typedef struct {
   uint32_t len;

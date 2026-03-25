@@ -1,7 +1,7 @@
 #ifndef __CORE_SETTINGS__
 #define __CORE_SETTINGS__
 
-#include "common.h"
+#include <stdint.h>
 #include <stdbool.h>
 
 #define SETTINGS_SHUTDOWN_SECS(__TIME__) (__TIME__ * 1000)

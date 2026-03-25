@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "common.h"
 #include "storage/fs.h"
 #include "ui/ui.h"
 #include "ui/i18n.h"

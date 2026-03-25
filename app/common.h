@@ -13,7 +13,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "hal.h"
 
 typedef struct {
   uint8_t* data;

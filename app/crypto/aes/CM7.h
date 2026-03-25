@@ -12,7 +12,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "common.h"
+#include "hal.h"
 
 APP_RAMFUNC void CM7_1T_AES_128_keyschedule_enc(uint8_t* rk, const uint8_t* key);
 APP_RAMFUNC void CM7_1T_AES_192_keyschedule_enc(uint8_t* rk, const uint8_t* key);

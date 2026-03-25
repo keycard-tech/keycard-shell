@@ -2,6 +2,7 @@
 #define __PWR__
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #define PWR_BATTERY_CHARGING 255
 
