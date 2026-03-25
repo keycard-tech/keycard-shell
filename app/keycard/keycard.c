@@ -273,13 +273,6 @@ static app_err_t keycard_authenticate(keycard_t* kc, uint8_t* pin, uint8_t* cach
   return keycard_unblock(kc, pinStatus.puk_retries);
 }
 
-static void keycard_generate_bip39_seed(const uint16_t* indexes, uint32_t len, const char* passphrase, uint8_t* seed) {
-  char mnemonic[BIP39_MAX_MNEMONIC_LEN * 10];
-  mnemonic_from_indexes(mnemonic, indexes, len);
-  mnemonic_to_seed(mnemonic, passphrase, seed);
-  memset(mnemonic, 0, sizeof(mnemonic));
-}
-
 static app_err_t keycard_generate_slip39(const uint8_t* seed, const size_t seed_len, slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN], uint8_t ems[SLIP39_SEED_STRENGTH]) {
   if (!g_settings.skip_help && (ui_prompt(LSTR(MENU_MNEMO_SLIP39), LSTR(MNEMO_BACKUP_SLIP39_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return ERR_CANCEL;
@@ -330,64 +323,6 @@ static app_err_t keycard_generate_bip39(const uint8_t* raw_mnemo, uint16_t index
   return ui_backup_mnemonic(indexes, mnemo_len, BIP39_WORDLIST_ENGLISH, BIP39_WORD_COUNT, !g_settings.skip_help) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
 }
 
-static app_err_t keycard_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len) {
-  while (1) {
-    if (ui_read_mnemonic(indexes, mnemo_len, BIP39_WORDLIST_ENGLISH, BIP39_WORD_COUNT) != CORE_EVT_UI_OK) {
-      return ERR_CANCEL;
-    }
-
-    if (!mnemonic_check(indexes, mnemo_len)) {
-      ui_bad_seed();
-    } else {
-      return ERR_OK;
-    }
-  }
-}
-
-static app_err_t keycard_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN], uint8_t ems[SLIP39_SEED_STRENGTH]) {
-  uint8_t shard_idx = 0;
-  uint8_t shard_count = 1;
-  const char* part_success = LSTR(INFO_SLIP39_PART_OK_SUB);
-  size_t part_success_len = strlen(part_success);
-  char part_counter_msg[part_success_len + 3];
-  memcpy(&part_counter_msg[2], part_success, part_success_len + 1);
-
-  while(shard_idx < shard_count) {
-    if (ui_read_mnemonic(indexes, SLIP39_MNEMO_LEN, SLIP39_WORDLIST, SLIP39_WORDS_COUNT) != CORE_EVT_UI_OK) {
-      return ERR_CANCEL;
-    }
-
-    if (slip39_decode_mnemonic(indexes, SLIP39_MNEMO_LEN, &shards[shard_idx]) < 0) {
-      ui_bad_seed();
-    } else if ((shards[0].identifier != shards[shard_idx].identifier) || (shards[0].group_index != shards[shard_idx].group_index)) {
-      ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_MISMATCH_MSG), LSTR(INFO_SLIP39_MISMATCH_SUB), 0);
-    } else if (shards[0].group_threshold != 1) {
-      ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_UNSUPPORTED_MSG), LSTR(INFO_SLIP39_UNSUPPORTED_SUB), 0);
-    } else {
-      memset(&indexes[3], 0xff, sizeof(uint16_t) * (SLIP39_MNEMO_LEN - 3));
-
-      shard_count = shards[0].member_threshold;
-      shard_idx++;
-
-      uint8_t parts_left = shard_count - shard_idx;
-
-      if (parts_left) {
-        int off = 1;
-        part_counter_msg[off--] = '0' + (parts_left % 9);
-        if (parts_left > 9) {
-          part_counter_msg[off--] = '1';
-        }
-
-        ui_info(ICON_INFO_SUCCESS, LSTR(INFO_SLIP39_PART_OK_MSG), &part_counter_msg[off + 1], 0);
-      }
-    }
-  }
-
-  slip39_combine(shards, shard_count, ems, SLIP39_SEED_STRENGTH);
-
-  return ERR_OK;
-}
-
 static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* seed_len) {
   uint8_t* slip39_ems = &seed[16];
   slip39_shard_t shards[16];
@@ -422,9 +357,9 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
     memset(data, 0, len * 2);
   } else if (mode_selected == MENU_MNEMO_IMPORT) {
     if (slip39) {
-      err = keycard_read_slip39(shards, indexes, slip39_ems);
+      err = ui_read_slip39(shards, indexes, slip39_ems) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
     } else {
-      err = keycard_read_bip39(indexes, len);
+      err = ui_read_bip39(indexes, len) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
     }
   } else {
     err = ui_scan_mnemonic(indexes, &len) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
@@ -440,7 +375,7 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
       slip39_decrypt(slip39_ems, 16, passphrase, shards[0].extendable, shards[0].iteration_exponent, shards[0].identifier, seed);
       *seed_len = 16;
     } else {
-      keycard_generate_bip39_seed(indexes, len, passphrase, seed);
+      mnemonic_indexes_to_seed(indexes, len, passphrase, seed);
       *seed_len = 64;
     }
 

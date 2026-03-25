@@ -241,6 +241,14 @@ const char *const i18n_english_strings[] = {
     "Select threshold",
     "SLIP39 standard allows aditional security and recovery options. Only proceed if you familiar with this standard.\nLearn more: keycard.tech/slip39",
 
+    // Mnemonic verification
+    "Verify mnemonic",
+    "Enter passphrase or hold OK to skip",
+    "Fingerprint matches",
+    "The mnemonic matches the card",
+    "Fingerprint mismatch",
+    "The mnemonic does not match",
+
     // Device verification
     "Verify device",
     "1. Visit shell.keycard.tech/verify to confirm the authencity of your device.\n2. Scan the provided QR code and follow the website instructions to ensure the site is also legitimate.",

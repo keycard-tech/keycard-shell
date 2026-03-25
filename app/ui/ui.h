@@ -3,13 +3,14 @@
 
 #include <stdint.h>
 #include "crypto/address.h"
+#include "crypto/bip39.h"
+#include "crypto/slip39.h"
 #include "bitcoin/bitcoin.h"
 #include "ethereum/ethUstream.h"
 #include "ethereum/eip712.h"
 #include "menu.h"
 #include "dialog.h"
 #include "input.h"
-#include "ur/ur_types.h"
 #include "ur/ur.h"
 
 typedef enum {
@@ -71,6 +72,9 @@ core_evt_t ui_read_number(const char* title, uint32_t min, uint32_t max, uint32_
 core_evt_t ui_read_number_direct(const char* title, uint32_t* num);
 
 i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass);
+core_evt_t ui_read_mnemonic_verify(uint32_t* len);
+core_evt_t ui_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len);
+core_evt_t ui_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN], uint8_t ems[SLIP39_SEED_STRENGTH]);
 core_evt_t ui_display_mnemonic(const char* title, uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount);
 core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount, bool prompt_confirm);
 core_evt_t ui_read_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount);

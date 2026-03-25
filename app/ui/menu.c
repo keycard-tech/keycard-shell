@@ -9,11 +9,12 @@
 #include "ui_internal.h"
 
 const menu_t menu_keycard = {
-  5, {
+  6, {
     {MENU_CARD_NAME, NULL},
     {MENU_CHANGE_PIN, NULL},
     {MENU_CHANGE_PUK, NULL},
     {MENU_CHANGE_PAIRING, NULL},
+    {MENU_VERIFY_MNEMO, NULL},
     {MENU_RESET_CARD, NULL},
   }
 };
@@ -104,6 +105,15 @@ const menu_t menu_mnemonic_has_pass = {
   2, {
     {MENU_MNEMO_WITH_PASS, NULL},
     {MENU_MNEMO_NO_PASS, NULL},
+  }
+};
+
+const menu_t menu_verify_mnemonic = {
+  4, {
+    {MENU_MNEMO_12WORDS, NULL},
+    {MENU_MNEMO_24WORDS, NULL},
+    {MENU_MNEMO_SLIP39, NULL},
+    {MENU_MNEMO_SCAN, NULL},
   }
 };
 

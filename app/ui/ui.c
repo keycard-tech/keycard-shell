@@ -1,7 +1,4 @@
-#include "app_tasks.h"
-#include "core/core.h"
 #include "crypto/rand.h"
-#include "crypto/bip39.h"
 #include "mem.h"
 #include "error.h"
 #include "ui.h"
@@ -409,6 +406,92 @@ i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
     }
   }
 }
+
+core_evt_t ui_read_mnemonic_verify(uint32_t* len) {
+  i18n_str_id_t selected = MENU_MNEMO_12WORDS;
+  core_evt_t res = ui_menu(LSTR(MNEMO_VERIFY_TITLE), &menu_verify_mnemonic, &selected, -1, 0, 0, 0, 0);
+  
+  if (res == CORE_EVT_UI_OK) {
+    switch(selected) {
+    case MENU_MNEMO_12WORDS:
+      *len = 12;
+      break;
+    case MENU_MNEMO_24WORDS:
+      *len = 24;
+      break;
+    case MENU_MNEMO_SCAN:
+      *len = 0;  // QR scan
+      break;
+    case MENU_MNEMO_SLIP39:
+      *len = SLIP39_MNEMO_LEN;
+      break;
+    default:
+      res = CORE_EVT_UI_CANCELLED;
+      break;
+    }
+  }
+
+  return res;
+}
+
+core_evt_t ui_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len) {
+  while (1) {
+    if (ui_read_mnemonic(indexes, mnemo_len, BIP39_WORDLIST_ENGLISH, BIP39_WORD_COUNT) != CORE_EVT_UI_OK) {
+      return CORE_EVT_UI_CANCELLED;
+    }
+
+    if (!mnemonic_check(indexes, mnemo_len)) {
+      ui_bad_seed();
+    } else {
+      return CORE_EVT_UI_OK;
+    }
+  }
+}
+
+core_evt_t ui_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN], uint8_t ems[SLIP39_SEED_STRENGTH]) {
+  uint8_t shard_idx = 0;
+  uint8_t shard_count = 1;
+  const char* part_success = LSTR(INFO_SLIP39_PART_OK_SUB);
+  size_t part_success_len = strlen(part_success);
+  char part_counter_msg[part_success_len + 3];
+  memcpy(&part_counter_msg[2], part_success, part_success_len + 1);
+
+  while(shard_idx < shard_count) {
+    if (ui_read_mnemonic(indexes, SLIP39_MNEMO_LEN, SLIP39_WORDLIST, SLIP39_WORDS_COUNT) != CORE_EVT_UI_OK) {
+      return CORE_EVT_UI_CANCELLED;
+    }
+
+    if (slip39_decode_mnemonic(indexes, SLIP39_MNEMO_LEN, &shards[shard_idx]) < 0) {
+      ui_bad_seed();
+    } else if ((shards[0].identifier != shards[shard_idx].identifier) || (shards[0].group_index != shards[shard_idx].group_index)) {
+      ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_MISMATCH_MSG), LSTR(INFO_SLIP39_MISMATCH_SUB), 0);
+    } else if (shards[0].group_threshold != 1) {
+      ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_UNSUPPORTED_MSG), LSTR(INFO_SLIP39_UNSUPPORTED_SUB), 0);
+    } else {
+      memset(&indexes[3], 0xff, sizeof(uint16_t) * (SLIP39_MNEMO_LEN - 3));
+
+      shard_count = shards[0].member_threshold;
+      shard_idx++;
+
+      uint8_t parts_left = shard_count - shard_idx;
+
+      if (parts_left) {
+        int off = 1;
+        part_counter_msg[off--] = '0' + (parts_left % 9);
+        if (parts_left > 9) {
+          part_counter_msg[off--] = '1';
+        }
+
+        ui_info(ICON_INFO_SUCCESS, LSTR(INFO_SLIP39_PART_OK_MSG), &part_counter_msg[off + 1], 0);
+      }
+    }
+  }
+
+  slip39_combine(shards, shard_count, ems, SLIP39_SEED_STRENGTH);
+
+  return CORE_EVT_UI_OK;
+}
+
 core_evt_t ui_display_mnemonic(const char* title, uint16_t* indexes, uint32_t len, const char* const* wordlist, size_t wordcount) {
   g_ui_cmd.type = UI_CMD_DISPLAY_MNEMO;
   g_ui_cmd.params.mnemo.title = title;

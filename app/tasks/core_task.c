@@ -5,7 +5,6 @@
 #include "keycard/keycard.h"
 #include "pwr.h"
 #include "usb/usb.h"
-#include "crypto/aes.h"
 #include "crypto/util.h"
 
 static inline void core_action_run(i18n_str_id_t menu) {
@@ -42,6 +41,9 @@ static inline void core_action_run(i18n_str_id_t menu) {
     break;
   case MENU_RESET_CARD:
     card_reset();
+    break;
+  case MENU_VERIFY_MNEMO:
+    card_verify_mnemonic();
     break;
   // Device
   case MENU_DEV_AUTH:

@@ -27,8 +27,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "options.h"
-
 #define BIP39_MAX_MNEMONIC_LEN 24
 #define BIP39_WORD_COUNT 2048
 #define BIP39_PBKDF2_ROUNDS 2048
@@ -46,5 +44,6 @@ bool mnemonic_from_seedqr_standard(uint16_t* mnemonic, uint32_t* out_len, const 
 
 // passphrase must be at most 256 characters otherwise it would be truncated
 void mnemonic_to_seed(const char *mnemonic, const char *passphrase, uint8_t seed[512 / 8]);
+void mnemonic_indexes_to_seed(const uint16_t* indexes, uint32_t len, const char* passphrase, uint8_t* seed);
 
 #endif
