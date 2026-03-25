@@ -1,4 +1,3 @@
-#ifdef BOOTLOADER
 #include "hal.h"
 #include "mem.h"
 #include "crypto/secp256k1.h"
@@ -51,4 +50,4 @@ int main(void) {
   __set_MSP(BOOTVTAB->initial_sp);
   BOOTVTAB->reset_handler();
 }
-#endif
+
