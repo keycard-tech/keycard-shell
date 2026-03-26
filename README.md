@@ -54,8 +54,6 @@ This repo contains everything needed to build a Keycard Shell.
 
 The Keycard Shell firmware build system uses CMake for the main firmware compilation and Python tools for post-processing (signing, image creation, database generation).
 
----
-
 #### Getting the Code
 
 First, clone the repository and switch to the release tag you want to build:
@@ -67,8 +65,6 @@ git checkout v1.1.1   # use the tag matching the official release you want to ve
 ```
 
 make sure you follow the build instructions directly for the tag you checked out since some steps and toolchain versions can differ.
-
----
 
 #### Prerequisites
 
@@ -117,8 +113,6 @@ The script supports:
 
 After downloading, the toolchain is installed in `toolchain/`.
 
----
-
 #### Setup Signing Keys
 
 Create a `deployment` directory with two files:
@@ -155,8 +149,6 @@ uv run python tools/firmware-hash.py -b ~/Downloads/shellos-<date>-<version>.bin
 ```
 
 The two hashes must match.
-
----
 
 #### Creating a Full Firmware Image
 
