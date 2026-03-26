@@ -1,0 +1,85 @@
+name: Build Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release version'
+        required: true
+        default: 'v1.0.0'
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.vars.outputs.release }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set release version
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "release=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "release=${{ github.event.inputs.release }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Setup Python virtual environment
+        run: |
+          uv venv
+          uv sync
+
+      - name: Download ARM GCC toolchain
+        run: |
+          chmod +x tools/download-toolchain.sh
+          ./tools/download-toolchain.sh
+
+      - name: Create deployment directory with signing keys
+        run: |
+          mkdir -p deployment
+          PRIVATE_KEY=$(openssl rand -hex 32)
+          PUBLIC_KEY=$(openssl rand -hex 64)
+          echo "$PRIVATE_KEY" > deployment/fw-test-key.txt
+          echo "$PUBLIC_KEY" > deployment/bootloader-pubkey.txt
+
+      - name: Configure build
+        run: |
+          cmake --preset=release
+
+      - name: Build firmware
+        run: |
+          cmake --build --preset=release
+
+      - name: Copy signed binary
+        run: |
+          cp build/shellos.bin shellos-${{ steps.vars.outputs.release }}-reproduction.bin
+
+      - name: Generate firmware hash
+        run: |
+          uv run python tools/firmware-hash.py -b build/shellos.bin > shellos-${{ steps.vars.outputs.release }}-sha256.txt
+
+      - name: Upload signed binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shellos-${{ steps.vars.outputs.release }}-reproduction
+          path: shellos-${{ steps.vars.outputs.release }}-reproduction.bin
+
+      - name: Upload hash artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shellos-${{ steps.vars.outputs.release }}-sha256
+          path: shellos-${{ steps.vars.outputs.release }}-sha256.txt
