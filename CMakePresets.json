@@ -9,10 +9,10 @@
         {
             "name": "base",
             "displayName": "Base Configuration",
-            "description": "Base settings for STM32 ARM GCC build",
+            "description": "Base settings for ARM GCC build",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build",
-            "toolchainFile": "${sourceDir}/cmake/stm32-gcc.cmake"
+            "toolchainFile": "${sourceDir}/cmake/arm-gcc.cmake"
         },
         {
             "name": "debug",

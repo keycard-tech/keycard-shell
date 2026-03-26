@@ -72,6 +72,27 @@ make sure you follow the build instructions directly for the tag you checked out
 
 #### Prerequisites
 
+##### Install Build Tools
+
+**CMake** (3.15 or later) and **Ninja** are required for building the firmware.
+
+On Ubuntu/Debian:
+```bash
+sudo apt install cmake ninja-build
+```
+
+On macOS (with Homebrew):
+```bash
+brew install cmake ninja
+```
+
+On Windows (with Chocolatey):
+```bash
+choco install cmake ninja
+```
+
+Alternatively, download from [cmake.org](https://cmake.org/download/) and [ninja-build.org](https://ninja-build.org/).
+
 ##### Install uv
 
 ```bash
@@ -80,11 +101,23 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 or follow your OS instructions for installing uv.
 
-##### Install STM32 ARM GCC Toolchain
+##### Install ARM GCC Toolchain
 
-Required for compiling STM32 firmware. Install [STM32CubeCLT
-1.21.0](https://www.st.com/en/development-tools/stm32cubeclt.html). It is import to use this exact version to reproduce the build. After installing make sure the tools are added to you `PATH`
+Required for compiling STM32 firmware. The toolchain is automatically downloaded by the build script:
 
+```bash
+./tools/download-toolchain.sh
+```
+
+The script supports:
+- Linux x86_64
+- Linux aarch64
+- macOS (Apple Silicon / arm64)
+- Windows x86_64
+
+After downloading, the toolchain is installed in `toolchain/`.
+
+---
 
 #### 1. Setup Virtual Environment
 

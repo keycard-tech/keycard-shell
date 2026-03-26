@@ -1,12 +1,14 @@
 #include <string.h>
+#include <assert.h>
 
 #include "main.h"
 #include "hal.h"
 #include "keypad/keypad.h"
 #include "linked_list.h"
+#include "pwr.h"
+
 #include "FreeRTOS.h"
 #include "task.h"
-#include "pwr.h"
 
 #define HAL_TIMEOUT 250
 #define PKA_TIMEOUT 500

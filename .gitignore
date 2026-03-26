@@ -11,3 +11,5 @@ __pycache__
 uv.lock
 .pytest_cache
 .mypy_cache
+# ARM GCC Toolchain (auto-downloaded)
+toolchain/

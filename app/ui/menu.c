@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <assert.h>
 
 #include "common.h"
 #include "dialog.h"
