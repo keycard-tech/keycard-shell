@@ -22,11 +22,11 @@ Support for an infinite number of Keycard smartcards, each with its own key & PI
 
 ### Wide Compatibility
 
-Works seamlessly with MetaMask, imToken, Rabby, BlueWallet, BlueWallet, Sparrow, Specter, and more.
+Works seamlessly with MetaMask, imToken, Rabby, BlueWallet, Sparrow, Specter, and more.
 
 ### Built to Last
 
-Powered by a replaceable Nokia BL-4C battery (25 + year expectancy), water & dust resistant.
+Powered by a replaceable Nokia BL-4C battery (25+ year expectancy), water & dust resistant.
 
 ### Duress PIN
 
