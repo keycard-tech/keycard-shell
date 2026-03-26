@@ -1,6 +1,10 @@
 import subprocess
 import hashlib
+import os
 from secp256k1Crypto import PrivateKey
+
+# Path to arm-none-eabi-objcopy, set via CMake environment variable
+OBJCOPY = os.environ.get("OBJCOPY", "arm-none-eabi-objcopy")
 
 PAGE_SIZE = 8192
 WORD_SIZE = 16
@@ -27,10 +31,10 @@ def sign(sign_key, m):
     return key.ecdsa_serialize_compact(sig)
 
 def elf_to_bin(elf_path, out_path):
-    subprocess.run(["arm-none-eabi-objcopy", "-O", "binary", "--gap-fill=255", elf_path, out_path], check=True)
+    subprocess.run([OBJCOPY, "-O", "binary", "--gap-fill=255", elf_path, out_path], check=True)
 
 def replace_elf_section(elf_path, section_name, section_content):
-    subprocess.run(["arm-none-eabi-objcopy", "--update-section", f'.{section_name}={section_content}', elf_path, elf_path], check=True)
+    subprocess.run([OBJCOPY, "--update-section", f'.{section_name}={section_content}', elf_path, elf_path], check=True)
 
 def hash_firmware(fw):
     h = hashlib.sha256()
