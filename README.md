@@ -119,14 +119,21 @@ After downloading, the toolchain is installed in `toolchain/`.
 
 ---
 
-#### 1. Setup Virtual Environment
+#### Setup Signing Keys
+
+Create a `deployment` directory with two files:
+
+- `bootloader-pubkey.txt`: Contains the public key the bootloader will use to verify the firmware. The key must be hex-encoded, uncompressed, and without the leading `04` byte.
+- `fw-test-key.txt`: Contains a hex-encoded private key (the private part of the key in `bootloader-pubkey.txt`) used to sign the firmware.
+
+#### Setup Virtual Environment
 
 ```bash
 uv venv
 uv sync
 ```
 
-#### 2. Build Firmware
+#### Build Firmware
 
 ```bash
 cmake --preset release
