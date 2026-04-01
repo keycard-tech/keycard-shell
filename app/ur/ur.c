@@ -34,16 +34,15 @@ const char *const ur_type_string[] = {
 };
 
 static app_err_t ur_process_simple(ur_t* ur, uint8_t* parts, uint8_t* part_data, size_t part_len, uint32_t desc_idx, struct ur_part* part) {
-  if (ur->part_desc[desc_idx]) {
+  if (!ur_desc_is_zero(&ur->part_desc[desc_idx])) {
     return ERR_NEED_MORE_DATA;
   }
 
   memcpy(&parts[desc_idx * part_len], part_data, part_len);
-  ur_desc_t tmp = ((ur_desc_t) 1) << desc_idx;
-  ur->part_desc[desc_idx] = tmp;
-  ur->part_mask |= tmp;
+  ur_desc_set_bit(&ur->part_desc[desc_idx], desc_idx);
+  ur_desc_or_assign(&ur->part_mask, &ur->part_desc[desc_idx]);
 
-  uint32_t part_count = UR_DESC_POPCOUNT(ur->part_mask);
+  uint32_t part_count = ur_desc_popcount(&ur->part_mask);
   ur->percent_done = (part_count * 100) / part->ur_part_seqLen;
 
   if (part->ur_part_seqLen == part_count) {
@@ -116,9 +115,9 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
 
   if (part.ur_part_checksum != ur->crc) {
     ur->crc = part.ur_part_checksum;
-    ur->part_mask = 0;
+    ur_desc_zero(&ur->part_mask);
     for (int i = 0; i < UR_PART_DESC_COUNT; i++) {
-      ur->part_desc[i] = 0;
+      ur_desc_zero(&ur->part_desc[i]);
     }
 
     random_sampler_init(part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases);
@@ -132,8 +131,9 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
     return ur_process_simple(ur, parts, part_data, part_len, part.ur_part_seqNum - 1, &part);
   }
 
-  ur_desc_t indexes = fountain_part_indexes(part.ur_part_seqNum, ur->crc, part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases);
-  if ((indexes & (~ur->part_mask)) == 0) {
+  ur_desc_t indexes;
+  fountain_part_indexes(part.ur_part_seqNum, ur->crc, part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases, &indexes);
+  if (ur_desc_is_subset(&indexes, &ur->part_mask)) {
     return ERR_NEED_MORE_DATA;
   }
 
@@ -142,8 +142,8 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
 
   // reduce new part by existing
   while(desc_idx < UR_PART_DESC_COUNT) {
-    if (UR_DESC_POPCOUNT(indexes) == 1) {
-      int target_idx = UR_DESC_CTZ(indexes);
+    if (ur_desc_popcount(&indexes) == 1) {
+      int target_idx = ur_desc_ctz(&indexes);
       if (ur_process_simple(ur, parts, part_data, part_len, target_idx, &part) == ERR_OK) {
         return ERR_OK;
       } else {
@@ -152,13 +152,13 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
       }
     }
 
-    if (ur->part_desc[desc_idx] == 0) {
+    if (ur_desc_is_zero(&ur->part_desc[desc_idx])) {
       if (desc_idx >= part.ur_part_seqLen) {
         store_idx = desc_idx;
       }
-    } else if ((ur->part_desc[desc_idx] & indexes) == (ur->part_desc[desc_idx])) {
-      indexes = indexes ^ ur->part_desc[desc_idx];
-      if (indexes == 0) {
+    } else if (ur_desc_is_subset(&ur->part_desc[desc_idx], &indexes)) {
+      ur_desc_xor(&indexes, &indexes, &ur->part_desc[desc_idx]);
+      if (ur_desc_is_zero(&indexes)) {
         return ERR_NEED_MORE_DATA;
       }
 
@@ -174,12 +174,12 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
   // all buffers are full, but we don't give up yet. If one of the buffered parts is more mixed
   // then the current part, we overwrite it since parts easier to reduce are better for us
   if (store_idx == -1) {
-    int worst_count = UR_DESC_POPCOUNT(indexes);
+    int worst_count = ur_desc_popcount(&indexes);
 
     desc_idx = part.ur_part_seqLen;
 
     while(desc_idx < UR_PART_DESC_COUNT) {
-      int count = UR_DESC_POPCOUNT(ur->part_desc[desc_idx]);
+      int count = ur_desc_popcount(&ur->part_desc[desc_idx]);
 
       if (count > worst_count) {
         store_idx = desc_idx;
@@ -196,17 +196,17 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
 
   if (store_idx >= part.ur_part_seqLen) {
     memcpy(&parts[store_idx * part_len], part_data, part_len);
-    ur->part_desc[store_idx] = indexes;
+    ur_desc_assign(&ur->part_desc[store_idx], &indexes);
   }
 
   //reduce existing parts by new part
   desc_idx = part.ur_part_seqLen;
 
   while(desc_idx < UR_PART_DESC_COUNT) {
-    if ((desc_idx != store_idx) && ((ur->part_desc[desc_idx] & indexes) == indexes)) {
-      ur->part_desc[desc_idx] = indexes ^ ur->part_desc[desc_idx];
+    if ((desc_idx != store_idx) && ur_desc_is_subset(&indexes, &ur->part_desc[desc_idx])) {
+      ur_desc_xor(&ur->part_desc[desc_idx], &indexes, &ur->part_desc[desc_idx]);
 
-      if (ur->part_desc[desc_idx] == 0) {
+      if (ur_desc_is_zero(&ur->part_desc[desc_idx])) {
         desc_idx++;
         continue;
       }
@@ -216,13 +216,13 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
         target_part[i] ^= part_data[i];
       }
 
-      if (UR_DESC_POPCOUNT(ur->part_desc[desc_idx]) == 1) {
-        int target_idx = UR_DESC_CTZ(ur->part_desc[desc_idx]);
+      if (ur_desc_popcount(&ur->part_desc[desc_idx]) == 1) {
+        int target_idx = ur_desc_ctz(&ur->part_desc[desc_idx]);
         if (ur_process_simple(ur, parts, target_part, part_len, target_idx, &part) == ERR_OK) {
           return ERR_OK;
         }
 
-        ur->part_desc[desc_idx] = 0;
+        ur_desc_zero(&ur->part_desc[desc_idx]);
       }
     }
 
@@ -307,10 +307,11 @@ app_err_t ur_encode_next(ur_out_t* ur, char* out, size_t max_len) {
     memcpy(part_buf, &ur->data[off], copy_len);
   } else {
     ur->part.ur_part_seqNum++;
-    ur_desc_t indexes = fountain_part_indexes(ur->part.ur_part_seqNum, ur->part.ur_part_checksum, ur->part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases);
+    ur_desc_t indexes;
+    fountain_part_indexes(ur->part.ur_part_seqNum, ur->part.ur_part_checksum, ur->part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases, &indexes);
 
     for (int part_num = 0; part_num < ur->part.ur_part_seqLen; part_num++) {
-      if (indexes & 1) {
+      if (ur_desc_get_bit(&indexes, part_num)) {
         size_t off = part_num * ur->part.ur_part_data.len;
         size_t copy_len = APP_MIN((ur->part.ur_part_messageLen - off), ur->part.ur_part_data.len);
 
@@ -318,8 +319,6 @@ app_err_t ur_encode_next(ur_out_t* ur, char* out, size_t max_len) {
           part_buf[i] ^= ur->data[off + i];
         }
       }
-
-      indexes >>= 1;
     }
   }
 

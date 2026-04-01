@@ -2,21 +2,71 @@
 #define _UR_H_
 
 #include <stdint.h>
+#include <string.h>
 #include "error.h"
 #include "ur_types.h"
 
-#define UR_MAX_PART_COUNT 64
+#define UR_MAX_PART_COUNT 128
 #define UR_PART_DESC_COUNT (UR_MAX_PART_COUNT + 16)
 
-#if UR_MAX_PART_COUNT > 32
-typedef uint64_t ur_desc_t;
-#define UR_DESC_POPCOUNT(__X__) __builtin_popcountll(__X__)
-#define UR_DESC_CTZ(__X__) __builtin_ctzll(__X__)
-#else
-typedef uint32_t ur_desc_t;
-#define UR_DESC_POPCOUNT(__X__) __builtin_popcount(__X__)
-#define UR_DESC_CTZ(__X__) __builtin_ctz(__X__)
-#endif
+typedef struct {
+  uint32_t w[4];
+} ur_desc_t;
+
+static inline void ur_desc_zero(ur_desc_t* x) {
+  x->w[0] = x->w[1] = x->w[2] = x->w[3] = 0;
+}
+
+static inline void ur_desc_set_bit(ur_desc_t* x, uint32_t idx) {
+  x->w[idx >> 5] |= 1u << (idx & 31);
+}
+
+static inline int ur_desc_get_bit(const ur_desc_t* x, uint32_t idx) {
+  return (x->w[idx >> 5] >> (idx & 31)) & 1;
+}
+
+static inline void ur_desc_or_assign(ur_desc_t* x, const ur_desc_t* y) {
+  x->w[0] |= y->w[0];
+  x->w[1] |= y->w[1];
+  x->w[2] |= y->w[2];
+  x->w[3] |= y->w[3];
+}
+
+static inline void ur_desc_xor(ur_desc_t* result, const ur_desc_t* x, const ur_desc_t* y) {
+  result->w[0] = x->w[0] ^ y->w[0];
+  result->w[1] = x->w[1] ^ y->w[1];
+  result->w[2] = x->w[2] ^ y->w[2];
+  result->w[3] = x->w[3] ^ y->w[3];
+}
+
+static inline int ur_desc_is_zero(const ur_desc_t* x) {
+  return (x->w[0] | x->w[1] | x->w[2] | x->w[3]) == 0;
+}
+
+static inline int ur_desc_popcount(const ur_desc_t* x) {
+  return __builtin_popcount(x->w[0]) + __builtin_popcount(x->w[1]) +
+         __builtin_popcount(x->w[2]) + __builtin_popcount(x->w[3]);
+}
+
+static inline int ur_desc_ctz(const ur_desc_t* x) {
+  if (x->w[0]) return __builtin_ctz(x->w[0]);
+  if (x->w[1]) return 32 + __builtin_ctz(x->w[1]);
+  if (x->w[2]) return 64 + __builtin_ctz(x->w[2]);
+  if (x->w[3]) return 96 + __builtin_ctz(x->w[3]);
+  return 128;
+}
+
+static inline void ur_desc_assign(ur_desc_t* x, const ur_desc_t* y) {
+  x->w[0] = y->w[0];
+  x->w[1] = y->w[1];
+  x->w[2] = y->w[2];
+  x->w[3] = y->w[3];
+}
+
+static inline int ur_desc_is_subset(const ur_desc_t* x, const ur_desc_t* y) {
+  return ((x->w[0] & ~y->w[0]) | (x->w[1] & ~y->w[1]) |
+          (x->w[2] & ~y->w[2]) | (x->w[3] & ~y->w[3])) == 0;
+}
 
 typedef enum {
   BYTES = 0,
