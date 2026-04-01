@@ -1,5 +1,12 @@
 # Keycard Shell Dev Firmware
 
+## 1.2.0 (2026-04-01)
+
+* [ui] add mnemonic verification function in Settings -> Keycard
+* [build] switch to Arm GNU Toolchain (15.2.rel1)
+* [build] switch to CMake-based build system
+* [ci] automate build reproduction on GitHub runners
+
 ## 1.1.3 (2026-03-20)
 
 * [ui] add quick index selection in address screen
