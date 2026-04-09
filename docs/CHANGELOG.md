@@ -1,5 +1,9 @@
 # Keycard Shell Dev Firmware
 
+## 1.2.1 (2026-04-09)
+
+* [qr] increase maximum number of QR segments from 64 to 128 to allow larger tx
+
 ## 1.2.0 (2026-04-01)
 
 * [ui] add mnemonic verification function in Settings -> Keycard
