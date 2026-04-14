@@ -1,0 +1,176 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "2019862d-5d96-4a93-8e9d-218e57a71df9")
+	(paper "A4")
+	(lib_symbols)
+	(sheet
+		(at 17.78 43.18)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "135c302f-9f03-43ee-99ee-eca1b26ee4fa")
+		(property "Sheetname" "03PERIPHERALS"
+			(at 17.78 42.4684 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "3_03PERIPHERALS.kicad_sch"
+			(at 17.78 47.5746 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "ProPrj_Segun O pcb fiverr_2026-03-03"
+				(path "/2019862d-5d96-4a93-8e9d-218e57a71df9"
+					(page "3")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 17.78 34.29)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "5249b75a-b66d-4457-8ccb-becea14c09ca")
+		(property "Sheetname" "02MCU"
+			(at 17.78 33.5784 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "2_02MCU.kicad_sch"
+			(at 17.78 38.6846 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "ProPrj_Segun O pcb fiverr_2026-03-03"
+				(path "/2019862d-5d96-4a93-8e9d-218e57a71df9"
+					(page "2")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 17.78 25.4)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "a2f99ed6-826b-4a9e-a1a4-ae00d7843a29")
+		(property "Sheetname" "01POWER"
+			(at 17.78 24.6884 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "1_01POWER.kicad_sch"
+			(at 17.78 29.7946 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "ProPrj_Segun O pcb fiverr_2026-03-03"
+				(path "/2019862d-5d96-4a93-8e9d-218e57a71df9"
+					(page "1")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 17.78 52.07)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "b2e36667-f0e2-4a25-8db6-47b07289ad00")
+		(property "Sheetname" "Folio01"
+			(at 17.78 51.3584 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "4_Folio01.kicad_sch"
+			(at 17.78 56.4646 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "ProPrj_Segun O pcb fiverr_2026-03-03"
+				(path "/2019862d-5d96-4a93-8e9d-218e57a71df9"
+					(page "4")
+				)
+			)
+		)
+	)
+)

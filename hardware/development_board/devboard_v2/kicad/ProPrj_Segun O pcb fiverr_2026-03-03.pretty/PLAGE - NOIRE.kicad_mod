@@ -1,0 +1,126 @@
+(footprint "PLAGE - NOIRE"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(uuid "d4c396b6-74d9-412d-84ba-d0a8867f108c")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "75bd57e9-f183-46ab-8580-f4bb47739161")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "f7ee1005-bfd1-406e-b3d3-d9c6d26ecc49")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "1549a670-cd45-47bc-a345-2fc9fe28432e")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_poly
+		(pts
+			(xy -1.2 0.7) (xy -1.4 0.5) (xy -1.4 -0.5) (xy -1.2 -0.7) (xy 1.2 -0.7) (xy 1.4 -0.5) (xy 1.4 0.5)
+			(xy 1.2 0.7)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(fill yes)
+		(layer "Eco2.User")
+		(uuid "77a7d75c-f3d8-4062-b09d-b9c141ce41e8")
+	)
+	(fp_rect
+		(start -1.75 -1)
+		(end 1.75 1)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "f17cd6db-6d4b-487b-bd49-cd1cf1f0715a")
+	)
+	(fp_line
+		(start 0 -1)
+		(end 0 1)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "User.1")
+		(uuid "684d19dd-694a-4746-b59e-7644d98ddff8")
+	)
+	(fp_line
+		(start 1 0)
+		(end -1 0)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "User.1")
+		(uuid "fc32b410-86b4-438a-b5d5-e79a15a40902")
+	)
+	(fp_circle
+		(center 0 0)
+		(end 0.8545 0)
+		(stroke
+			(width 0.2)
+			(type default)
+		)
+		(fill no)
+		(layer "User.1")
+		(uuid "a72165c4-b2bc-477f-8b3e-ea3d648d243a")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "d73ff94c-a030-4385-aca9-79cba82314cc")
+		(effects
+			(font
+				(size 0.5 0.5)
+				(thickness 0.1)
+			)
+		)
+	)
+	(pad "1" smd roundrect
+		(at 0 0 180)
+		(size 3 1.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.5)
+		(uuid "7bea2f06-b122-42fc-9a1a-9736fe419881")
+	)
+	(embedded_fonts no)
+)

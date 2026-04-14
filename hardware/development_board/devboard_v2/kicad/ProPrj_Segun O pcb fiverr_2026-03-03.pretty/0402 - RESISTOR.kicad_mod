@@ -1,0 +1,163 @@
+(footprint "0402 - RESISTOR"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(uuid "5aa7428b-2753-418a-bf3c-2c409248abba")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "ef689211-0c00-4b11-840d-687a71fb18d0")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "7270e658-b027-44dc-baf7-fffc15855c92")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "058d5f01-29ac-4a35-bebd-714ff609cea5")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_poly
+		(pts
+			(xy 0.49 0.25) (xy 0.49 -0.25) (xy -0.51 -0.25) (xy -0.51 0.25)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(fill yes)
+		(layer "Eco2.User")
+		(uuid "dd62afc7-521c-4939-8fbe-b5fc0a47c316")
+	)
+	(fp_rect
+		(start -1 -0.55)
+		(end 1 0.55)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "aa48d4fe-1b75-41b3-8b13-7af9087abeaf")
+	)
+	(fp_line
+		(start 0 -0.4)
+		(end 0 0.4)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "User.1")
+		(uuid "16bfc696-9175-491d-a728-df0418c755bb")
+	)
+	(fp_line
+		(start 0.4 0)
+		(end -0.4 0)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "User.1")
+		(uuid "3eac66e5-7b7d-4912-b363-9f0fb40a2467")
+	)
+	(fp_line
+		(start 0.45 -0.25)
+		(end -0.45 -0.25)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "User.1")
+		(uuid "e1ed3644-8ba4-4d2e-b965-9580502e150e")
+	)
+	(fp_line
+		(start 0.46 0.25)
+		(end -0.44 0.25)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "User.1")
+		(uuid "718f1fc5-36b1-4453-9c28-798b12f949ba")
+	)
+	(fp_poly
+		(pts
+			(xy -0.5 -0.3) (xy -0.4 -0.3) (xy -0.4 0.3) (xy -0.5 0.3)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(fill yes)
+		(layer "User.1")
+		(uuid "443aaa51-b9a7-48c4-a9df-8fed32da84c2")
+	)
+	(fp_poly
+		(pts
+			(xy 0.41 -0.3) (xy 0.51 -0.3) (xy 0.51 0.3) (xy 0.41 0.3)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(fill yes)
+		(layer "User.1")
+		(uuid "7c4f2e42-4138-4125-ad7a-3d5f07b272c0")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "4783a9e1-4620-4eb8-b614-da82f0a9cc0b")
+		(effects
+			(font
+				(size 0.5 0.5)
+				(thickness 0.1)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -0.455 0)
+		(size 0.59 0.6)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "1acbb94f-c163-4afb-969d-6bbccbceeb95")
+	)
+	(pad "2" smd rect
+		(at 0.455 0)
+		(size 0.59 0.6)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "515d53ad-0b8e-43d9-b0ed-da2787973bc1")
+	)
+	(embedded_fonts no)
+)
