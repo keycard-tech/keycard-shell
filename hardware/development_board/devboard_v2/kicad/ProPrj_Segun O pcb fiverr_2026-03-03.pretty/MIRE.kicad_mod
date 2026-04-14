@@ -1,0 +1,145 @@
+(footprint "MIRE"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(uuid "0b2ce213-5f9d-431c-a0e0-5120040c36c6")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "ff8500b8-7b8d-41cd-afd1-a40cd9175d58")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "838fdb62-2a42-4875-a28d-8a056e1690ee")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "b1efb3da-f684-442b-a832-9961b9021328")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_circle
+		(center 0 0)
+		(end 0.45 0)
+		(stroke
+			(width 1)
+			(type default)
+		)
+		(fill no)
+		(layer "Eco2.User")
+		(uuid "ab1badfc-2681-41df-8629-9ce998fafa7a")
+	)
+	(fp_rect
+		(start -1.251 -1.25)
+		(end 1.25 1.2495)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "cec8d4cd-ca4c-4a6a-b261-75e16f5d2df8")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "57f9fba9-2e76-4e13-b464-2546b6af0977")
+		(effects
+			(font
+				(size 0.5 0.5)
+				(thickness 0.1)
+			)
+		)
+	)
+	(pad "0" smd circle
+		(at 0 0)
+		(size 1 1)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 90)
+		(uuid "31d07a61-7e82-4acf-b014-fa2d160c8203")
+	)
+	(zone
+		(net 0)
+		(net_name "")
+		(layer "F.Cu")
+		(uuid "b856f627-1a8e-4cf2-9062-79acffa5d6b1")
+		(hatch edge 0.5)
+		(connect_pads
+			(clearance 0)
+		)
+		(min_thickness 0.25)
+		(filled_areas_thickness no)
+		(keepout
+			(tracks not_allowed)
+			(vias not_allowed)
+			(pads not_allowed)
+			(copperpour not_allowed)
+			(footprints allowed)
+		)
+		(placement
+			(enabled no)
+			(sheetname "")
+		)
+		(fill
+			(thermal_gap 0.5)
+			(thermal_bridge_width 0.5)
+		)
+		(polygon
+			(pts
+				(xy 0.1055 -0.9945) (xy 0.157 -0.9875) (xy 0.207 -0.9785) (xy 0.2565 -0.968) (xy 0.299 -0.9535)
+				(xy 0.3405 -0.94) (xy 0.3915 -0.92) (xy 0.432 -0.9025) (xy 0.465 -0.886) (xy 0.504 -0.864) (xy 0.5375 -0.8445)
+				(xy 0.5775 -0.8165) (xy 0.631 -0.776) (xy 0.681 -0.7315) (xy 0.742 -0.6705) (xy 0.7925 -0.611) (xy 0.828 -0.5605)
+				(xy 0.8655 -0.502) (xy 0.8935 -0.4485) (xy 0.9205 -0.391) (xy 0.943 -0.3315) (xy 0.957 -0.289) (xy 0.9725 -0.232)
+				(xy 0.9835 -0.182) (xy 0.9955 -0.093) (xy 1 -0.002) (xy 0.9975 0.07) (xy 0.99 0.1465) (xy 0.9725 0.234)
+				(xy 0.9605 0.28) (xy 0.9395 0.342) (xy 0.9165 0.4005) (xy 0.8935 0.448) (xy 0.876 0.4855) (xy 0.8545 0.519)
+				(xy 0.83 0.5575) (xy 0.801 0.599) (xy 0.775 0.6325) (xy 0.7125 0.7015) (xy 0.654 0.757) (xy 0.618 0.7855)
+				(xy 0.5775 0.817) (xy 0.5405 0.84) (xy 0.5115 0.8595) (xy 0.465 0.885) (xy 0.417 0.909) (xy 0.362 0.933)
+				(xy 0.3195 0.948) (xy 0.2615 0.9645) (xy 0.2205 0.9765) (xy 0.1745 0.985) (xy 0.1255 0.993) (xy 0.0085 0.9995)
+				(xy -0.0695 0.9985) (xy -0.1365 0.9905) (xy -0.175 0.9835) (xy -0.217 0.9765) (xy -0.253 0.968)
+				(xy -0.2865 0.9575) (xy -0.3265 0.945) (xy -0.3685 0.93) (xy -0.406 0.913) (xy -0.442 0.8965) (xy -0.488 0.873)
+				(xy -0.531 0.8475) (xy -0.5775 0.817) (xy -0.6105 0.7925) (xy -0.671 0.743) (xy -0.7125 0.7015)
+				(xy -0.7485 0.6625) (xy -0.7955 0.6075) (xy -0.8145 0.5805) (xy -0.8445 0.537) (xy -0.8685 0.4965)
+				(xy -0.898 0.441) (xy -0.918 0.398) (xy -0.9295 0.368) (xy -0.944 0.3305) (xy -0.9555 0.3005) (xy -0.9665 0.2605)
+				(xy -0.972 0.234) (xy -0.981 0.195) (xy -0.9865 0.168) (xy -0.9945 0.1055) (xy -1.001 -0.009) (xy -0.9985 -0.0655)
+				(xy -0.9945 -0.1005) (xy -0.9765 -0.2155) (xy -0.9645 -0.265) (xy -0.946 -0.325) (xy -0.9235 -0.384)
+				(xy -0.902 -0.432) (xy -0.8685 -0.4965) (xy -0.8445 -0.537) (xy -0.818 -0.575) (xy -0.778 -0.63)
+				(xy -0.7225 -0.691) (xy -0.682 -0.7315) (xy -0.636 -0.772) (xy -0.595 -0.805) (xy -0.551 -0.835)
+				(xy -0.51 -0.861) (xy -0.4705 -0.8835) (xy -0.434 -0.9005) (xy -0.384 -0.9235) (xy -0.3425 -0.9405)
+				(xy -0.2895 -0.957) (xy -0.2465 -0.9705) (xy -0.185 -0.983) (xy -0.138 -0.9905) (xy -0.061 -0.9975)
+				(xy 0.034 -1)
+			)
+		)
+	)
+	(embedded_fonts no)
+)
