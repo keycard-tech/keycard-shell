@@ -74,6 +74,7 @@ typedef enum {
   TX_SIGHASH_WARNING,
   TX_FEE,
   TX_SIGNER,
+  TX_DATAHASH,
   TX_DATA,
   TX_NO,
   TX_YES,

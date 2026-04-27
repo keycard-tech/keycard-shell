@@ -70,6 +70,7 @@ const char *const i18n_english_strings[] = {
     "WARNING: recipients could change! Do not sign unless you absolutely know what you are doing.",
     "Fee",
     "Signer",
+    "Datahash",
     "Data",
     "No",
     "Yes",

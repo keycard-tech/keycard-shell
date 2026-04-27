@@ -161,7 +161,7 @@ app_err_t dialog_update_battery() {
 
 app_err_t dialog_blank_color(uint16_t yOff, uint16_t bg) {
   screen_area_t area = { 0, yOff, SCREEN_WIDTH, SCREEN_HEIGHT - yOff };
-  return screen_fill_area(&area, bg);
+  return screen_fill_area(&area, bg) == HAL_SUCCESS? ERR_OK : ERR_HW;
 }
 
 app_err_t dialog_nav_hints_colors(icon_t left, icon_t right, uint16_t bg, uint16_t fg) {
@@ -514,7 +514,7 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
   pager_ctx_t pager = { .page = 0, .last_page = 0 };
 
   if (tx_info.data_str_len) {
-    dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 1, tx_info.data_str, tx_info.data_str_len);
+    dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 2, tx_info.data_str, tx_info.data_str_len);
   }
 
   dialog_title(LSTR(TX_CONFIRM_TRANSFER));
@@ -532,10 +532,15 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
       dialog_amount(&ctx, TX_AMOUNT, &tx_info.value, tx_info.token.decimals, tx_info.token.ticker);
       dialog_amount(&ctx, TX_FEE, &tx_info.fees, 18, tx_info.chain.ticker);
       dialog_blank(ctx.y);
+    } else if (pager.page == 1) {
+      uint8_t hash[SHA3_256_DIGEST_LENGTH];
+      eth_data_hash(g_ui_cmd.params.eth_tx.tx->data, g_ui_cmd.params.eth_tx.tx->dataLength, hash);
+      dialog_sha3(&ctx, TX_DATAHASH, hash);
+      dialog_blank(ctx.y);
     } else {
       uint16_t offset = pager.pages[pager.page];
 
-      if (pager.page == 1) {
+      if (pager.page == 2) {
         dialog_label_only(&ctx, LSTR(TX_DATA));
         ctx.font = TH_FONT_TEXT;
         ctx.fg = TH_COLOR_TEXT_FG;

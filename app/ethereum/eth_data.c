@@ -549,6 +549,20 @@ void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t 
   }
 }
 
+void eth_data_hash(const uint8_t* data, size_t data_len, uint8_t out[SHA3_256_DIGEST_LENGTH]) {
+  memset(out, 0, ETH_ABI_WORD_LEN - 4);
+  out[ETH_ABI_WORD_LEN - 4] = (data_len >> 24) & 0xff;
+  out[ETH_ABI_WORD_LEN - 3] = (data_len >> 16) & 0xff;
+  out[ETH_ABI_WORD_LEN - 2] = (data_len >> 8) & 0xff;
+  out[ETH_ABI_WORD_LEN - 1] = data_len & 0xff;
+  
+  SHA3_CTX sha3;
+  keccak_256_Init(&sha3);
+  keccak_Update(&sha3, out, ETH_ABI_WORD_LEN);
+  keccak_Update(&sha3, data, data_len);
+  keccak_Final(&sha3, out);  
+}
+
 app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_function_t* abi, eth_transfer_info_t* info) {
   info->data_str_len = 0;
 
