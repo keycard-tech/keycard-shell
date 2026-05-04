@@ -35,6 +35,10 @@ static app_err_t securechannel_mutual_authenticate(secure_channel_t* sc, smartca
 
   APDU_ASSERT_OK(apdu);
 
+  if (apdu->lr != (32 + 2)) {
+    return ERR_CRYPTO;
+  }
+
   return ERR_OK;
 }
 
