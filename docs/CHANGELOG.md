@@ -1,5 +1,9 @@
 # Keycard Shell Dev Firmware
 
+## 1.3.0 (2026-05-11)
+
+* [eth] support ERC-8213
+
 ## 1.2.1 (2026-04-09)
 
 * [qr] increase maximum number of QR segments from 64 to 128 to allow larger tx
