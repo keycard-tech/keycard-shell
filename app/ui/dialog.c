@@ -562,7 +562,7 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
   return ret;
 }
 
-static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const uint8_t* signer, const uint8_t* hash, bool has_fees) {
+static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const uint8_t* signer, const uint8_t* hash, bool is_eth_tx) {
   screen_text_ctx_t ctx;
 
   dialog_title(LSTR(TX_CONFIRM_APPROVAL));
@@ -578,14 +578,12 @@ static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const u
       dialog_chain(&ctx, info->chain.name);
       dialog_amount(&ctx, TX_AMOUNT, &info->value, info->token.decimals, info->token.ticker);
 
-      if (has_fees) {
+      if (is_eth_tx) {
         dialog_amount(&ctx, TX_FEE, &info->fees, 18, info->chain.ticker);
       }
     } else {
       dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, info->token.addr);
-      if (hash != NULL) {
-        dialog_sha3(&ctx, TX_HASH, hash);
-      }
+      dialog_sha3(&ctx, is_eth_tx ? TX_DATAHASH : TX_HASH, hash);
     }
 
     dialog_blank(ctx.y);
@@ -601,8 +599,10 @@ app_err_t dialog_confirm_eth_tx() {
   if ((abi != NULL)) {
     if ((abi->selector == ETH_DATA_ERC20_APPROVE) && (abi->ext_selector == ETH_DATA_ERC20_APPROVE_EXT_SELECTOR)) {
       eth_approve_info_t info;
+      uint8_t hash[SHA3_256_DIGEST_LENGTH];
       if (eth_extract_approve_info(g_ui_cmd.params.eth_tx.tx, abi, &info) == ERR_OK) {
-        return dialog_confirm_approval(&info, g_ui_cmd.params.eth_tx.addr, NULL, true);
+        eth_data_hash(g_ui_cmd.params.eth_tx.tx->data, g_ui_cmd.params.eth_tx.tx->dataLength, hash);
+        return dialog_confirm_approval(&info, g_ui_cmd.params.eth_tx.addr, hash, true);
       }
     }
   }
