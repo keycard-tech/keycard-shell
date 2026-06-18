@@ -5,6 +5,7 @@
 #include "keycard_cmdset.h"
 #include "application_info.h"
 #include "pairing.h"
+#include "scv2_whitelist.h"
 #include "error.h"
 #include "ui/ui.h"
 #include "util/tlv.h"
@@ -538,14 +539,17 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
       }
     }
   } else {
+    const uint8_t* dev_pubkey = info.v4.cert_data;
+
     if (keycard_check_genuine(info.v4.cert_data) != ERR_OK) {
-      if (ui_keycard_not_genuine() != CORE_EVT_UI_OK) {
-        return ERR_CANCEL;
-      } else {
-        //TODO: add whitelist for accepted cards
-      }    
+      if (scv2_whitelist_check(dev_pubkey) != ERR_OK) {
+        if (ui_keycard_not_genuine() != CORE_EVT_UI_OK) {
+          return ERR_CANCEL;
+        }
+        scv2_whitelist_add(dev_pubkey);
+      }
     }
-    
+
     if (securechannel_open(&kc->ch, &kc->sc, &kc->apdu, SC_V2, info.v4.cert_data) != ERR_OK) {
       return ERR_TXRX;
     }

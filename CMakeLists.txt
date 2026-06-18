@@ -129,6 +129,7 @@ set(APP_SOURCES
     app/keycard/keycard.c
     app/keycard/keycard_cmdset.c
     app/keycard/pairing.c
+    app/keycard/scv2_whitelist.c
     app/keycard/secure_channel.c
     app/keycard/secure_channel_v1.c
     app/keycard/secure_channel_v2.c
