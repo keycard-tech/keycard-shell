@@ -1,5 +1,10 @@
+#include <stdbool.h>
+#include "crypto/aes.h"
+#include "hal.h"
 #include "stm32_internal.h"
 #include "crypto/memzero.h"
+#include "stm32h573xx.h"
+#include "stm32h5xx.h"
 
 const uint8_t BN_ONE[BN_SIZE] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -135,7 +140,7 @@ hal_err_t hal_sha256_finish(hal_sha256_ctx_t* ctx, uint8_t out[SHA256_DIGEST_LEN
   return HAL_SUCCESS;
 }
 
-static inline void _hal_aes256_load_iv(const uint8_t iv[AES_IV_SIZE]) {
+static inline void _hal_aes_load_iv(const uint8_t iv[AES_IV_SIZE]) {
   SAES->IVR3 = (iv[0] << 24) | (iv[1] << 16) | (iv[2] << 8) | iv[3];
   SAES->IVR2 = (iv[4] << 24) | (iv[5] << 16) | (iv[6] << 8) | iv[7];
   SAES->IVR1 = (iv[8] << 24) | (iv[9] << 16) | (iv[10] << 8) | iv[11];
@@ -151,6 +156,13 @@ static inline void _hal_aes256_load_key(const uint8_t key[AES_256_KEY_SIZE]) {
   SAES->KEYR2 = (key[20] << 24) | (key[21] << 16) | (key[22] << 8) | key[23];
   SAES->KEYR1 = (key[24] << 24) | (key[25] << 16) | (key[26] << 8) | key[27];
   SAES->KEYR0 = (key[28] << 24) | (key[29] << 16) | (key[30] << 8) | key[31];
+}
+
+static inline void _hal_aes128_load_key(const uint8_t key[AES_128_KEY_SIZE]) {
+  SAES->KEYR3 = (key[0] << 24) | (key[1] << 16) | (key[2] << 8) | key[3];
+  SAES->KEYR2 = (key[4] << 24) | (key[5] << 16) | (key[6] << 8) | key[7];
+  SAES->KEYR1 = (key[8] << 24) | (key[9] << 16) | (key[10] << 8) | key[11];
+  SAES->KEYR0 = (key[12] << 24) | (key[13] << 16) | (key[14] << 8) | key[15];
 }
 
 hal_err_t hal_aes256_init(hal_aes_mode_t mode, hal_aes_chaining_t chaining, const uint8_t key[AES_256_KEY_SIZE], const uint8_t iv[AES_IV_SIZE]) {
@@ -173,7 +185,7 @@ hal_err_t hal_aes256_init(hal_aes_mode_t mode, hal_aes_chaining_t chaining, cons
   if (mode == AES_DECRYPT) {
     SAES->CR = cr | AES_CR_MODE_0 | AES_CR_EN;
 
-    HAL_WAIT(!(SAES->SR & AES_SR_CCF));
+    HAL_WAIT(!(SAES->ISR & AES_ISR_CCF));
 
     SAES->ICR = AES_ICR_CCF;
 
@@ -181,13 +193,13 @@ hal_err_t hal_aes256_init(hal_aes_mode_t mode, hal_aes_chaining_t chaining, cons
     SAES->CR = cr;
   }
 
-  _hal_aes256_load_iv(iv);
+  _hal_aes_load_iv(iv);
   SAES->CR = cr | AES_CR_EN;
 
   return HAL_SUCCESS;
 }
 
-hal_err_t hal_aes256_block_process(const uint8_t in[AES_BLOCK_SIZE], uint8_t out[AES_BLOCK_SIZE]) {
+static inline hal_err_t _hal_aes_block_process(const uint8_t in[AES_BLOCK_SIZE], uint8_t out[AES_BLOCK_SIZE]) {
   __IO uint32_t* in32 = (uint32_t*) in;
   __IO uint32_t* out32 = (uint32_t*) out;
 
@@ -196,8 +208,7 @@ hal_err_t hal_aes256_block_process(const uint8_t in[AES_BLOCK_SIZE], uint8_t out
   SAES->DINR = in32[2];
   SAES->DINR = in32[3];
 
-  HAL_WAIT(!(SAES->SR & AES_SR_CCF));
-
+  HAL_WAIT(!(SAES->ISR & AES_ISR_CCF));
   SAES->ICR = AES_ICR_CCF;
 
   out32[0] = SAES->DOUTR;
@@ -208,10 +219,84 @@ hal_err_t hal_aes256_block_process(const uint8_t in[AES_BLOCK_SIZE], uint8_t out
   return HAL_SUCCESS;
 }
 
+hal_err_t hal_aes256_block_process(const uint8_t in[AES_BLOCK_SIZE], uint8_t out[AES_BLOCK_SIZE]) {
+  return _hal_aes_block_process(in, out);
+}
+
 hal_err_t hal_aes256_finalize() {
   SAES->CR = AES_CR_IPRST;
   HAL_WAIT((SAES->SR & AES_SR_BUSY));
   SAES->CR = 0;
+
+  return HAL_SUCCESS;
+}
+
+hal_err_t hal_aes128_ccm_init(hal_aes_mode_t mode, const uint8_t key[AES_128_KEY_SIZE], const uint8_t b0[AES_BLOCK_SIZE]) {
+  HAL_WAIT((SAES->SR & AES_SR_BUSY));
+
+  /* CCM init phase: CHMOD=0x4, GCMPH=0x0, MODE=0x0 (encrypt) or 0x2 (decrypt) */
+  SAES->CR = AES_CR_CHMOD_2 | AES_CR_DATATYPE_1;
+  if (mode == AES_DECRYPT) {
+    SET_BIT(SAES->CR, AES_CR_MODE_1);
+  }
+
+  _hal_aes128_load_key(key);
+  HAL_WAIT(!(SAES->SR & AES_SR_KEYVALID));  
+
+  /* Write B0 into IVR registers */
+  _hal_aes_load_iv(b0);
+
+  /* Start init phase */
+  SET_BIT(SAES->CR, AES_CR_EN);
+
+  /* Wait for init phase completion */
+  HAL_WAIT(!(SAES->ISR & AES_ISR_CCF));
+  SAES->ICR = AES_ICR_CCF;
+
+  /* Transition to payload phase (GCMPH=0x2) */
+  MODIFY_REG(SAES->CR, AES_CR_GCMPH, AES_CR_GCMPH_1);
+  SET_BIT(SAES->CR, AES_CR_EN);
+  return HAL_SUCCESS;
+}
+
+hal_err_t hal_aes128_ccm_block_process(const uint8_t in[AES_BLOCK_SIZE], uint8_t out[AES_BLOCK_SIZE]) {
+  return _hal_aes_block_process(in, out);
+}
+
+hal_err_t hal_aes128_ccm_block_process_last(hal_aes_mode_t mode, const uint8_t in[AES_BLOCK_SIZE], uint8_t out[AES_BLOCK_SIZE], size_t len) {
+  uint8_t pad[AES_BLOCK_SIZE] __attribute__((aligned(4)));
+  size_t pad_len = (AES_BLOCK_SIZE - len);
+
+  memcpy(pad, in, len);
+  memzero(&pad[len], pad_len);
+
+  if (mode == AES_DECRYPT) {
+    MODIFY_REG(SAES->CR, AES_CR_NPBLB, (pad_len << AES_CR_NPBLB_Pos));
+  }
+
+  hal_err_t err = _hal_aes_block_process(pad, pad);
+  memcpy(out, pad, len);
+  memzero(pad, AES_BLOCK_SIZE);
+  return err;
+}
+
+hal_err_t hal_aes128_ccm_finish(uint8_t tag[CCM_TAG_SIZE]) {
+  /* Transition to final phase (GCMPH=0x3) */
+  MODIFY_REG(SAES->CR, AES_CR_GCMPH, AES_CR_GCMPH_0 | AES_CR_GCMPH_1);
+
+  HAL_WAIT(!(SAES->ISR & AES_ISR_CCF));
+
+  __IO uint32_t* out32 = (uint32_t*) tag;
+
+  /* Read tag from DOUTR (4 reads = 16 bytes, take first 8) */
+  out32[0] = SAES->DOUTR;
+  out32[1] = SAES->DOUTR;
+  /* Discard remaining 8 bytes */
+  (void)SAES->DOUTR;
+  (void)SAES->DOUTR;
+
+  SAES->ICR = AES_ICR_CCF;
+  CLEAR_BIT(SAES->CR, AES_CR_EN);
 
   return HAL_SUCCESS;
 }

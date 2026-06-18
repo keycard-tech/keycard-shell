@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "keycard.h"
+#include "keycard/secure_channel.h"
 #include "keycard_cmdset.h"
 #include "application_info.h"
 #include "pairing.h"
@@ -20,6 +21,7 @@
 
 #define KEYCARD_AID_LEN 9
 #define KEYCARD_MIN_VERSION 0x0301
+#define KEYCARD_SCV2_MIN_VERSION 0x0400
 
 #define KEYCARD_DEF_PIN_RETRIES 3
 #define KEYCARD_DEF_PUK_RETRIES 5
@@ -75,17 +77,8 @@ static app_err_t keycard_init_card(keycard_t* kc, uint8_t* sc_key, uint8_t* pin)
   return ERR_OK;
 }
 
-static app_err_t keycard_check_genuine(keycard_t* kc) {
+static app_err_t keycard_check_genuine(uint8_t* data) {
   uint8_t tmp[SHA256_DIGEST_LENGTH];
-  random_buffer(tmp, SHA256_DIGEST_LENGTH);
-
-  if (keycard_cmd_identify(kc, tmp) != ERR_OK) {
-    return ERR_TXRX;
-  }
-
-  APDU_ASSERT_OK(&kc->apdu);
-  uint8_t* data = APDU_RESP(&kc->apdu);
-
   uint16_t len;
   uint16_t tag;
   uint16_t off = tlv_read_tag(data, &tag);
@@ -159,7 +152,17 @@ static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instan
     return ERR_OK;
   }
 
-  if (keycard_check_genuine(kc) != ERR_OK) {
+  uint8_t tmp[SHA256_DIGEST_LENGTH];
+  random_buffer(tmp, SHA256_DIGEST_LENGTH);
+
+  if (keycard_cmd_identify(kc, tmp) != ERR_OK) {
+    return ERR_TXRX;
+  }
+
+  APDU_ASSERT_OK(&kc->apdu);
+  uint8_t* data = APDU_RESP(&kc->apdu);
+
+  if (keycard_check_genuine(data) != ERR_OK) {
     if (ui_keycard_not_genuine() != CORE_EVT_UI_OK) {
       return ERR_CANCEL;
     }
@@ -486,7 +489,7 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
   switch (info.status) {
     case NOT_INITIALIZED:
       ui_keycard_not_initialized();
-      err = keycard_init_card(kc, info.sc_key, pin);
+      err = keycard_init_card(kc, info.v3.sc_key, pin);
       if (err != ERR_OK) {
         return err;
       }
@@ -510,34 +513,49 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
     return ERR_DATA;
   }
 
-  if (keycard_read_name(kc) != ERR_OK) {
-    return ERR_TXRX;
-  }
+  if (info.version < KEYCARD_SCV2_MIN_VERSION) {
+    APP_ALIGNED(pairing_t pairing, 4);
+    err = keycard_pair(kc, &pairing, info.v3.instance_uid);
+    if (err == ERR_FULL) {
+      if (ui_keycard_no_pairing_slots() == CORE_EVT_UI_OK) {
+        return keycard_factoryreset_on_init(kc);
+      }
 
-  APP_ALIGNED(pairing_t pairing, 4);
-  err = keycard_pair(kc, &pairing, info.instance_uid);
-  if (err == ERR_FULL) {
-    if (ui_keycard_no_pairing_slots() == CORE_EVT_UI_OK) {
-      return keycard_factoryreset_on_init(kc);
+      return ERR_FULL;
+    } else if (err != ERR_OK) {
+      return err;
     }
 
-    return ERR_FULL;
-  } else if (err != ERR_OK) {
-    return err;
-  }
-
-  err = securechannel_open(&kc->ch, &kc->sc, &kc->apdu, &pairing, info.sc_key);
-  if (err != ERR_OK) {
-    if (err != ERR_TXRX) {
-      pairing_erase(&pairing);
-      ui_keycard_secure_channel_failed();
-      return ERR_RETRY;
-    } else {
+    sc_v1_open_t open_ctx = { .pairing = &pairing, .sc_pub = info.v3.sc_key};
+    err = securechannel_open(&kc->ch, &kc->sc, &kc->apdu, SC_V1, &open_ctx);
+    if (err != ERR_OK) {
+      if (err != ERR_TXRX) {
+        pairing_erase(&pairing);
+        ui_keycard_secure_channel_failed();
+        return ERR_RETRY;
+      } else {
+        return ERR_TXRX;
+      }
+    }
+  } else {
+    if (keycard_check_genuine(info.v4.cert_data) != ERR_OK) {
+      if (ui_keycard_not_genuine() != CORE_EVT_UI_OK) {
+        return ERR_CANCEL;
+      } else {
+        //TODO: add whitelist for accepted cards
+      }    
+    }
+    
+    if (securechannel_open(&kc->ch, &kc->sc, &kc->apdu, SC_V2, info.v4.cert_data) != ERR_OK) {
       return ERR_TXRX;
     }
   }
 
   ui_keycard_secure_channel_ok();
+
+  if (keycard_read_name(kc) != ERR_OK) {
+    return ERR_TXRX;
+  }
 
   err = keycard_authenticate(kc, pin, cached_pin);
   if (err != ERR_OK) {

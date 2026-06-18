@@ -146,6 +146,11 @@ hal_err_t hal_crc32_finish(hal_crc32_ctx_t* ctx, uint32_t *out);
 hal_err_t hal_aes256_init(hal_aes_mode_t mode, hal_aes_chaining_t chaining, const uint8_t key[AES_256_KEY_SIZE], const uint8_t iv[AES_IV_SIZE]);
 hal_err_t hal_aes256_block_process(const uint8_t in[AES_BLOCK_SIZE], uint8_t out[AES_BLOCK_SIZE]);
 hal_err_t hal_aes256_finalize();
+
+hal_err_t hal_aes128_ccm_init(hal_aes_mode_t mode, const uint8_t key[AES_128_KEY_SIZE], const uint8_t b0[AES_BLOCK_SIZE]);
+hal_err_t hal_aes128_ccm_block_process(const uint8_t in[AES_BLOCK_SIZE], uint8_t out[AES_BLOCK_SIZE]);
+hal_err_t hal_aes128_ccm_block_process_last(hal_aes_mode_t mode, const uint8_t in[AES_BLOCK_SIZE], uint8_t out[AES_BLOCK_SIZE], size_t len);
+hal_err_t hal_aes128_ccm_finish(uint8_t tag[CCM_TAG_SIZE]);
 #endif
 
 #ifndef SOFT_ECDSA

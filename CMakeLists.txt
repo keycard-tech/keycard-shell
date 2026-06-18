@@ -130,6 +130,8 @@ set(APP_SOURCES
     app/keycard/keycard_cmdset.c
     app/keycard/pairing.c
     app/keycard/secure_channel.c
+    app/keycard/secure_channel_v1.c
+    app/keycard/secure_channel_v2.c
     app/json/jsmn.c
     app/iso7816/atr.c
     app/iso7816/pps.c
@@ -147,6 +149,7 @@ set(APP_SOURCES
     app/crypto/aes/lookup_tables.c
     app/crypto/address.c
     app/crypto/aes.c
+    app/crypto/aes_ccm.c
     app/crypto/base32.c
     app/crypto/base58.c
     app/crypto/bignum.c
@@ -157,6 +160,7 @@ set(APP_SOURCES
     app/crypto/ecdsa.c
     app/crypto/ecdsa_soft.c
     app/crypto/hmac.c
+    app/crypto/hkdf.c
     app/crypto/memzero.c
     app/crypto/nist256p1.c
     app/crypto/pbkdf2.c

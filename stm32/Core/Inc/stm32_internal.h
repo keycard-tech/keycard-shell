@@ -10,7 +10,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#define HAL_TIMEOUT 250
+#define HAL_TIMEOUT 300
 #define PKA_TIMEOUT 500
 #define SC_RESET_DELAY 10
 #define CLOCK_STABLE_DELAY 5
