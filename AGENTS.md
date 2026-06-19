@@ -177,6 +177,16 @@ Key files:
 
 The project uses CMake with custom presets in [`CMakePresets.json`](CMakePresets.json).
 
+### Building the Firmware
+
+**Always use the following command to build:**
+
+```bash
+cmake --build --preset release
+```
+
+Do not use `make`, `ninja`, or any other build tool directly. Always go through CMake's preset system to ensure the correct toolchain and configuration are used.
+
 ## Important Notes
 
 1. **Never use malloc/free**: All memory must be statically allocated
