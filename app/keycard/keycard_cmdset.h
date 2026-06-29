@@ -10,6 +10,13 @@ typedef enum {
   KEYCARD_PAIRING
 } keycard_credentials_t;
 
+typedef enum {
+  KEYCARD_SIGN_ECDSA_SECP256K1 = 0,
+  KEYCARD_SIGN_EDDSA_ED25519, /* unsupported */
+  KEYCARD_SIGN_BLS12_381, /* unsupported */
+  KEYCARD_SIGN_BIP340_SCHNORR
+} keycard_sign_algo_t;
+
 app_err_t keycard_cmd_select(keycard_t* kc, const uint8_t* aid, uint32_t len);
 app_err_t keycard_cmd_pair(keycard_t* kc, uint8_t step, uint8_t* data);
 app_err_t keycard_cmd_autopair(keycard_t* kc, const uint8_t* psk, pairing_t* pairing);
@@ -23,7 +30,7 @@ app_err_t keycard_cmd_generate_mnemonic(keycard_t* kc, uint8_t len);
 app_err_t keycard_cmd_load_seed(keycard_t* kc, uint8_t* seed);
 app_err_t keycard_cmd_load_key(keycard_t* kc, uint8_t* key_template, uint8_t len);
 app_err_t keycard_cmd_export_key(keycard_t* kc, uint8_t export_type, uint8_t* path, uint8_t len);
-app_err_t keycard_cmd_sign(keycard_t* kc, uint8_t* path, uint8_t path_len, uint8_t* hash);
+app_err_t keycard_cmd_sign(keycard_t* kc, keycard_sign_algo_t algo, uint8_t* path, uint8_t path_len, uint8_t* hash);
 app_err_t keycard_cmd_factory_reset(keycard_t* kc);
 app_err_t keycard_cmd_get_data(keycard_t* kc);
 app_err_t keycard_cmd_set_data(keycard_t* kc, uint8_t* data, uint8_t len);
