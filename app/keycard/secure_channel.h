@@ -34,7 +34,7 @@ typedef struct __attribute__((packed, aligned(4))) {
 } sc_v1_open_t;
 
 app_err_t securechannel_open(secure_channel_t* sc, smartcard_t* card, apdu_t* apdu, sc_version_t version, void* context_data);
-app_err_t securechannel_init(smartcard_t* card, apdu_t* apdu, uint8_t* sc_pub, uint8_t* data, uint32_t len);
+app_err_t securechannel_init(smartcard_t* card, secure_channel_t* sc, apdu_t* apdu, sc_version_t version, uint8_t* sc_data, uint8_t* data, uint32_t len);
 app_err_t securechannel_send_apdu(smartcard_t* card, secure_channel_t *sc, apdu_t* apdu, uint8_t* data, uint32_t len);
 void securechannel_close(secure_channel_t* sc);
 

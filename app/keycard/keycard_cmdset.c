@@ -6,10 +6,12 @@
 #include "crypto/rand.h"
 #include "crypto/sha2.h"
 #include "crypto/util.h"
+#include "keycard/secure_channel.h"
 
 const extern uint8_t KEYCARD_DEFAULT_PSK[];
 
-#define KEYCARD_INIT_CMD_LEN (KEYCARD_PIN_LEN + KEYCARD_PUK_LEN + SHA256_DIGEST_LENGTH + 2 + KEYCARD_PIN_LEN)
+#define KEYCARD_INIT_CMD_LEN_V1 (KEYCARD_PIN_LEN + KEYCARD_PUK_LEN + SHA256_DIGEST_LENGTH + 2 + KEYCARD_PIN_LEN)
+#define KEYCARD_INIT_CMD_LEN_V2 (KEYCARD_PIN_LEN + KEYCARD_PUK_LEN + 2 + KEYCARD_PIN_LEN)
 
 app_err_t keycard_cmd_select(keycard_t* kc, const uint8_t* aid, uint32_t len) {
   APDU_RESET(&kc->apdu);
@@ -152,20 +154,33 @@ app_err_t keycard_cmd_get_status(keycard_t* kc) {
   return securechannel_send_apdu(&kc->sc, &kc->ch, &kc->apdu, data, 0);
 }
 
-app_err_t keycard_cmd_init(keycard_t* kc, uint8_t* sc_pub, uint8_t* pin, uint8_t* puk, uint8_t* psk, uint8_t pin_retries, uint8_t puk_retries, uint8_t* duress_pin) {
-  SC_BUF(data, KEYCARD_INIT_CMD_LEN);
+app_err_t keycard_cmd_init(keycard_t* kc, uint8_t* sc_data, uint8_t* pin, uint8_t* puk, uint8_t* psk, uint8_t pin_retries, uint8_t puk_retries, uint8_t* duress_pin) {
+  uint8_t psk_len;
+  sc_version_t ver;
+  
+  if (psk == NULL) {
+    ver = SC_V2;
+    psk_len = 0;
+  } else {
+    ver = SC_V1;
+    psk_len = SHA256_DIGEST_LENGTH;
+  }
+
+  SC_BUF(data, KEYCARD_INIT_CMD_LEN_V1);
   memcpy(data, pin, KEYCARD_PIN_LEN);
   memcpy(&data[KEYCARD_PIN_LEN], puk, KEYCARD_PUK_LEN);
-  memcpy(&data[KEYCARD_PIN_LEN+KEYCARD_PUK_LEN], psk, SHA256_DIGEST_LENGTH);
-  data[KEYCARD_PIN_LEN+KEYCARD_PUK_LEN+SHA256_DIGEST_LENGTH] = pin_retries;
-  data[KEYCARD_PIN_LEN+KEYCARD_PUK_LEN+SHA256_DIGEST_LENGTH + 1] = puk_retries;
-  memcpy(&data[KEYCARD_PIN_LEN+KEYCARD_PUK_LEN+SHA256_DIGEST_LENGTH + 2], duress_pin, KEYCARD_PIN_LEN);
+  if (psk_len) {
+    memcpy(&data[KEYCARD_PIN_LEN+KEYCARD_PUK_LEN], psk, SHA256_DIGEST_LENGTH);
+  }
+  data[KEYCARD_PIN_LEN+KEYCARD_PUK_LEN+psk_len] = pin_retries;
+  data[KEYCARD_PIN_LEN+KEYCARD_PUK_LEN+psk_len + 1] = puk_retries;
+  memcpy(&data[KEYCARD_PIN_LEN+KEYCARD_PUK_LEN+psk_len + 2], duress_pin, KEYCARD_PIN_LEN);
 
-  if (psk != KEYCARD_DEFAULT_PSK) {
+  if ((psk != NULL) && (psk != KEYCARD_DEFAULT_PSK)) {
     memzero(psk, SHA256_DIGEST_LENGTH);
   }
 
-  return securechannel_init(&kc->sc, &kc->apdu, sc_pub, data, KEYCARD_INIT_CMD_LEN);
+  return securechannel_init(&kc->sc, &kc->ch, &kc->apdu, ver, sc_data, data, (KEYCARD_INIT_CMD_LEN_V2 + psk_len));
 }
 
 app_err_t keycard_cmd_generate_mnemonic(keycard_t* kc, uint8_t len) {

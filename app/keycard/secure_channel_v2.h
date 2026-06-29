@@ -45,6 +45,11 @@ typedef struct __attribute__((packed, aligned(4))) {
 app_err_t securechannel_v2_open(secure_channel_v2_t* sc, smartcard_t* card, apdu_t* apdu, const uint8_t cert[SCV2_CERT_SIZE]);
 
 /**
+ * Init a card with SecureChannel V2
+ */
+app_err_t securechannel_v2_init(smartcard_t* card, secure_channel_v2_t* sc, apdu_t* apdu, uint8_t* data, uint32_t len);
+
+/**
  * Encrypt and send an APDU over the V2 secure channel.
  *
  * Builds an inner APDU (CLA||INS||P1||P2||LC||data), encrypts with

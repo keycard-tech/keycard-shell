@@ -152,6 +152,22 @@ app_err_t securechannel_v2_open(secure_channel_v2_t* sc, smartcard_t* card, apdu
   return ERR_OK;
 }
 
+app_err_t securechannel_v2_init(smartcard_t* card, secure_channel_v2_t* sc, apdu_t* apdu, uint8_t* data, uint32_t len) {
+  APDU_RESET(apdu);
+  APDU_CLA(apdu) = 0x80;
+  APDU_INS(apdu) = 0xfe;
+  APDU_P1(apdu) = 0;
+  APDU_P2(apdu) = 0;
+  
+  if (securechannel_v2_send_apdu(card, sc, apdu, data, len) != ERR_OK) {
+    return ERR_TXRX;
+  }
+
+  APDU_ASSERT_OK(apdu);
+
+  return ERR_OK;
+}
+
 app_err_t securechannel_v2_send_apdu(smartcard_t* card, secure_channel_v2_t* sc, apdu_t* apdu, uint8_t* data, uint32_t len) {
   uint8_t* apdu_data = APDU_DATA(apdu);
   memcpy(apdu_data, &APDU_CLA(apdu), 4);

@@ -44,7 +44,7 @@ static void keycard_random_duress(uint8_t pin[KEYCARD_PIN_LEN], uint8_t duress[K
   } while(memcmp(pin, duress, KEYCARD_PIN_LEN) == 0);
 }
 
-static app_err_t keycard_init_card(keycard_t* kc, uint8_t* sc_key, uint8_t* pin) {
+static app_err_t keycard_init_card(keycard_t* kc, app_info_t* info, uint8_t* pin) {
   uint8_t puk[KEYCARD_PUK_LEN];
   if (ui_read_pin(pin, SECRET_NEW_CODE, 0) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
@@ -67,7 +67,18 @@ static app_err_t keycard_init_card(keycard_t* kc, uint8_t* sc_key, uint8_t* pin)
     break;
   }
 
-  if (keycard_cmd_init(kc, sc_key, pin, puk, (uint8_t*)KEYCARD_DEFAULT_PSK, KEYCARD_DEF_PIN_RETRIES, KEYCARD_DEF_PUK_RETRIES, duress_pin) != ERR_OK) {
+  uint8_t* sc_data;
+  uint8_t* psk;
+
+  if (info->version >= KEYCARD_SCV2_MIN_VERSION) {
+    sc_data = info->v4.cert_data;
+    psk = NULL;
+  } else {
+    sc_data = info->v3.sc_key;
+    psk = (uint8_t*) KEYCARD_DEFAULT_PSK;
+  }
+
+  if (keycard_cmd_init(kc, sc_data, pin, puk, psk, KEYCARD_DEF_PIN_RETRIES, KEYCARD_DEF_PUK_RETRIES, duress_pin) != ERR_OK) {
     memset(puk, 0, KEYCARD_PUK_LEN);
     ui_keycard_init_failed();
     return ERR_CRYPTO;
@@ -490,7 +501,7 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
   switch (info.status) {
     case NOT_INITIALIZED:
       ui_keycard_not_initialized();
-      err = keycard_init_card(kc, info.v3.sc_key, pin);
+      err = keycard_init_card(kc, &info, pin);
       if (err != ERR_OK) {
         return err;
       }

@@ -21,8 +21,17 @@ app_err_t securechannel_open(secure_channel_t* sc, smartcard_t* card, apdu_t* ap
   return err;
 }
 
-app_err_t securechannel_init(smartcard_t* card, apdu_t* apdu, uint8_t* sc_pub, uint8_t* data, uint32_t len) {
-  return securechannel_v1_init(card, apdu, sc_pub, data, len);
+app_err_t securechannel_init(smartcard_t* card, secure_channel_t* sc, apdu_t* apdu, sc_version_t version, uint8_t* sc_data, uint8_t* data, uint32_t len) {
+    if (version == SC_V2) {
+      app_err_t err = securechannel_v2_open(&sc->v2, card, apdu, sc_data);
+      if (err != ERR_OK) {
+        return err;
+      }
+
+      return securechannel_v2_init(card, &sc->v2, apdu, data, len);
+    } else {
+      return securechannel_v1_init(card, apdu, sc_data, data, len);
+    }
 }
 
 app_err_t securechannel_send_apdu(smartcard_t* card, secure_channel_t *sc, apdu_t* apdu, uint8_t* data, uint32_t len) {
