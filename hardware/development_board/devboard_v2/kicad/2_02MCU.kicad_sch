@@ -4831,7 +4831,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 				(at 0 0 0)
 				(effects
 					(font
@@ -5410,7 +5410,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 				(at 0 0 0)
 				(effects
 					(font
@@ -8588,7 +8588,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 294.64 161.29 0)
 			(effects
 				(font
@@ -8636,7 +8636,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 294.64 161.29 0)
 			(effects
 				(font
@@ -9029,7 +9029,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 219.71 62.23 0)
 			(effects
 				(font
@@ -9077,7 +9077,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 219.71 62.23 0)
 			(effects
 				(font
@@ -9127,7 +9127,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 294.64 158.75 0)
 			(effects
 				(font
@@ -9175,7 +9175,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 294.64 158.75 0)
 			(effects
 				(font
@@ -9882,7 +9882,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 294.64 163.83 0)
 			(effects
 				(font
@@ -9930,7 +9930,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 294.64 163.83 0)
 			(effects
 				(font
@@ -10119,7 +10119,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 121.92 109.22 0)
 			(effects
 				(font
@@ -10167,7 +10167,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 120.65 115.57 90)
 			(effects
 				(font
@@ -11355,7 +11355,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 294.64 156.21 0)
 			(effects
 				(font
@@ -11403,7 +11403,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 294.64 156.21 0)
 			(effects
 				(font
@@ -13339,7 +13339,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 294.64 166.37 0)
 			(effects
 				(font
@@ -13387,7 +13387,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 294.64 166.37 0)
 			(effects
 				(font
@@ -13551,7 +13551,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 121.92 106.68 0)
 			(effects
 				(font
@@ -13599,7 +13599,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 120.65 113.03 90)
 			(effects
 				(font
@@ -14196,7 +14196,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 294.64 168.91 0)
 			(effects
 				(font
@@ -14244,7 +14244,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 294.64 168.91 0)
 			(effects
 				(font
@@ -14794,7 +14794,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 294.64 171.45 0)
 			(effects
 				(font
@@ -14842,7 +14842,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 294.64 171.45 0)
 			(effects
 				(font
