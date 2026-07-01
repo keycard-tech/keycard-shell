@@ -568,7 +568,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:0805 - FUSE"
+			(property "Footprint" "ProPrj_Seg-easyedapro:0805_-_FUSE"
 				(at 0 0 0)
 				(effects
 					(font
@@ -715,7 +715,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:0805 - FUSE"
+			(property "Footprint" "ProPrj_Seg-easyedapro:0805_-_FUSE"
 				(at 0 0 0)
 				(effects
 					(font
@@ -862,7 +862,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:TE 19826331"
+			(property "Footprint" "ProPrj_Seg-easyedapro:TE_19826331"
 				(at 0 0 0)
 				(effects
 					(font
@@ -1295,7 +1295,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:ANTENK U6252-35C"
+			(property "Footprint" "ProPrj_Seg-easyedapro:ANTENK_U6252-35C"
 				(at 0 0 0)
 				(effects
 					(font
@@ -2922,7 +2922,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:OSRAM LRY8SFU1V21"
+			(property "Footprint" "ProPrj_Seg-easyedapro:OSRAM_LRY8SFU1V21"
 				(at 0 0 0)
 				(effects
 					(font
@@ -3895,7 +3895,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:ON SEMI NCV8160AMX330TBG"
+			(property "Footprint" "ProPrj_Seg-easyedapro:ON_SEMI_NCV8160AMX330TBG"
 				(at 0 0 0)
 				(effects
 					(font
@@ -4095,7 +4095,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:ON SEMI NCV8160AMX330TBG"
+			(property "Footprint" "ProPrj_Seg-easyedapro:ON_SEMI_NCV8160AMX330TBG"
 				(at 0 0 0)
 				(effects
 					(font
@@ -4295,7 +4295,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:ON SEMI NCV8160AMX330TBG"
+			(property "Footprint" "ProPrj_Seg-easyedapro:ON_SEMI_NCV8160AMX330TBG"
 				(at 0 0 0)
 				(effects
 					(font
@@ -6919,7 +6919,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:SOT23-5 0.95 VAR AA"
+			(property "Footprint" "ProPrj_Seg-easyedapro:SOT23-5_0.95_VAR_AA"
 				(at 0 0 0)
 				(effects
 					(font
@@ -7119,7 +7119,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 				(at 0 0 0)
 				(effects
 					(font
@@ -8170,7 +8170,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:TOREX USP-8B06"
+			(property "Footprint" "ProPrj_Seg-easyedapro:TOREX_USP-8B06"
 				(at 0 0 0)
 				(effects
 					(font
@@ -8442,7 +8442,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 				(at 0 0 0)
 				(effects
 					(font
@@ -8522,7 +8522,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 				(at 0 0 0)
 				(effects
 					(font
@@ -8602,7 +8602,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:PLAGE - NOIRE"
+			(property "Footprint" "ProPrj_Seg-easyedapro:PLAGE_-_NOIRE"
 				(at 0 0 0)
 				(effects
 					(font
@@ -8682,7 +8682,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:PLAGE - ROUGE"
+			(property "Footprint" "ProPrj_Seg-easyedapro:PLAGE_-_ROUGE"
 				(at 0 0 0)
 				(effects
 					(font
@@ -8762,7 +8762,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+			(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 				(at 0 0 0)
 				(effects
 					(font
@@ -12342,7 +12342,7 @@
 				(justify left bottom)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:ON SEMI NCV8160AMX330TBG"
+		(property "Footprint" "ProPrj_Seg-easyedapro:ON_SEMI_NCV8160AMX330TBG"
 			(at 127 228.6 0)
 			(effects
 				(font
@@ -12390,7 +12390,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "ON SEMI NCV8160AMX330TBG"
+		(property "Origin Footprint" "ON_SEMI_NCV8160AMX330TBG"
 			(at 127 228.6 0)
 			(effects
 				(font
@@ -13042,7 +13042,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 342.9 148.59 0)
 			(effects
 				(font
@@ -13090,7 +13090,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 342.9 148.59 0)
 			(effects
 				(font
@@ -13141,7 +13141,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 332.74 40.64 0)
 			(effects
 				(font
@@ -13189,7 +13189,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 332.74 40.64 0)
 			(effects
 				(font
@@ -13239,7 +13239,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 149.86 78.74 0)
 			(effects
 				(font
@@ -13287,7 +13287,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 149.86 78.74 0)
 			(effects
 				(font
@@ -13652,7 +13652,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 191.77 132.08 0)
 			(effects
 				(font
@@ -13700,7 +13700,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 191.77 132.08 0)
 			(effects
 				(font
@@ -14123,7 +14123,7 @@
 				(justify left top)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:ANTENK U6252-35C"
+		(property "Footprint" "ProPrj_Seg-easyedapro:ANTENK_U6252-35C"
 			(at 66.04 60.96 0)
 			(effects
 				(font
@@ -14171,7 +14171,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "ANTENK U6252-35C"
+		(property "Origin Footprint" "ANTENK_U6252-35C"
 			(at 66.04 60.96 0)
 			(effects
 				(font
@@ -14333,7 +14333,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 213.36 223.52 0)
 			(effects
 				(font
@@ -14381,7 +14381,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 213.36 223.52 0)
 			(effects
 				(font
@@ -14432,7 +14432,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:PLAGE - NOIRE"
+		(property "Footprint" "ProPrj_Seg-easyedapro:PLAGE_-_NOIRE"
 			(at 86.36 86.36 0)
 			(effects
 				(font
@@ -14480,7 +14480,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "PLAGE - NOIRE"
+		(property "Origin Footprint" "PLAGE_-_NOIRE"
 			(at 86.36 86.36 0)
 			(effects
 				(font
@@ -15954,7 +15954,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:SOT23-5 0.95 VAR AA"
+		(property "Footprint" "ProPrj_Seg-easyedapro:SOT23-5_0.95_VAR_AA"
 			(at 299.72 153.67 0)
 			(effects
 				(font
@@ -16694,7 +16694,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 307.34 50.8 0)
 			(effects
 				(font
@@ -16742,7 +16742,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 307.34 50.8 0)
 			(effects
 				(font
@@ -17223,7 +17223,7 @@
 				(justify left bottom)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:ON SEMI NCV8160AMX330TBG"
+		(property "Footprint" "ProPrj_Seg-easyedapro:ON_SEMI_NCV8160AMX330TBG"
 			(at 63.5 228.6 0)
 			(effects
 				(font
@@ -17271,7 +17271,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "ON SEMI NCV8160AMX330TBG"
+		(property "Origin Footprint" "ON_SEMI_NCV8160AMX330TBG"
 			(at 63.5 228.6 0)
 			(effects
 				(font
@@ -17332,7 +17332,7 @@
 				(justify left bottom)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TOREX USP-8B06"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TOREX_USP-8B06"
 			(at 173.99 144.78 0)
 			(effects
 				(font
@@ -17380,7 +17380,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TOREX USP-8B06"
+		(property "Origin Footprint" "TOREX_USP-8B06"
 			(at 173.99 144.78 0)
 			(effects
 				(font
@@ -17701,7 +17701,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:0805 - FUSE"
+		(property "Footprint" "ProPrj_Seg-easyedapro:0805_-_FUSE"
 			(at 91.44 45.72 0)
 			(effects
 				(font
@@ -17749,7 +17749,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "0805 - FUSE"
+		(property "Origin Footprint" "0805_-_FUSE"
 			(at 91.44 45.72 0)
 			(effects
 				(font
@@ -17870,7 +17870,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:PLAGE - ROUGE"
+		(property "Footprint" "ProPrj_Seg-easyedapro:PLAGE_-_ROUGE"
 			(at 330.2 35.56 0)
 			(effects
 				(font
@@ -17918,7 +17918,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "PLAGE - ROUGE"
+		(property "Origin Footprint" "PLAGE_-_ROUGE"
 			(at 330.2 35.56 0)
 			(effects
 				(font
@@ -18738,7 +18738,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:0805 - FUSE"
+		(property "Footprint" "ProPrj_Seg-easyedapro:0805_-_FUSE"
 			(at 314.96 38.1 0)
 			(effects
 				(font
@@ -18786,7 +18786,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "0805 - FUSE"
+		(property "Origin Footprint" "0805_-_FUSE"
 			(at 314.96 38.1 0)
 			(effects
 				(font
@@ -20543,7 +20543,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 88.9 223.52 0)
 			(effects
 				(font
@@ -20591,7 +20591,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 88.9 223.52 0)
 			(effects
 				(font
@@ -20822,7 +20822,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:OSRAM LRY8SFU1V21"
+		(property "Footprint" "ProPrj_Seg-easyedapro:OSRAM_LRY8SFU1V21"
 			(at 292.1 71.12 0)
 			(effects
 				(font
@@ -20870,7 +20870,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "OSRAM LRY8SFU1V21"
+		(property "Origin Footprint" "OSRAM_LRY8SFU1V21"
 			(at 292.1 71.12 0)
 			(effects
 				(font
@@ -21835,7 +21835,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 118.11 149.86 0)
 			(effects
 				(font
@@ -21883,7 +21883,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 118.11 149.86 0)
 			(effects
 				(font
@@ -22114,7 +22114,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 88.9 43.18 0)
 			(effects
 				(font
@@ -22162,7 +22162,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 88.9 43.18 0)
 			(effects
 				(font
@@ -22728,7 +22728,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 152.4 223.52 0)
 			(effects
 				(font
@@ -22776,7 +22776,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 152.4 223.52 0)
 			(effects
 				(font
@@ -23645,7 +23645,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT 1MM"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TESTPOINT_1MM"
 			(at 44.45 167.64 0)
 			(effects
 				(font
@@ -23693,7 +23693,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TESTPOINT 1MM"
+		(property "Origin Footprint" "TESTPOINT_1MM"
 			(at 44.45 167.64 0)
 			(effects
 				(font
@@ -23990,7 +23990,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:TE 19826331"
+		(property "Footprint" "ProPrj_Seg-easyedapro:TE_19826331"
 			(at 353.06 27.94 0)
 			(effects
 				(font
@@ -24038,7 +24038,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "TE 19826331"
+		(property "Origin Footprint" "TE_19826331"
 			(at 353.06 27.94 0)
 			(effects
 				(font
@@ -24102,7 +24102,7 @@
 				(justify left bottom)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:ON SEMI NCV8160AMX330TBG"
+		(property "Footprint" "ProPrj_Seg-easyedapro:ON_SEMI_NCV8160AMX330TBG"
 			(at 187.96 228.6 0)
 			(effects
 				(font
@@ -24150,7 +24150,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "ON SEMI NCV8160AMX330TBG"
+		(property "Origin Footprint" "ON_SEMI_NCV8160AMX330TBG"
 			(at 187.96 228.6 0)
 			(effects
 				(font

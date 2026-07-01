@@ -595,7 +595,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:GCT FFC2B35-12-G"
+			(property "Footprint" "ProPrj_Seg-easyedapro:GCT_FFC2B35-12-G"
 				(at 0 0 0)
 				(effects
 					(font
@@ -1004,7 +1004,7 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "ProPrj_Seg-easyedapro:HCTL HC-FPC-05-09-24RLTAG"
+		(symbol "ProPrj_Seg-easyedapro:HCTL_HC-FPC-05-09-24RLTAG"
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -1024,7 +1024,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:HCTL HC-FPC-05-09-24RLTAG"
+			(property "Footprint" "ProPrj_Seg-easyedapro:HCTL_HC-FPC-05-09-24RLTAG"
 				(at 0 0 0)
 				(effects
 					(font
@@ -1051,7 +1051,7 @@
 					(hide yes)
 				)
 			)
-			(symbol "HCTL HC-FPC-05-09-24RLTAG_1_0"
+			(symbol "HCTL_HC-FPC-05-09-24RLTAG_1_0"
 				(rectangle
 					(start -5.08 17.78)
 					(end 0 -43.18)
@@ -2109,7 +2109,7 @@
 					)
 				)
 			)
-			(property "Footprint" "ProPrj_Seg-easyedapro:0402 - RESISTOR"
+			(property "Footprint" "ProPrj_Seg-easyedapro:0402_-_RESISTOR"
 				(at 0 0 0)
 				(effects
 					(font
@@ -6166,7 +6166,7 @@
 				(justify left bottom)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:GCT FFC2B35-12-G"
+		(property "Footprint" "ProPrj_Seg-easyedapro:GCT_FFC2B35-12-G"
 			(at 231.14 67.31 0)
 			(effects
 				(font
@@ -6214,7 +6214,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "GCT FFC2B35-12-G"
+		(property "Origin Footprint" "GCT_FFC2B35-12-G"
 			(at 231.14 67.31 0)
 			(effects
 				(font
@@ -8508,7 +8508,7 @@
 		)
 	)
 	(symbol
-		(lib_id "ProPrj_Seg-easyedapro:HCTL HC-FPC-05-09-24RLTAG")
+		(lib_id "ProPrj_Seg-easyedapro:HCTL_HC-FPC-05-09-24RLTAG")
 		(at 292.1 69.85 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -8534,7 +8534,7 @@
 				(justify left bottom)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:HCTL HC-FPC-05-09-24RLTAG"
+		(property "Footprint" "ProPrj_Seg-easyedapro:HCTL_HC-FPC-05-09-24RLTAG"
 			(at 292.1 69.85 0)
 			(effects
 				(font
@@ -8562,7 +8562,7 @@
 				(hide yes)
 			)
 		)
-		(property "Design Item ID" "HCTL HC-FPC-05-09-24RLTAG"
+		(property "Design Item ID" "HCTL_HC-FPC-05-09-24RLTAG"
 			(at 292.1 69.85 0)
 			(effects
 				(font
@@ -8582,7 +8582,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "HCTL HC-FPC-05-09-24RLTAG"
+		(property "Origin Footprint" "HCTL_HC-FPC-05-09-24RLTAG"
 			(at 292.1 69.85 0)
 			(effects
 				(font
@@ -11301,7 +11301,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "ProPrj_Seg-easyedapro:0402 - RESISTOR"
+		(property "Footprint" "ProPrj_Seg-easyedapro:0402_-_RESISTOR"
 			(at 205.74 74.93 0)
 			(effects
 				(font
@@ -11349,7 +11349,7 @@
 				(hide yes)
 			)
 		)
-		(property "Origin Footprint" "0402 - RESISTOR"
+		(property "Origin Footprint" "0402_-_RESISTOR"
 			(at 205.74 74.93 0)
 			(effects
 				(font
