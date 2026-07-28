@@ -33,6 +33,8 @@
 #define BTC_WITNESS_LEN 32
 #define BTC_P2PKH_LEN 25
 #define BTC_P2SH_LEN 23
+#define BTC_P2TR_LEN 34
+#define OP_1 0x51
 
 static inline bool script_is_p2wpkh(const uint8_t* script, size_t script_len) {
   return (script_len == BTC_PUBKEY_HASH_LEN + 2) &&
@@ -60,6 +62,12 @@ static inline bool script_is_p2sh(const uint8_t* script, size_t script_len) {
          (script[0] == 0xa9) &&
          (script[1] == RIPEMD160_DIGEST_LENGTH) &&
          (script[22] == 0x87);
+}
+
+static inline bool script_is_p2tr(const uint8_t* script, size_t script_len) {
+  return (script_len == BTC_P2TR_LEN) &&
+         (script[0] == OP_1) &&
+         (script[1] == BTC_TAPROOT_WITPROG_LEN);
 }
 
 int script_output_to_address(const uint8_t *script, int script_len, char addr[MAX_ADDR_LEN]);

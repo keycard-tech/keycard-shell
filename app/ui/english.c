@@ -87,6 +87,7 @@ const char *const i18n_english_strings[] = {
     "Unlimited",
     "A bit of",
     "Hash",
+    "Unknown address",
 
     // MSG Confirmation
     "Sign message",

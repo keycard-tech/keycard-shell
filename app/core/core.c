@@ -582,7 +582,7 @@ static void core_eth_addr_encoder(const uint8_t* key, char* addr) {
 
 static void core_btc_addr_encoder(const uint8_t* key, char* addr) {
   hash160(key, PUBKEY_COMPRESSED_LEN, g_core.address);
-  bitcoin_segwit_address(g_core.address, RIPEMD160_DIGEST_LENGTH, addr);
+  bitcoin_segwit_address(g_core.address, RIPEMD160_DIGEST_LENGTH, BTC_SEGWIT_VER, addr);
 }
 
 void core_addresses_ethereum() {

@@ -26,9 +26,11 @@
 
 int script_output_to_address(const uint8_t *script, int script_len, char addr[MAX_ADDR_LEN]) {
   if (script_is_p2wpkh(script, script_len)) {
-    return bitcoin_segwit_address(&script[2], RIPEMD160_DIGEST_LENGTH, addr);
+    return bitcoin_segwit_address(&script[2], RIPEMD160_DIGEST_LENGTH, BTC_SEGWIT_VER, addr);
   } else if (script_is_p2wsh(script, script_len)) {
-    return bitcoin_segwit_address(&script[2], SHA256_DIGEST_LENGTH, addr);
+    return bitcoin_segwit_address(&script[2], SHA256_DIGEST_LENGTH, BTC_SEGWIT_VER, addr);
+  } else if (script_is_p2tr(script, script_len)) {
+    return bitcoin_segwit_address(&script[2], BTC_TAPROOT_WITPROG_LEN, BTC_TAPROOT_WITVER, addr);
   } else if (script_is_p2pkh(script, script_len)) {
     return bitcoin_legacy_address(&script[3], BTC_P2PKH_ADDR_PREFIX, addr);
   } else if (script_is_p2sh(script, script_len)) {

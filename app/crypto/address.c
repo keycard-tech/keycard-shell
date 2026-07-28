@@ -57,22 +57,23 @@ bool address_check_prefix(const uint8_t *addr, uint32_t address_type) {
           ((uint32_t)addr[2] << 8) | ((uint32_t)addr[3]));
 }
 
-void address_format(addr_type_t addr_type, const uint8_t data[RIPEMD160_DIGEST_LENGTH], char out[MAX_ADDR_LEN]) {
+int address_format(addr_type_t addr_type, const uint8_t* data, char out[MAX_ADDR_LEN]) {
   switch(addr_type) {
   case ADDR_ETH:
     out[0] = '0';
     out[1] = 'x';
     ethereum_address_checksum(data, &out[2]);
-    return;
+    return 1;
   case ADDR_BTC_LEGACY:
-    bitcoin_legacy_address(data, BTC_P2PKH_ADDR_PREFIX, out);
-    return;
+    return bitcoin_legacy_address(data, BTC_P2PKH_ADDR_PREFIX, out) > 0 ? 1 : 0;
   case ADDR_BTC_NESTED_SEGWIT:
-    bitcoin_legacy_address(data, BTC_P2SH_ADDR_PREFIX, out);
-    return;
+    return bitcoin_legacy_address(data, BTC_P2SH_ADDR_PREFIX, out) > 0 ? 1 : 0;
   case ADDR_BTC_SEGWIT:
-    bitcoin_segwit_address(data, RIPEMD160_DIGEST_LENGTH, out);
-    return;
+    return bitcoin_segwit_address(data, RIPEMD160_DIGEST_LENGTH, BTC_SEGWIT_VER, out) > 0 ? 1 : 0;
+  case ADDR_BTC_TAPROOT:
+    return bitcoin_segwit_address(data, BTC_TAPROOT_WITPROG_LEN, BTC_TAPROOT_WITVER, out) > 0 ? 1 : 0;
+  default:
+    return 0;
   }
 }
 

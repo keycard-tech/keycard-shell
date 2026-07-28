@@ -25,6 +25,8 @@
 #include <stdint.h>
 
 #define BTC_SEGWIT_VER 0
+#define BTC_TAPROOT_WITVER 1
+#define BTC_TAPROOT_WITPROG_LEN 32
 extern const char *const BTC_BECH32_HRP;
 
 /** Encode a SegWit address

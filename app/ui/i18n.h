@@ -91,6 +91,7 @@ typedef enum {
   TX_UNLIMITED,
   TX_TOOLITTLE,
   TX_HASH,
+  TX_UNKNOWN_ADDRESS,
 
   // MSG Confirmation
   MSG_CONFIRM_TITLE,
