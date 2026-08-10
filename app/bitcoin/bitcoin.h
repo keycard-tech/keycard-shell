@@ -17,6 +17,8 @@ typedef enum {
   BTC_INPUT_TYPE_LEGACY_WITH_REDEEM,
   BTC_INPUT_TYPE_P2WPKH,
   BTC_INPUT_TYPE_P2WSH,
+  BTC_INPUT_TYPE_P2TR,
+  BTC_INPUT_TYPE_P2TR_SCRIPT,
 } btc_input_type_t;
 
 typedef enum {
@@ -44,6 +46,11 @@ typedef struct {
   btc_input_type_t input_type;
   bool witness;
   bool can_sign;
+  // Taproot-specific fields (BIP371)
+  uint8_t* taproot_internal_key;
+  uint8_t* taproot_merkle_root;
+  bool has_taproot_internal_key;
+  bool has_taproot_merkle_root;
 } psbt_input_data_t;
 
 typedef struct {
@@ -68,6 +75,8 @@ typedef struct {
   uint8_t hash_prevouts[SHA256_DIGEST_LENGTH];
   uint8_t hash_sequence[SHA256_DIGEST_LENGTH];
   uint8_t hash_outputs[SHA256_DIGEST_LENGTH];
+  uint8_t hash_amounts[SHA256_DIGEST_LENGTH];
+  uint8_t hash_scriptpubkeys[SHA256_DIGEST_LENGTH];
 
   uint32_t mfp;
   app_err_t error;

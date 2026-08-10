@@ -19,12 +19,23 @@ enum psbt_input_type {
   PSBT_IN_BIP32_DERIVATION    = 6,
   PSBT_IN_FINAL_SCRIPTSIG     = 7,
   PSBT_IN_FINAL_SCRIPTWITNESS = 8,
+  // BIP371 Taproot fields
+  PSBT_IN_TAP_KEY_SIG         = 0x13,
+  PSBT_IN_TAP_SCRIPT_SIG      = 0x14,
+  PSBT_IN_TAP_LEAF_SCRIPT     = 0x15,
+  PSBT_IN_TAP_BIP32_DERIVATION = 0x16,
+  PSBT_IN_TAP_INTERNAL_KEY    = 0x17,
+  PSBT_IN_TAP_MERKLE_ROOT     = 0x18,
 };
 
 enum psbt_output_type {
   PSBT_OUT_REDEEM_SCRIPT      = 0,
   PSBT_OUT_WITNESS_SCRIPT     = 1,
   PSBT_OUT_BIP32_DERIVATION   = 2,
+  // BIP371 Taproot fields
+  PSBT_OUT_TAP_INTERNAL_KEY   = 5,
+  PSBT_OUT_TAP_TREE           = 6,
+  PSBT_OUT_TAP_BIP32_DERIVATION = 7,
 };
 
 enum psbt_scope {

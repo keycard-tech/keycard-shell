@@ -232,12 +232,13 @@ app_err_t keycard_cmd_sign(keycard_t* kc, keycard_sign_algo_t algo, uint8_t* pat
   APDU_P1(&kc->apdu) = 1;
   APDU_P2(&kc->apdu) = algo;
 
-  SC_BUF(data, 72);
+  SC_BUF(data, 104);
+  uint8_t hash_len = (algo == KEYCARD_SIGN_BIP340_SCHNORR) ? 64 : 32;
 
-  memcpy(data, hash, 32);
-  memcpy(&data[32], path, path_len);
+  memcpy(data, hash, hash_len);
+  memcpy(&data[hash_len], path, path_len);
 
-  return securechannel_send_apdu(&kc->sc, &kc->ch, &kc->apdu, data, (32 + path_len));
+  return securechannel_send_apdu(&kc->sc, &kc->ch, &kc->apdu, data, (hash_len + path_len));
 }
 
 app_err_t keycard_cmd_factory_reset(keycard_t* kc) {

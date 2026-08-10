@@ -104,6 +104,33 @@ static void core_btc_psbt_input_rec_handler(btc_tx_ctx_t* tx_ctx, size_t index, 
     }
     memcpy(&tx_ctx->input_data[index].sighash_flag, rec->val, sizeof(uint32_t));
     break;
+  case PSBT_IN_TAP_INTERNAL_KEY:
+    if (rec->val_size != 32) {
+      tx_ctx->error = ERR_DECODE;
+      return;
+    }
+    tx_ctx->input_data[index].taproot_internal_key = rec->val;
+    tx_ctx->input_data[index].has_taproot_internal_key = true;
+    break;
+  case PSBT_IN_TAP_MERKLE_ROOT:
+    if (rec->val_size != 32) {
+      tx_ctx->error = ERR_DECODE;
+      return;
+    }
+    tx_ctx->input_data[index].taproot_merkle_root = rec->val;
+    tx_ctx->input_data[index].has_taproot_merkle_root = true;
+    break;
+  case PSBT_IN_TAP_BIP32_DERIVATION:
+    if (rec->val_size < 5) {
+      tx_ctx->error = ERR_DECODE;
+      return;
+    }
+    if (tx_ctx->input_data[index].master_fingerprint != tx_ctx->mfp) {
+      memcpy(&tx_ctx->input_data[index].master_fingerprint, &rec->val[1], sizeof(uint32_t));
+      tx_ctx->input_data[index].bip32_path = &rec->val[5];
+      tx_ctx->input_data[index].bip32_path_len = rec->val_size - 5;
+    }
+    break;
   }
 }
 
@@ -257,6 +284,15 @@ static app_err_t core_btc_hash_segwit(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
   SHA256_CTX sha256;
   sha256_Init(&sha256);
 
+  // BIP143 uses double-SHA256 for the sub-hashes. core_btc_common_hashes stores
+  // single-SHA256 (as required by BIP341 taproot), so double-hash them here.
+  uint8_t hprev[SHA256_DIGEST_LENGTH];
+  uint8_t hseq[SHA256_DIGEST_LENGTH];
+  uint8_t hout[SHA256_DIGEST_LENGTH];
+  sha256_Raw(tx_ctx->hash_prevouts, SHA256_DIGEST_LENGTH, hprev);
+  sha256_Raw(tx_ctx->hash_sequence, SHA256_DIGEST_LENGTH, hseq);
+  sha256_Raw(tx_ctx->hash_outputs, SHA256_DIGEST_LENGTH, hout);
+
   uint8_t sighash = tx_ctx->input_data[index].sighash_flag & SIGHASH_MASK;
   uint8_t anyonecanpay = tx_ctx->input_data[index].sighash_flag & SIGHASH_ANYONECANPAY;
 
@@ -265,13 +301,13 @@ static app_err_t core_btc_hash_segwit(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
   if (anyonecanpay) {
     sha256_Update(&sha256, ZERO32, SHA256_DIGEST_LENGTH);
   } else {
-    sha256_Update(&sha256, tx_ctx->hash_prevouts, SHA256_DIGEST_LENGTH);
+    sha256_Update(&sha256, hprev, SHA256_DIGEST_LENGTH);
   }
 
   if (anyonecanpay || (sighash != SIGHASH_ALL)) {
     sha256_Update(&sha256, ZERO32, SHA256_DIGEST_LENGTH);
   } else {
-    sha256_Update(&sha256, tx_ctx->hash_sequence, SHA256_DIGEST_LENGTH);
+    sha256_Update(&sha256, hseq, SHA256_DIGEST_LENGTH);
   }
 
   sha256_Update(&sha256, tx_ctx->inputs[index].txid, BTC_TXID_LEN);
@@ -296,7 +332,7 @@ static app_err_t core_btc_hash_segwit(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
   sha256_Update(&sha256, (uint8_t*) &tx_ctx->inputs[index].sequence_number, sizeof(uint32_t));
 
   if (sighash == SIGHASH_ALL) {
-    sha256_Update(&sha256, tx_ctx->hash_outputs, SHA256_DIGEST_LENGTH);
+    sha256_Update(&sha256, hout, SHA256_DIGEST_LENGTH);
   } else if ((sighash == SIGHASH_SINGLE) && (index < tx_ctx->output_count)) {
     SOFT_SHA256_CTX inner_sha256;
     uint8_t inner_digest[SHA256_DIGEST_LENGTH];
@@ -319,6 +355,106 @@ static app_err_t core_btc_hash_segwit(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
 
   sha256_Final(&sha256, digest);
   sha256_Raw(digest, SHA256_DIGEST_LENGTH, digest);
+  return ERR_OK;
+}
+
+static app_err_t core_btc_hash_taproot(btc_tx_ctx_t* tx_ctx, size_t index, uint8_t digest[SHA256_DIGEST_LENGTH]) {
+  uint8_t sighash = tx_ctx->input_data[index].sighash_flag & 0xff;
+  uint8_t base_type = sighash & SIGHASH_MASK;
+  bool anyonecanpay = sighash & SIGHASH_ANYONECANPAY;
+
+  // SIGHASH_DEFAULT (0x00) signs over the whole transaction like SIGHASH_ALL
+  if (base_type == SIGHASH_DEFAULT) {
+    base_type = SIGHASH_ALL;
+  }
+
+  // only defined hash_type values are allowed (0x00, 0x01, 0x02, 0x03, 0x81, 0x82, 0x83)
+  switch (sighash) {
+  case SIGHASH_DEFAULT:
+  case SIGHASH_ALL:
+  case SIGHASH_NONE:
+  case SIGHASH_SINGLE:
+  case (SIGHASH_ALL | SIGHASH_ANYONECANPAY):
+  case (SIGHASH_NONE | SIGHASH_ANYONECANPAY):
+  case (SIGHASH_SINGLE | SIGHASH_ANYONECANPAY):
+    break;
+  default:
+    return ERR_DATA;
+  }
+
+  // hash_TapSighash(0x00 || SigMsg): tagged hash with a single SHA256 over the
+  // tag prefix, the sighash epoch byte 0x00 and the signature message.
+  uint8_t tag_hash[SHA256_DIGEST_LENGTH];
+  sha256_Raw((uint8_t*) "TapSighash", 10, tag_hash);
+
+  SHA256_CTX sha256;
+  sha256_Init(&sha256);
+  sha256_Update(&sha256, tag_hash, SHA256_DIGEST_LENGTH);
+  sha256_Update(&sha256, tag_hash, SHA256_DIGEST_LENGTH);
+  uint8_t epoch = 0;
+  sha256_Update(&sha256, &epoch, 1);
+
+  // hash_type
+  sha256_Update(&sha256, &sighash, 1);
+
+  // nVersion
+  sha256_Update(&sha256, (uint8_t*) &tx_ctx->tx.version, sizeof(uint32_t));
+
+  // nLockTime
+  sha256_Update(&sha256, (uint8_t*) &tx_ctx->tx.lock_time, sizeof(uint32_t));
+
+  // Transaction level data
+  if (!anyonecanpay) {
+    sha256_Update(&sha256, tx_ctx->hash_prevouts, SHA256_DIGEST_LENGTH);
+    sha256_Update(&sha256, tx_ctx->hash_amounts, SHA256_DIGEST_LENGTH);
+    sha256_Update(&sha256, tx_ctx->hash_scriptpubkeys, SHA256_DIGEST_LENGTH);
+    sha256_Update(&sha256, tx_ctx->hash_sequence, SHA256_DIGEST_LENGTH);
+  }
+
+  if ((base_type != SIGHASH_NONE) && (base_type != SIGHASH_SINGLE)) {
+    sha256_Update(&sha256, tx_ctx->hash_outputs, SHA256_DIGEST_LENGTH);
+  }
+
+  // spend_type = (ext_flag * 2) + annex_present = 0 (no BIP342 extension, no annex)
+  uint8_t spend_type = 0;
+  sha256_Update(&sha256, &spend_type, 1);
+
+  if (anyonecanpay) {
+    // outpoint (32-byte txid + 4-byte index)
+    sha256_Update(&sha256, tx_ctx->inputs[index].txid, BTC_TXID_LEN);
+    sha256_Update(&sha256, (uint8_t*) &tx_ctx->inputs[index].index, sizeof(uint32_t));
+    // amount
+    sha256_Update(&sha256, tx_ctx->input_data[index].amount, sizeof(uint64_t));
+    // scriptPubKey serialized as script inside CTxOut (compact size length prefix)
+    uint8_t csize[sizeof(uint64_t)];
+    compactsize_write(csize, tx_ctx->input_data[index].script_pubkey_len);
+    sha256_Update(&sha256, csize, compactsize_length(tx_ctx->input_data[index].script_pubkey_len));
+    sha256_Update(&sha256, tx_ctx->input_data[index].script_pubkey, tx_ctx->input_data[index].script_pubkey_len);
+    // nSequence
+    sha256_Update(&sha256, (uint8_t*) &tx_ctx->inputs[index].sequence_number, sizeof(uint32_t));
+  } else {
+    // input_index
+    uint32_t idx = index;
+    sha256_Update(&sha256, (uint8_t*) &idx, sizeof(uint32_t));
+  }
+
+  if (base_type == SIGHASH_SINGLE) {
+    if (index >= tx_ctx->output_count) {
+      return ERR_DATA; // SIGHASH_SINGLE without a corresponding output
+    }
+
+    // sha_single_output: single SHA256 of the corresponding output in CTxOut format
+    SHA256_CTX inner;
+    uint8_t inner_digest[SHA256_DIGEST_LENGTH];
+    size_t output_len = ((uint32_t) tx_ctx->outputs[index].script - (uint32_t) tx_ctx->outputs[index].amount) + tx_ctx->outputs[index].script_len;
+    sha256_Init(&inner);
+    sha256_Update(&inner, tx_ctx->outputs[index].amount, output_len);
+    sha256_Final(&inner, inner_digest);
+
+    sha256_Update(&sha256, inner_digest, SHA256_DIGEST_LENGTH);
+  }
+
+  sha256_Final(&sha256, digest);
   return ERR_OK;
 }
 
@@ -362,6 +498,44 @@ static app_err_t core_btc_read_signature(uint8_t* data, uint8_t sighash, psbt_re
   return ERR_OK;
 }
 
+static app_err_t core_btc_read_schnorr_signature(uint8_t* data, psbt_record_t* rec) {
+  uint16_t len;
+  uint16_t tag;
+  uint16_t off = tlv_read_tag(data, &tag);
+
+  if (tag != 0xa0) {
+    return ERR_DATA;
+  }
+
+  off += tlv_read_length(&data[off], &len);
+
+  off += tlv_read_tag(&data[off], &tag);
+  if (tag != 0x80) {
+    return ERR_DATA;
+  }
+  off += tlv_read_length(&data[off], &len);
+  off += len;
+
+  off += tlv_read_tag(&data[off], &tag);
+  if (tag != 0x88) {
+    return ERR_DATA;
+  }
+
+  off += tlv_read_length(&data[off], &len);
+  if (len != 64) {
+    return ERR_DATA;
+  }
+
+  rec->scope = PSBT_SCOPE_INPUTS;
+  rec->type = PSBT_IN_TAP_KEY_SIG;
+  rec->key = NULL;
+  rec->key_size = 0;
+  rec->val = &data[off];
+  rec->val_size = 64;
+
+  return ERR_OK;
+}
+
 static app_err_t core_btc_set_path(uint8_t* btc_bip32_path, uint32_t btc_bip32_path_len) {
   if ((btc_bip32_path_len > BIP44_MAX_PATH_LEN) || ((btc_bip32_path_len % 4) != 0)) {
     return ERR_DATA;
@@ -395,6 +569,9 @@ static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
   case BTC_INPUT_TYPE_P2WSH:
     err = core_btc_hash_segwit(tx_ctx, index, digest);
     break;
+  case BTC_INPUT_TYPE_P2TR:
+    err = core_btc_hash_taproot(tx_ctx, index, digest);
+    break;
   default:
     err = ERR_DATA;
     break;
@@ -410,15 +587,49 @@ static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
     return ERR_DATA;
   }
 
-  if ((keycard_cmd_sign(kc, KEYCARD_SIGN_ECDSA_SECP256K1, g_core.bip44_path, g_core.bip44_path_len, digest) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
-    return ERR_CRYPTO;
-  }
-
-  uint8_t* data = APDU_RESP(&kc->apdu);
   psbt_record_t signature;
 
-  if (core_btc_read_signature(data, tx_ctx->input_data[index].sighash_flag, &signature) != ERR_OK) {
-    return ERR_DATA;
+  if (tx_ctx->input_data[index].input_type == BTC_INPUT_TYPE_P2TR) {
+    // For taproot the tweak value must be added to the signing key by the keycard.
+    // The "hash" argument is the concatenation of the BIP341 sighash (32 bytes)
+    // and the taproot tweak t = hash_TapTweak(internal_key || merkle_root) (32 bytes).
+    if (!tx_ctx->input_data[index].has_taproot_internal_key) {
+      return ERR_DATA;
+    }
+
+    uint8_t tag_hash[SHA256_DIGEST_LENGTH];
+    sha256_Raw((uint8_t*) "TapTweak", 8, tag_hash);
+
+    SHA256_CTX sha256;
+    sha256_Init(&sha256);
+    sha256_Update(&sha256, tag_hash, SHA256_DIGEST_LENGTH);
+    sha256_Update(&sha256, tag_hash, SHA256_DIGEST_LENGTH);
+    sha256_Update(&sha256, tx_ctx->input_data[index].taproot_internal_key, BTC_TAPROOT_WITPROG_LEN);
+    if (tx_ctx->input_data[index].has_taproot_merkle_root) {
+      sha256_Update(&sha256, tx_ctx->input_data[index].taproot_merkle_root, SHA256_DIGEST_LENGTH);
+    }
+
+    uint8_t hash_tweak[2 * SHA256_DIGEST_LENGTH];
+    memcpy(hash_tweak, digest, SHA256_DIGEST_LENGTH);
+    sha256_Final(&sha256, &hash_tweak[SHA256_DIGEST_LENGTH]);
+
+    if ((keycard_cmd_sign(kc, KEYCARD_SIGN_BIP340_SCHNORR, g_core.bip44_path, g_core.bip44_path_len, hash_tweak) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+      return ERR_CRYPTO;
+    }
+
+    uint8_t* data = APDU_RESP(&kc->apdu);
+    if (core_btc_read_schnorr_signature(data, &signature) != ERR_OK) {
+      return ERR_DATA;
+    }
+  } else {
+    if ((keycard_cmd_sign(kc, KEYCARD_SIGN_ECDSA_SECP256K1, g_core.bip44_path, g_core.bip44_path_len, digest) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+      return ERR_CRYPTO;
+    }
+
+    uint8_t* data = APDU_RESP(&kc->apdu);
+    if (core_btc_read_signature(data, tx_ctx->input_data[index].sighash_flag, &signature) != ERR_OK) {
+      return ERR_DATA;
+    }
   }
 
   psbt_write_input_record(&tx_ctx->psbt_out, &signature);
@@ -544,7 +755,11 @@ static bool core_btc_pubkey_matches_output(const uint8_t* pubkey, const psbt_txo
   } else if (script_is_p2wpkh(out->script, out->script_len)) {
     off = 2;
   } else {
-    return false;
+    off = 0;
+  }
+
+  if (script_is_p2tr(out->script, out->script_len)) {
+    return memcmp(&pubkey[1], &out->script[2], 32) == 0;
   }
 
   uint8_t tmp[RIPEMD160_DIGEST_LENGTH];
@@ -562,10 +777,6 @@ static app_err_t core_btc_validate(btc_tx_ctx_t* tx_ctx) {
       can_sign_something = true;
     } else {
       continue;
-    }
-
-    if (tx_ctx->input_data[i].sighash_flag == SIGHASH_DEFAULT) {
-      tx_ctx->input_data[i].sighash_flag = SIGHASH_ALL;
     }
 
     if (tx_ctx->input_data[i].nonwitness_utxo && !btc_validate_tx_hash(tx_ctx->input_data[i].nonwitness_utxo, tx_ctx->input_data[i].nonwitness_utxo_len, tx_ctx->inputs[i].txid)) {
@@ -590,6 +801,8 @@ static app_err_t core_btc_validate(btc_tx_ctx_t* tx_ctx) {
 
       if (script_is_p2wpkh(script, script_len)) {
         tx_ctx->input_data[i].input_type = BTC_INPUT_TYPE_P2WPKH;
+      } else if (script_is_p2tr(script, script_len)) {
+        tx_ctx->input_data[i].input_type = BTC_INPUT_TYPE_P2TR;
       } else if (core_btc_is_valid_witness_script(script, script_len, tx_ctx->input_data[i].witness_script, tx_ctx->input_data[i].witness_script_len)) {
         tx_ctx->input_data[i].input_type = BTC_INPUT_TYPE_P2WSH;
       } else {
@@ -608,6 +821,10 @@ static app_err_t core_btc_validate(btc_tx_ctx_t* tx_ctx) {
     } else {
       return ERR_DATA;
     }
+
+    if (tx_ctx->input_data[i].sighash_flag == SIGHASH_DEFAULT && (tx_ctx->input_data[i].input_type != BTC_INPUT_TYPE_P2TR)) {
+      tx_ctx->input_data[i].sighash_flag = SIGHASH_ALL;
+    }    
   }
 
   for (int i = 0; i < tx_ctx->output_count; i++) {
@@ -641,8 +858,9 @@ static void core_btc_common_hashes(btc_tx_ctx_t* tx_ctx) {
     sha256_Update(&sha256, (uint8_t*) &tx_ctx->inputs[i].index, sizeof(uint32_t));
   }
 
+  // Sub-hashes are stored as single SHA256, which is what BIP341 taproot requires.
+  // BIP143 segwit double-hashes them at point of use (see core_btc_hash_segwit).
   sha256_Final(&sha256, tx_ctx->hash_prevouts);
-  sha256_Raw(tx_ctx->hash_prevouts, SHA256_DIGEST_LENGTH, tx_ctx->hash_prevouts);
 
   sha256_Init(&sha256);
 
@@ -651,7 +869,25 @@ static void core_btc_common_hashes(btc_tx_ctx_t* tx_ctx) {
   }
 
   sha256_Final(&sha256, tx_ctx->hash_sequence);
-  sha256_Raw(tx_ctx->hash_sequence, SHA256_DIGEST_LENGTH, tx_ctx->hash_sequence);
+
+  sha256_Init(&sha256);
+
+  for(int i = 0; i < tx_ctx->input_count; i++) {
+    sha256_Update(&sha256, tx_ctx->input_data[i].amount, sizeof(uint64_t));
+  }
+
+  sha256_Final(&sha256, tx_ctx->hash_amounts);
+
+  sha256_Init(&sha256);
+
+  for(int i = 0; i < tx_ctx->input_count; i++) {
+    uint8_t csize[sizeof(uint64_t)];
+    compactsize_write(csize, tx_ctx->input_data[i].script_pubkey_len);
+    sha256_Update(&sha256, csize, compactsize_length(tx_ctx->input_data[i].script_pubkey_len));
+    sha256_Update(&sha256, tx_ctx->input_data[i].script_pubkey, tx_ctx->input_data[i].script_pubkey_len);
+  }
+
+  sha256_Final(&sha256, tx_ctx->hash_scriptpubkeys);
 
   sha256_Init(&sha256);
 
@@ -661,7 +897,6 @@ static void core_btc_common_hashes(btc_tx_ctx_t* tx_ctx) {
   }
 
   sha256_Final(&sha256, tx_ctx->hash_outputs);
-  sha256_Raw(tx_ctx->hash_outputs, SHA256_DIGEST_LENGTH, tx_ctx->hash_outputs);
 }
 
 static app_err_t core_btc_psbt_run(const uint8_t* psbt_in, size_t psbt_len, uint8_t** psbt_out, size_t* out_len) {
