@@ -6,6 +6,8 @@
 #endif
 
 #define T1_BGT 22
+#define T1_MAX_RESP_BLOCKS (APDU_BUF_LEN + 16)
+#define T1_MAX_LRC_RETRIES 3
 
 static inline uint8_t t1_lrc(uint8_t* header, uint8_t* data, uint32_t len) {
   uint8_t lrc = header[0] ^ header[1] ^ header[2];
@@ -108,72 +110,104 @@ static app_err_t t1_handle_r(smartcard_t* sc, uint8_t pcb) {
 }
 
 static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
-  uint8_t header[3];
+  uint8_t lrc_retries = 0;
+  uint16_t blocks = 0;
 
-  hal_smartcard_set_timeout(sc->t1_bwt * sc->t1_bwt_factor);
-  sc->t1_bwt_factor = 1;
-  if (smartcard_receive_sync(sc, header, 3) != ERR_OK) {
-    return ERR_TXRX;
-  }
+  for(;;) {
+    uint8_t header[3];
 
-  uint16_t blen = header[2];
-
-  hal_smartcard_set_blocklen(blen);
-  hal_smartcard_set_timeout(sc->t1_cwt);
-
-  uint8_t *data;
-  uint8_t s;
-
-  if ((header[1] & T1_R_BLOCK) == 0) {
-    if ((apdu == NULL) || ((apdu->lr + blen) > APDU_BUF_LEN)) {
+    hal_smartcard_set_timeout(sc->t1_bwt * sc->t1_bwt_factor);
+    sc->t1_bwt_factor = 1;
+    if (smartcard_receive_sync(sc, header, 3) != ERR_OK) {
       return ERR_TXRX;
     }
 
-    data = &apdu->data[apdu->lr];
-    apdu->lr += blen;
-  } else if ((header[1] & T1_S_BLOCK) == T1_S_BLOCK) {
-    data = &s;
-  } else {
-    data = NULL;
-    blen = 0;
-  }
+    uint16_t blen = header[2];
+    uint8_t is_i_block = ((header[1] & T1_R_BLOCK) == 0);
 
-  if (blen) {
-    if (smartcard_receive_sync(sc, data, blen) != ERR_OK) {
-      return ERR_TXRX;
-    }    
-  }
+    hal_smartcard_set_blocklen(blen);
+    hal_smartcard_set_timeout(sc->t1_cwt);
 
-  uint8_t lrc;
-  if (smartcard_receive_sync(sc, &lrc, 1) != ERR_OK) {
-    return ERR_TXRX;
-  }
+    uint8_t *data;
+    uint8_t s = 0;
 
-  smartcard_delay(sc, T1_BGT);
+    if (is_i_block) {
+      if ((apdu == NULL) || ((apdu->lr + blen) > APDU_BUF_LEN)) {
+        return ERR_TXRX;
+      }
 
-  if (t1_lrc(header, data, blen) != lrc) {
-    if (t1_transmit_r(sc, T1_R_PARITY) != ERR_OK) {
+      data = &apdu->data[apdu->lr];
+      apdu->lr += blen;
+    } else if ((header[1] & T1_S_BLOCK) == T1_S_BLOCK) {
+      if (blen > 1) {
+        return ERR_TXRX;
+      }
+
+      data = &s;
+    } else {
+      data = NULL;
+      blen = 0;
+    }
+
+    if (blen) {
+      if (smartcard_receive_sync(sc, data, blen) != ERR_OK) {
+        return ERR_TXRX;
+      }    
+    }
+
+    uint8_t lrc;
+    if (smartcard_receive_sync(sc, &lrc, 1) != ERR_OK) {
       return ERR_TXRX;
     }
 
-    return t1_handle_resp(sc, apdu);
+    smartcard_delay(sc, T1_BGT);
+
+    if (t1_lrc(header, data, blen) != lrc) {
+      if (is_i_block) {
+        apdu->lr -= blen;
+      }
+
+      lrc_retries++;
+      if (lrc_retries > T1_MAX_LRC_RETRIES) {
+        return ERR_TXRX;
+      }
+
+      if (t1_transmit_r(sc, T1_R_PARITY) != ERR_OK) {
+        return ERR_TXRX;
+      }
+
+      continue;
+    }
+
+    lrc_retries = 0;
+
+    blocks++;
+    if (blocks > T1_MAX_RESP_BLOCKS) {
+      return ERR_TXRX;
+    }
+
+    uint8_t more = 0;
+    app_err_t err;
+
+    if (is_i_block) {
+      err = t1_handle_i(sc, header[1], &more);
+    } else if ((header[1] & T1_S_BLOCK) == T1_S_BLOCK) {
+      err = t1_handle_s(sc, header[1], s, &more);    
+    } else {
+      err = t1_handle_r(sc, header[1]);
+    }
+
+    if (!more) {
+      return err;
+    }
   }
-
-  uint8_t more = 0;
-  app_err_t err;
-
-  if ((header[1] & T1_R_BLOCK) == 0) {
-    err = t1_handle_i(sc, header[1], &more);
-  } else if ((header[1] & T1_S_BLOCK) == T1_S_BLOCK) {
-    err = t1_handle_s(sc, header[1], s, &more);    
-  } else {
-    err = t1_handle_r(sc, header[1]);
-  }
-
-  return more ? t1_handle_resp(sc, apdu) : err;
 }
 
 app_err_t t1_transmit(smartcard_t* sc, apdu_t* apdu) {
+  if (sc->atr.t1_ifsc == 0) {
+    return ERR_TXRX;
+  }
+
   uint8_t* data = apdu->data;
   uint8_t to_send = APDU_LEN(apdu);
   uint8_t resend = 0;
