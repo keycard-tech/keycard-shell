@@ -108,6 +108,8 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
   struct ur_part part;
   if ((cbor_decode_ur_part(ur->data, part_len, &part, NULL) != ZCBOR_SUCCESS) ||
       (part.ur_part_seqLen > UR_MAX_PART_COUNT) ||
+      (part.ur_part_seqNum == 0) ||
+      ((part.ur_part_seqLen * part_len) >= ur->data_max_len) ||
       (part.ur_part_messageLen > (ur->data_max_len - part_len))) {
     ur->crc = 0;
     return ERR_DATA;
