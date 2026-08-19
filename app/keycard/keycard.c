@@ -89,8 +89,28 @@ static app_err_t keycard_init_card(keycard_t* kc, app_info_t* info, uint8_t* pin
   return ERR_OK;
 }
 
-static app_err_t keycard_check_genuine(uint8_t* data) {
-  uint8_t tmp[SHA256_DIGEST_LENGTH];
+static app_err_t keycard_verify_cert_ca(const uint8_t* cert) {
+  uint8_t digest[SHA256_DIGEST_LENGTH];
+  uint8_t ca_pub[65];
+  const uint8_t* expected_ca_pub;
+
+  sha256_Raw(cert, 33, digest);
+
+  if (ecdsa_recover_pub_from_sig(&secp256k1, ca_pub, &cert[33], digest, cert[97])) {
+    return ERR_CRYPTO;
+  }
+
+  ca_pub[0] = 0x02 | (ca_pub[64] & 1);
+  key_read_public(KEYCARD_CA_KEY, &expected_ca_pub);
+
+  if (memcmp(ca_pub, expected_ca_pub, 33)) {
+    return ERR_CRYPTO;
+  }
+
+  return ERR_OK;
+}
+
+static app_err_t keycard_check_genuine(uint8_t* data, const uint8_t* challenge) {
   uint16_t len;
   uint16_t tag;
   uint16_t off = tlv_read_tag(data, &tag);
@@ -111,31 +131,17 @@ static app_err_t keycard_check_genuine(uint8_t* data) {
   }
 
   uint8_t* cert = &data[off];
-  uint8_t ca_pub[65];
+  uint8_t challenge_sig[64];
 
-  if (ecdsa_sig_from_der(&cert[98], 72, ca_pub)) {
+  if (ecdsa_sig_from_der(&cert[98], 72, challenge_sig)) {
     return ERR_DATA;
   }
 
-  if (ecdsa_verify(&secp256k1, cert, ca_pub, tmp)) {
+  if (ecdsa_verify(&secp256k1, cert, challenge_sig, challenge)) {
     return ERR_CRYPTO;
   }
 
-  sha256_Raw(cert, 33, tmp);
-
-  if (ecdsa_recover_pub_from_sig(&secp256k1, ca_pub, &cert[33], tmp, cert[97])) {
-    return ERR_CRYPTO;
-  }
-
-  ca_pub[0] = 0x02 | (ca_pub[64] & 1);
-  const uint8_t* expected_ca_pub;
-  key_read_public(KEYCARD_CA_KEY, &expected_ca_pub);
-
-  if (memcmp(ca_pub, expected_ca_pub, 33)) {
-    return ERR_CRYPTO;
-  }
-
-  return ERR_OK;
+  return keycard_verify_cert_ca(cert);
 }
 
 app_err_t keycard_factoryreset(keycard_t* kc) {
@@ -174,7 +180,7 @@ static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instan
   APDU_ASSERT_OK(&kc->apdu);
   uint8_t* data = APDU_RESP(&kc->apdu);
 
-  if (keycard_check_genuine(data) != ERR_OK) {
+  if (keycard_check_genuine(data, tmp) != ERR_OK) {
     if (ui_keycard_not_genuine() != CORE_EVT_UI_OK) {
       return ERR_CANCEL;
     }
@@ -552,7 +558,7 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
   } else {
     const uint8_t* dev_pubkey = info.v4.cert_data;
 
-    if (keycard_check_genuine(info.v4.cert_data) != ERR_OK) {
+    if (keycard_verify_cert_ca(info.v4.cert_data) != ERR_OK) {
       if (scv2_whitelist_check(dev_pubkey) != ERR_OK) {
         if (ui_keycard_not_genuine() != CORE_EVT_UI_OK) {
           return ERR_CANCEL;
