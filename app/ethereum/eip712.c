@@ -226,7 +226,7 @@ static app_err_t eip712_copy_uint(int field_index, bool pad_right, uint8_t out[3
 
     if (pad_right) {
       offset = 0;
-      memset(&out[offset], 0, padding);
+      memset(&out[out_len], 0, padding);
     } else {
       offset = padding;
       memset(out, 0, padding);
@@ -551,6 +551,35 @@ static app_err_t eip712_hash_struct(uint8_t out[32], uint8_t* heap, size_t heap_
   return ERR_OK;
 }
 
+static app_err_t eip712_check_declared_keys(int data_token, int type_index, const struct eip712_type types[], int types_count, const eip712_ctx_t* ctx) {
+  const struct eip712_type *t = &types[type_index];
+
+  for (int i = data_token + 1; i < ctx->token_count; i++) {
+    if (ctx->tokens[i].parent == data_token) {
+      if (ctx->tokens[i].type != JSMN_STRING) {
+        return ERR_DATA;
+      }
+
+      struct eip712_string key;
+      eip712_string_from_field(&key, i, ctx);
+
+      bool found = false;
+      for (int j = 0; j < t->field_count; j++) {
+        if (eip712_streq(&key, &t->fields[j].name)) {
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        return ERR_DATA;
+      }
+    }
+  }
+
+  return ERR_OK;
+}
+
 app_err_t eip712_hash(eip712_ctx_t *ctx, SHA3_CTX *sha3, uint8_t* heap, size_t heap_size, const char* json, size_t json_len) {
   ALIGN_HEAP(heap, heap_size);
   ctx->tokens = (jsmntok_t *) heap;
@@ -613,7 +642,13 @@ app_err_t eip712_hash(eip712_ctx_t *ctx, SHA3_CTX *sha3, uint8_t* heap, size_t h
 
   uint8_t tmp[32];
 
-  eip712_hash_struct(tmp, heap, heap_size, struct_idx, types, types_count, ctx->index.domain, ctx);
+  if (eip712_check_declared_keys(ctx->index.domain, struct_idx, types, types_count, ctx) != ERR_OK) {
+    return ERR_DATA;
+  }
+
+  if (eip712_hash_struct(tmp, heap, heap_size, struct_idx, types, types_count, ctx->index.domain, ctx) != ERR_OK) {
+    return ERR_DATA;
+  }
   keccak_Update(sha3, tmp, 32);
 
   eip712_string_from_field(&tmpstr, ctx->index.primary_type, ctx);
@@ -623,10 +658,17 @@ app_err_t eip712_hash(eip712_ctx_t *ctx, SHA3_CTX *sha3, uint8_t* heap, size_t h
     return ERR_DATA;
   }
 
+  if (eip712_check_declared_keys(ctx->index.message, struct_idx, types, types_count, ctx) != ERR_OK) {
+    return ERR_DATA;
+  }
+
   app_err_t err = eip712_hash_struct(tmp, heap, heap_size, struct_idx, types, types_count, ctx->index.message, ctx);
+  if (err != ERR_OK) {
+    return err;
+  }
   keccak_Update(sha3, tmp, 32);
 
-  return err;
+  return ERR_OK;
 }
 
 static inline size_t eip712_indent(uint8_t* out, int indent) {
