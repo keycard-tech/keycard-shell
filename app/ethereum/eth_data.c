@@ -19,8 +19,12 @@ struct eth_func_find_exact_ctx {
   uint32_t ext_selector;
 };
 
-static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len);
-static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_count, size_t buf_len, uint8_t* out, size_t* out_len);
+static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t out_cap, size_t* out_len);
+static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_count, size_t buf_len, uint8_t* out, size_t out_cap, size_t* out_len);
+
+static inline bool eth_data_fmt_room(size_t out_cap, size_t out_len, size_t need) {
+  return (out_len <= out_cap) && ((out_cap - out_len) >= need);
+}
 
 static inline bool eth_data_check_padding(const uint8_t word[ETH_ABI_WORD_LEN], uint8_t val, uint8_t start, uint8_t end) {
   while (start < end) {
@@ -252,12 +256,15 @@ static app_err_t eth_lookup_token(uint32_t chain_id, const uint8_t* addr, erc20_
   return ERR_OK;
 }
 
-static app_err_t eth_data_format_type(const eth_abi_argument_t* abi, const uint8_t* elem_data, size_t elem_len, size_t buf_len, uint8_t* out, size_t* out_len) {
+static app_err_t eth_data_format_type(const eth_abi_argument_t* abi, const uint8_t* elem_data, size_t elem_len, size_t buf_len, uint8_t* out, size_t out_cap, size_t* out_len) {
   bignum256 num;
 
   switch(abi->type & 0xff00) {
   case ETH_ABI_INT:
   case ETH_ABI_FIXED:
+    if (!eth_data_fmt_room(out_cap, *out_len, 1 + 100)) {
+      return ERR_DATA;
+    }
     if (elem_data[0] & 0x80) {
       for (int i = 0; i < ETH_ABI_WORD_LEN; i++) {
         out[*out_len + i] = ~elem_data[i];
@@ -273,10 +280,16 @@ static app_err_t eth_data_format_type(const eth_abi_argument_t* abi, const uint8
     return ERR_OK;
   case ETH_ABI_UINT:
   case ETH_ABI_UFIXED:
+    if (!eth_data_fmt_room(out_cap, *out_len, 100)) {
+      return ERR_DATA;
+    }
     bn_read_be(elem_data, &num);
     *out_len += bn_format(&num, NULL, NULL, 0, 0, 0, 0, (char*) &out[*out_len], 100);
     return ERR_OK;
   case ETH_ABI_BOOL:
+    if (!eth_data_fmt_room(out_cap, *out_len, 5)) {
+      return ERR_DATA;
+    }
     if (elem_data[ETH_ABI_WORD_LEN - 1]) {
       memcpy(&out[*out_len], "true", 4);
       *out_len += 4;
@@ -286,23 +299,33 @@ static app_err_t eth_data_format_type(const eth_abi_argument_t* abi, const uint8
     }
     return ERR_OK;
   case ETH_ABI_ADDRESS:
+    if (!eth_data_fmt_room(out_cap, *out_len, (ADDRESS_LENGTH * 2) + 2)) {
+      return ERR_DATA;
+    }
     address_format(ADDR_ETH, elem_data, (char *) &out[*out_len]);
     *out_len += (ADDRESS_LENGTH * 2) + 2;
     return ERR_OK;
   case ETH_ABI_STRING:
+    if (!eth_data_fmt_room(out_cap, *out_len, elem_len + 2)) {
+      return ERR_DATA;
+    }
     out[(*out_len)++] = '"';
     memcpy(&out[*out_len], elem_data, elem_len);
     *out_len += elem_len;
     out[(*out_len)++] = '"';
     return ERR_OK;
   case ETH_ABI_TUPLE:
-    return eth_data_format_tuple(ETH_ABI_DEREF(eth_abi_argument_t*, abi, child), elem_data, buf_len, out, out_len);
+    return eth_data_format_tuple(ETH_ABI_DEREF(eth_abi_argument_t*, abi, child), elem_data, buf_len, out, out_cap, out_len);
   case ETH_ABI_ARRAY:
   case ETH_ABI_VARARRAY:
-    return eth_data_format_array(ETH_ABI_DEREF(eth_abi_argument_t*, abi, child), elem_data, elem_len, buf_len, out, out_len);
+    return eth_data_format_array(ETH_ABI_DEREF(eth_abi_argument_t*, abi, child), elem_data, elem_len, buf_len, out, out_cap, out_len);
   case ETH_ABI_BYTES:
   case ETH_ABI_VARBYTES:
   default:
+    // base16_encode writes elem_len*2 chars + NUL
+    if (!eth_data_fmt_room(out_cap, *out_len, elem_len * 2 + 1)) {
+      return ERR_DATA;
+    }
     base16_encode(elem_data, (char *) &out[*out_len], elem_len);
     *out_len += elem_len * 2;
     return ERR_OK;
@@ -311,7 +334,10 @@ static app_err_t eth_data_format_type(const eth_abi_argument_t* abi, const uint8
   return ERR_DATA;
 }
 
-static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_count, size_t args_len, uint8_t* out, size_t* out_len) {
+static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_count, size_t args_len, uint8_t* out, size_t out_cap, size_t* out_len) {
+  if (!eth_data_fmt_room(out_cap, *out_len, 1)) {
+    return ERR_DATA;
+  }
   out[(*out_len)++] = '[';
 
   const uint8_t* elem_data;
@@ -324,10 +350,13 @@ static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint
 
     size_t buf_len = (((uint32_t) args) + args_len) - ((uint32_t) elem_data);
 
-    if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_len) != ERR_OK) {
+    if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_cap, out_len) != ERR_OK) {
       return ERR_DATA;
     }
 
+    if (!eth_data_fmt_room(out_cap, *out_len, 2)) {
+      return ERR_DATA;
+    }
     out[(*out_len)++] = ',';
     out[(*out_len)++] = ' ';
   }
@@ -336,11 +365,17 @@ static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint
     *out_len -= 2;
   }
 
+  if (!eth_data_fmt_room(out_cap, *out_len, 1)) {
+    return ERR_DATA;
+  }
   out[(*out_len)++] = ']';
   return ERR_OK;
 }
 
-static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len) {
+static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t out_cap, size_t* out_len) {
+  if (!eth_data_fmt_room(out_cap, *out_len, 1)) {
+    return ERR_DATA;
+  }
   out[(*out_len)++] = '(';
 
   int idx = 0;
@@ -354,10 +389,13 @@ static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint
 
     size_t buf_len = (((uint32_t) args) + args_len) - ((uint32_t) elem_data);
 
-    if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_len) != ERR_OK) {
+    if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_cap, out_len) != ERR_OK) {
       return ERR_DATA;
     }
 
+    if (!eth_data_fmt_room(out_cap, *out_len, 2)) {
+      return ERR_DATA;
+    }
     out[(*out_len)++] = ',';
     out[(*out_len)++] = ' ';
     abi = ETH_ABI_DEREF(eth_abi_argument_t*, abi, next);
@@ -367,29 +405,38 @@ static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint
     *out_len -= 2;
   }
 
+  if (!eth_data_fmt_room(out_cap, *out_len, 1)) {
+    return ERR_DATA;
+  }
   out[(*out_len)++] = ')';
   return ERR_OK;
 }
 
-static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len) {
+static app_err_t eth_data_format_abi_call(const eth_abi_function_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t out_cap, size_t* out_len) {
   const char* func_name = ETH_ABI_DEREF(const char*, abi, name);
 
   if (func_name == NULL) {
     return ERR_DATA;
   }
 
+  if (!eth_data_fmt_room(out_cap, 0, strlen(func_name))) {
+    return ERR_DATA;
+  }
   *out_len = strlen(func_name);
   memcpy(out, func_name, *out_len);
 
-  if (eth_data_format_tuple(ETH_ABI_DEREF(eth_abi_argument_t*, abi, first_arg), args, args_len, out, out_len) != ERR_OK) {
+  if (eth_data_format_tuple(ETH_ABI_DEREF(eth_abi_argument_t*, abi, first_arg), args, args_len, out, out_cap, out_len) != ERR_OK) {
     return ERR_DATA;
   }
 
+  if (!eth_data_fmt_room(out_cap, *out_len, 1)) {
+    return ERR_DATA;
+  }
   out[*out_len] = '\0';
   return ERR_OK;
 }
 
-static app_err_t eth_data_format_execute_call(const eth_abi_function_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t* out_len) {
+static app_err_t eth_data_format_execute_call(const eth_abi_function_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t out_cap, size_t* out_len) {
   if (!(abi->selector == ETH_DATA_EXECUTE_DEADLINE_SELECTOR && abi->ext_selector == ETH_DATA_EXECUTE_DEADLINE_EXT_SELECTOR) &&
       !(abi->selector == ETH_DATA_EXECUTE_SELECTOR && abi->ext_selector == ETH_DATA_EXECUTE_EXT_SELECTOR)) {
     return ERR_UNSUPPORTED;
@@ -518,29 +565,39 @@ static app_err_t eth_data_format_execute_call(const eth_abi_function_t* abi, con
       return ERR_DATA;
     }
 
-    size_t len;
-    if (eth_data_format_abi_call(abi, calldata, calldata_len, &out[*out_len], &len) != ERR_OK) {
+    size_t len = 0;
+    if (eth_data_format_abi_call(abi, calldata, calldata_len, &out[*out_len], out_cap - *out_len, &len) != ERR_OK) {
       return ERR_DATA;
     }
 
     *out_len += len;
+    if (!eth_data_fmt_room(out_cap, *out_len, 2)) {
+      return ERR_DATA;
+    }
     out[(*out_len)++] = '\n';
     out[(*out_len)++] = '\n';
   }
 
+  if (!eth_data_fmt_room(out_cap, *out_len, 1)) {
+    return ERR_DATA;
+  }
   out[*out_len] = '\0';
 
   return ERR_OK;
 }
 
-void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t* out_len) {
+void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len) {
   if (data_len) {
     const uint8_t* args = &data[sizeof(uint32_t)];
     size_t args_len = data_len - sizeof(uint32_t);
 
     if ((abi == NULL) ||
-        ((eth_data_format_execute_call(abi, args, args_len, out, out_len) != ERR_OK) &&
-        (eth_data_format_abi_call(abi, args, args_len, out, out_len) != ERR_OK))) {
+        ((eth_data_format_execute_call(abi, args, args_len, out, out_cap, out_len) != ERR_OK) &&
+        (eth_data_format_abi_call(abi, args, args_len, out, out_cap, out_len) != ERR_OK))) {
+      if ((data_len * 2) + 1 > out_cap) {
+        *out_len = 0;
+        return;
+      }
       base16_encode(data, (char *) out, data_len);
       *out_len = data_len * 2;
     }
@@ -598,7 +655,7 @@ fallback:
 
     info->to = tx->destination;
 
-    eth_data_format(abi, tx->data, tx->dataLength, info->data_str, &info->data_str_len);
+    eth_data_format(abi, tx->data, tx->dataLength, info->data_str, info->data_str_cap, &info->data_str_len);
   }
 
   bn_read_compact_be(value, value_len, &info->value);

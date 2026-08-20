@@ -135,6 +135,7 @@ typedef struct txContent_t {
   uint8_t destination[ADDRESS_LENGTH];
   const uint8_t* data;
   size_t dataLength;
+  size_t dataCapacity;
   uint32_t v;
 } txContent_t;
 

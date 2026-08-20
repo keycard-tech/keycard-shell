@@ -509,6 +509,7 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
   eth_transfer_info_t tx_info;
 
   tx_info.data_str = g_camera_fb[0];
+  tx_info.data_str_cap = CAMERA_FB_SIZE;
 
   if (eth_extract_transfer_info(g_ui_cmd.params.eth_tx.tx, data_format, &tx_info) != ERR_OK) {
     return ERR_DATA;
@@ -960,7 +961,7 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
 
   if (info->data_len > 0) {
     const eth_abi_function_t* abi = eth_data_recognize(info->data, info->data_len, !bn_is_zero(&info->value));
-    eth_data_format(abi, info->data, info->data_len, data_str, &data_str_len);
+    eth_data_format(abi, info->data, info->data_len, data_str, CAMERA_FB_SIZE, &data_str_len);
     dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 3, data_str, data_str_len);
   }
 

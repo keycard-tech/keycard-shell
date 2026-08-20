@@ -206,6 +206,7 @@ app_err_t core_eth_usb_sign_tx(keycard_t* kc, apdu_t* cmd) {
     }
 
     g_core.data.eth_tx.content.data = g_mem_heap;
+    g_core.data.eth_tx.content.dataCapacity = MEM_HEAP_SIZE;
     g_core.data.eth_tx.content.chainID = 1;
   }
 
@@ -363,6 +364,7 @@ void core_eth_eip4527_run(struct eth_sign_request* qr_request) {
     case sign_data_type_eth_transaction_data_m_c:
     case sign_data_type_eth_typed_transaction_m_c:
       g_core.data.eth_tx.content.data = NULL;
+      g_core.data.eth_tx.content.dataCapacity = 0;
       g_core.data.eth_tx.content.chainID = qr_request->eth_sign_request_chain_id_present ? (uint32_t) qr_request->eth_sign_request_chain_id.eth_sign_request_chain_id : 1;
       err = core_eth_process_tx(qr_request->eth_sign_request_sign_data.value, qr_request->eth_sign_request_sign_data.len, 1);
       break;

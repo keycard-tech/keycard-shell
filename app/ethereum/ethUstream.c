@@ -278,6 +278,13 @@ static uint16_t processData(txContext_t *context) {
       copyBuffer = NULL;
     }
 
+    if (copyBuffer != NULL) {
+      size_t remaining = (context->content->dataLength >= context->content->dataCapacity) ? 0 : (context->content->dataCapacity - context->content->dataLength);
+      if ((size_t) copySize > remaining) {
+        return EXCEPTION;
+      }
+    }
+
     if (copyTxData(context, copyBuffer, copySize) == EXCEPTION) {
       return EXCEPTION;
     }

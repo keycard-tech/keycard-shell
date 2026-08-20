@@ -121,6 +121,7 @@ typedef struct {
   erc20_desc_t token;
   uint8_t* data_str;
   size_t data_str_len;
+  size_t data_str_cap;
   const uint8_t* to;
   bignum256 value;
   bignum256 fees;
@@ -156,7 +157,7 @@ typedef struct {
 } eth_safe_tx_t;
 
 const eth_abi_function_t* eth_data_recognize(const uint8_t* data, uint32_t data_len, bool has_value);
-void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t* out_len);
+void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len);
 void eth_data_hash(const uint8_t* data, size_t data_len, uint8_t out[SHA3_256_DIGEST_LENGTH]);
 eip712_data_type_t eip712_recognize(const eip712_ctx_t* ctx);
 
