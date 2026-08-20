@@ -339,11 +339,19 @@ static uint16_t processV(txContext_t *context) {
 
   if (context->currentFieldPos == context->currentFieldLength) {
     if (context->currentFieldLength == 0) {
-      context->content->v = V_NONE;
-    } else {
-      context->content->v = u32_from_BE(vBuf, context->currentFieldLength);
-      context->content->chainID = context->content->v;
+      // Empty `v`: no EIP-155 chain binding. Reject.
+      return EXCEPTION;
     }
+
+    context->content->v = u32_from_BE(vBuf, context->currentFieldLength);
+
+    if (context->content->v < 35) {
+      // `v` of 27/28 is a pre EIP-155 signature with no chain binding and can
+      // be replayed on any chain. Reject it.
+      return EXCEPTION;
+    }
+
+    context->content->chainID = context->content->v;
 
     context->currentField++;
     context->processingField = false;
@@ -542,16 +550,12 @@ parserStatus_e continueTx(txContext_t *context) {
     if (PARSING_IS_DONE(context)) {
       return USTREAM_FINISHED;
     }
-    // Old style transaction (pre EIP-155). Transations could just skip `v,r,s` so we needed to
-    // cut parsing here. commandLength == 0 could happen in two cases :
-    // 1. We are in an old style transaction : just return `USTREAM_FINISHED`.
-    // 2. We are at the end of an APDU in a multi-apdu process. This would make us return
-    // `USTREAM_FINISHED` preemptively. Case number 2 should NOT happen as it is up to
-    // `ledgerjs` to correctly decrease the size of the APDU (`commandLength`) so that this
-    // situation doesn't happen.
+    // Legacy transaction ending without a `v` field (pre EIP-155, 6-element RLP).
+    // Such transactions carry no chain binding, so displaying a chain name would
+    // let a single approval be replayed on any chain (Ethereum, BNB, Polygon,
+    // Arbitrum, Optimism, Avalanche, ...). Reject them instead.
     if ((context->txType == LEGACY && context->currentField == LEGACY_RLP_V) && (context->commandLength == 0)) {
-      context->content->v = V_NONE;
-      return USTREAM_FINISHED;
+      return USTREAM_FAULT;
     }
 
     if (context->commandLength == 0) {
