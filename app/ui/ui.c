@@ -487,7 +487,10 @@ core_evt_t ui_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t in
     }
   }
 
-  slip39_combine(shards, shard_count, ems, SLIP39_SEED_STRENGTH);
+  if (slip39_combine(shards, shard_count, ems, SLIP39_SEED_STRENGTH) < 0) {
+    ui_bad_seed();
+    return CORE_EVT_UI_CANCELLED;
+  }
 
   return CORE_EVT_UI_OK;
 }
