@@ -694,6 +694,9 @@ app_err_t keycard_set_name(keycard_t* kc, const char* name) {
         return ERR_DATA;
       }
       uint8_t copy_len = data_len - copy_off;
+      if (copy_len > (127 - metadata_len)) {
+        return ERR_DATA;
+      }
       memcpy(&metadata[metadata_len], &data[copy_off], copy_len);
       metadata_len += copy_len;
     }
