@@ -54,7 +54,7 @@ static app_err_t core_eth_sign(keycard_t* kc, uint8_t* out) {
 
   uint8_t* data = APDU_RESP(&kc->apdu);
 
-  if (keycard_read_signature(data, digest, out) != ERR_OK) {
+  if (keycard_read_signature(data, kc->apdu.lr, digest, out) != ERR_OK) {
     return ERR_DATA;
   }
 

@@ -1031,7 +1031,7 @@ app_err_t core_btc_sign_msg_run(const uint8_t* msg, size_t msg_len, uint32_t exp
 
   uint8_t* data = APDU_RESP(&kc->apdu);
 
-  if (keycard_read_signature(data, digest, &out[1]) != ERR_OK) {
+  if (keycard_read_signature(data, kc->apdu.lr, digest, &out[1]) != ERR_OK) {
     ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
     return ERR_DATA;
   }

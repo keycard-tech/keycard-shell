@@ -621,7 +621,11 @@ void keycard_activate(keycard_t* kc) {
   }
 }
 
-app_err_t keycard_read_signature(uint8_t* data, uint8_t* digest, uint8_t* out_sig) {
+app_err_t keycard_read_signature(uint8_t* data, uint16_t data_len, uint8_t* digest, uint8_t* out_sig) {
+  if (data_len < 2) {
+    return ERR_DATA;
+  }
+
   if (tlv_read_fixed_primitive(0x80, 65, data, out_sig) != TLV_INVALID) {
     return ERR_OK;
   }
@@ -630,17 +634,37 @@ app_err_t keycard_read_signature(uint8_t* data, uint8_t* digest, uint8_t* out_si
   uint16_t tag;
   uint16_t off = tlv_read_tag(data, &tag);
 
-  if (tag != 0xa0) {
+  if (tag != 0xa0 || off > data_len) {
     return ERR_DATA;
   }
 
+  if (off >= data_len) {
+    return ERR_DATA;
+  }
   off += tlv_read_length(&data[off], &len);
+  if (off > data_len) {
+    return ERR_DATA;
+  }
 
+  if (off >= data_len) {
+    return ERR_DATA;
+  }
   off += tlv_read_tag(&data[off], &tag);
-  if (tag != 0x80) {
+  if (tag != 0x80 || off > data_len) {
+    return ERR_DATA;
+  }
+
+  if (off >= data_len) {
     return ERR_DATA;
   }
   off += tlv_read_length(&data[off], &len);
+  if (off > data_len) {
+    return ERR_DATA;
+  }
+
+  if (len > data_len - off || 72 > data_len - off - len) {
+    return ERR_DATA;
+  }
 
   uint8_t* pub = &data[off];
 

@@ -24,7 +24,7 @@ void keycard_in(keycard_t* kc);
 void keycard_out(keycard_t* kc);
 
 app_err_t keycard_factoryreset(keycard_t* kc);
-app_err_t keycard_read_signature(uint8_t* data, uint8_t* digest, uint8_t* out_sig);
+app_err_t keycard_read_signature(uint8_t* data, uint16_t data_len, uint8_t* digest, uint8_t* out_sig);
 app_err_t keycard_set_name(keycard_t* kc, const char* name);
 void keycard_pairing_password_hash(uint8_t* pass, uint8_t len, uint8_t pairing[32]);
 
