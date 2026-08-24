@@ -281,11 +281,6 @@ static app_err_t core_btc_hash_legacy(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
 }
 
 static app_err_t core_btc_hash_segwit(btc_tx_ctx_t* tx_ctx, size_t index, uint8_t digest[SHA256_DIGEST_LENGTH]) {
-  SHA256_CTX sha256;
-  sha256_Init(&sha256);
-
-  // BIP143 uses double-SHA256 for the sub-hashes. core_btc_common_hashes stores
-  // single-SHA256 (as required by BIP341 taproot), so double-hash them here.
   uint8_t hprev[SHA256_DIGEST_LENGTH];
   uint8_t hseq[SHA256_DIGEST_LENGTH];
   uint8_t hout[SHA256_DIGEST_LENGTH];
@@ -296,6 +291,9 @@ static app_err_t core_btc_hash_segwit(btc_tx_ctx_t* tx_ctx, size_t index, uint8_
   uint8_t sighash = tx_ctx->input_data[index].sighash_flag & SIGHASH_MASK;
   uint8_t anyonecanpay = tx_ctx->input_data[index].sighash_flag & SIGHASH_ANYONECANPAY;
 
+  SHA256_CTX sha256;
+  sha256_Init(&sha256);
+  
   sha256_Update(&sha256, (uint8_t*) &tx_ctx->tx.version, sizeof(uint32_t));
 
   if (anyonecanpay) {
@@ -590,9 +588,6 @@ static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
   psbt_record_t signature;
 
   if (tx_ctx->input_data[index].input_type == BTC_INPUT_TYPE_P2TR) {
-    // For taproot the tweak value must be added to the signing key by the keycard.
-    // The "hash" argument is the concatenation of the BIP341 sighash (32 bytes)
-    // and the taproot tweak t = hash_TapTweak(internal_key || merkle_root) (32 bytes).
     if (!tx_ctx->input_data[index].has_taproot_internal_key) {
       return ERR_DATA;
     }
@@ -822,9 +817,9 @@ static app_err_t core_btc_validate(btc_tx_ctx_t* tx_ctx) {
       return ERR_DATA;
     }
 
-    if (tx_ctx->input_data[i].sighash_flag == SIGHASH_DEFAULT && (tx_ctx->input_data[i].input_type != BTC_INPUT_TYPE_P2TR)) {
+    if ((tx_ctx->input_data[i].sighash_flag == SIGHASH_DEFAULT) && (tx_ctx->input_data[i].input_type != BTC_INPUT_TYPE_P2TR)) {
       tx_ctx->input_data[i].sighash_flag = SIGHASH_ALL;
-    }    
+    }
   }
 
   for (int i = 0; i < tx_ctx->output_count; i++) {
@@ -858,8 +853,6 @@ static void core_btc_common_hashes(btc_tx_ctx_t* tx_ctx) {
     sha256_Update(&sha256, (uint8_t*) &tx_ctx->inputs[i].index, sizeof(uint32_t));
   }
 
-  // Sub-hashes are stored as single SHA256, which is what BIP341 taproot requires.
-  // BIP143 segwit double-hashes them at point of use (see core_btc_hash_segwit).
   sha256_Final(&sha256, tx_ctx->hash_prevouts);
 
   sha256_Init(&sha256);
