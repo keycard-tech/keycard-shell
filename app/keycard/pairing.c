@@ -1,6 +1,7 @@
 #include "pairing.h"
 #include "storage/keys.h"
 #include "crypto/aes.h"
+#include "crypto/memzero.h"
 #include <string.h>
 
 #define FS_PAIRING_MAGIC 0x5041
@@ -33,7 +34,7 @@ app_err_t pairing_read(pairing_t* out) {
   uint8_t pairing_enc_key[AES_256_KEY_SIZE];
   key_read_private(PAIRING_ENC_PRIV_KEY, pairing_enc_key);
   aes_decrypt_cbc(pairing_enc_key, entry->instance_uid, entry->key, SHA256_DIGEST_LENGTH, out->key);
-  memset(pairing_enc_key, 0, AES_256_KEY_SIZE);
+  memzero(pairing_enc_key, AES_256_KEY_SIZE);
 
   out->idx = entry->idx;
 
@@ -50,7 +51,7 @@ app_err_t pairing_write(const pairing_t* in) {
   uint8_t pairing_enc_key[AES_256_KEY_SIZE];
   key_read_private(PAIRING_ENC_PRIV_KEY, pairing_enc_key);
   aes_encrypt_cbc(pairing_enc_key, in->instance_uid, in->key, SHA256_DIGEST_LENGTH, write.key);
-  memset(pairing_enc_key, 0, AES_256_KEY_SIZE);
+  memzero(pairing_enc_key, AES_256_KEY_SIZE);
 
   return fs_write((fs_entry_t*) &write, sizeof(pairing_t));
 }

@@ -120,7 +120,7 @@ app_err_t securechannel_v2_open(secure_channel_v2_t* sc, smartcard_t* card, apdu
   memcpy(sc->key_h2c, okm, AES_128_KEY_SIZE);
   memcpy(sc->key_c2h, &okm[AES_128_KEY_SIZE], AES_128_KEY_SIZE);
 
-  memzero(shared_secret, SECP256K1_KEYLEN);
+  memzero(shared_secret, SECP256K1_PUBLEN);
   memzero(okm, SCV2_OKM_SIZE);
 
   /* 7. Verify card signature over transcript */

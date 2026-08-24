@@ -178,7 +178,7 @@ app_err_t securechannel_v1_init(smartcard_t* card, apdu_t* apdu, uint8_t* sc_pub
   len = pad_iso9797_m1(data, SC_PAD, len);
   res = aes_encrypt_cbc(secret, iv, data, len, data);
 
-  memzero(secret, SECP256K1_KEYLEN+3);
+  memzero(secret, SECP256K1_PUBLEN+3);
 
   if (!res) {
     memzero(data, len);

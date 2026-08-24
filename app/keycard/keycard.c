@@ -14,6 +14,7 @@
 #include "crypto/rand.h"
 #include "crypto/sha2.h"
 #include "crypto/hmac.h"
+#include "crypto/memzero.h"
 #include "crypto/pbkdf2.h"
 #include "crypto/bip39.h"
 #include "crypto/slip39.h"
@@ -79,12 +80,14 @@ static app_err_t keycard_init_card(keycard_t* kc, app_info_t* info, uint8_t* pin
   }
 
   if (keycard_cmd_init(kc, sc_data, pin, puk, psk, KEYCARD_DEF_PIN_RETRIES, KEYCARD_DEF_PUK_RETRIES, duress_pin) != ERR_OK) {
-    memset(puk, 0, KEYCARD_PUK_LEN);
+    memzero(puk, KEYCARD_PUK_LEN);
+    memzero(duress_pin, KEYCARD_PIN_LEN);
     ui_keycard_init_failed();
     return ERR_CRYPTO;
   }
 
-  memset(puk, 0, KEYCARD_PUK_LEN);
+  memzero(puk, KEYCARD_PUK_LEN);
+  memzero(duress_pin, KEYCARD_PIN_LEN);
   ui_keycard_init_ok(has_duress);
   return ERR_OK;
 }
@@ -265,7 +268,9 @@ static app_err_t keycard_authenticate(keycard_t* kc, uint8_t* pin, uint8_t* cach
 
   APDU_ASSERT_OK(&kc->apdu);
   app_status_t pinStatus;
-  application_status_parse(APDU_RESP(&kc->apdu), &pinStatus);
+  if (application_status_parse(APDU_RESP(&kc->apdu), &pinStatus) != ERR_OK) {
+    return ERR_DATA;
+  }
 
   while(pinStatus.pin_retries) {
     if (!(*cached_pin) && (ui_read_pin(pin, pinStatus.pin_retries, 0) != CORE_EVT_UI_OK)) {
@@ -328,7 +333,7 @@ static app_err_t keycard_generate_slip39(const uint8_t* seed, const size_t seed_
     }
   }
 
-  memset(slip39_tmp, 0, SHA256_DIGEST_LENGTH);
+  memzero(slip39_tmp, SHA256_DIGEST_LENGTH);
   return ERR_OK;
 }
 
@@ -375,7 +380,7 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
       }
     }
 
-    memset(data, 0, len * 2);
+    memzero(data, len * 2);
   } else if (mode_selected == MENU_MNEMO_IMPORT) {
     if (slip39) {
       err = ui_read_slip39(shards, indexes, slip39_ems) == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
@@ -406,8 +411,8 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
   }
 
   memset(indexes, 0xff, sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN);
-  memset(shards, 0, sizeof(slip39_shard_t) * 16);
-  memset(passphrase, 0, KEYCARD_BIP39_PASS_MAX_LEN);
+  memzero(shards, sizeof(shards));
+  memzero(passphrase, KEYCARD_BIP39_PASS_MAX_LEN);
   return err;
 }
 
@@ -422,7 +427,7 @@ static uint32_t keycard_generate_key_template(uint8_t* seed, uint32_t seed_len, 
   out[36] = 0x82;
   out[37] = 0x20;
   memcpy(&out[38], &tmp[32], 32);
-  memset(tmp, 0, 64);
+  memzero(tmp, 64);
   return 70;
 }
 
@@ -436,21 +441,26 @@ static app_err_t keycard_init_keys(keycard_t* kc) {
     err = keycard_get_seed(kc, seed, &seed_len);
 
     if (err == ERR_TXRX) {
+      memzero(seed, sizeof(seed));
       return ERR_TXRX;
     }
   } while(err != ERR_OK);
 
   if (seed_len == 64) {
     if (keycard_cmd_load_seed(kc, seed) != ERR_OK) {
+      memzero(seed, sizeof(seed));
       return ERR_TXRX;
     }
   } else {
     seed_len = keycard_generate_key_template(seed, seed_len, seed);
 
     if (keycard_cmd_load_key(kc, seed, seed_len) != ERR_OK) {
+      memzero(seed, sizeof(seed));
       return ERR_TXRX;
     }
   }
+
+  memzero(seed, sizeof(seed));
 
   APDU_ASSERT_OK(&kc->apdu);
 
@@ -613,7 +623,7 @@ void keycard_activate(keycard_t* kc) {
     res = keycard_setup(kc, pin, &cached_pin);
   } while(res == ERR_RETRY);
 
-  memset(pin, 0, sizeof(pin));
+  memzero(pin, sizeof(pin));
 
   if (res != ERR_OK) {
     ui_card_transport_error();

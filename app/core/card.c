@@ -177,6 +177,8 @@ void card_verify_mnemonic() {
   }
 
   if (err != CORE_EVT_UI_OK) {
+    memzero(shards, sizeof(shards));
+    memzero(slip39_ems, sizeof(slip39_ems));
     return;
   }
 
@@ -194,5 +196,7 @@ void card_verify_mnemonic() {
   
   memzero(seed, sizeof(seed));
   memset(indexes, 0xff, sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN);
-  memzero(passphrase, KEYCARD_BIP39_PASS_MAX_LEN);  
+  memzero(passphrase, KEYCARD_BIP39_PASS_MAX_LEN);
+  memzero(shards, sizeof(shards));
+  memzero(slip39_ems, sizeof(slip39_ems));
 }
