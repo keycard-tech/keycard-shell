@@ -198,6 +198,10 @@ app_err_t core_eth_usb_sign_tx(keycard_t* kc, apdu_t* cmd) {
     }
 
     data = &data[1+g_core.bip44_path_len];
+    if (len <= g_core.bip44_path_len) {
+      core_usb_err_sw(cmd, 0x6a, 0x80);
+      return ERR_DATA;
+    }
     len -= g_core.bip44_path_len + 1;
 
     if (len < 1) {
