@@ -137,7 +137,6 @@ app_err_t keycard_cmd_unblock_pin(keycard_t* kc, uint8_t* pin, uint8_t* puk) {
   memcpy(&data[KEYCARD_PUK_LEN], pin, KEYCARD_PIN_LEN);
 
   memzero(puk, KEYCARD_PUK_LEN);
-  memzero(pin, KEYCARD_PIN_LEN);
   
   return securechannel_send_apdu(&kc->sc, &kc->ch, &kc->apdu, data, (KEYCARD_PUK_LEN + KEYCARD_PIN_LEN));
 }

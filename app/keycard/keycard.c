@@ -242,6 +242,7 @@ static app_err_t keycard_unblock(keycard_t* kc, uint8_t pukRetries) {
     }
 
     if (keycard_cmd_unblock_pin(kc, pin, puk) != ERR_OK) {
+      memzero(pin, KEYCARD_PIN_LEN);
       return ERR_TXRX;
     }
 
@@ -249,15 +250,18 @@ static app_err_t keycard_unblock(keycard_t* kc, uint8_t pukRetries) {
 
     if (sw == SW_OK) {
       ui_keycard_puk_ok();
+      memzero(pin, KEYCARD_PIN_LEN);
       return ERR_OK;
     } else if ((sw & 0x63c0) == 0x63c0) {
       pukRetries = (sw & 0xf);
       ui_keycard_wrong_puk(pukRetries);
     } else {
+      memzero(pin, KEYCARD_PIN_LEN);
       return sw;
     }    
   }
 
+  memzero(pin, KEYCARD_PIN_LEN);
   return keycard_factoryreset_on_init(kc);
 }
 
