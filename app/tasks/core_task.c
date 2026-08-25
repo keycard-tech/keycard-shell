@@ -26,6 +26,9 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_BITCOIN:
     core_addresses_bitcoin();
     break;
+  case MENU_ADDRESS_VERIFY:
+    core_addresses_verify();
+    break;
   // Keycard
   case MENU_CARD_NAME:
     card_change_name();

@@ -7,6 +7,7 @@
 #include "qrcode/qrout.h"
 #include "qrcode/qrscan.h"
 #include "screen/screen.h"
+#include "ui/address.h"
 #include "ui/dialog.h"
 #include "ui/input.h"
 #include "ui/menu.h"
@@ -103,6 +104,9 @@ void ui_task_entry(void* pvParameters) {
       break;
     case UI_CMD_DEVINFO:
       g_ui_cmd.result = settings_ui_devinfo();
+      break;
+    case UI_CMD_VERIFY_ADDRESS:
+      g_ui_cmd.result = ui_verify_address_search();
       break;
     default:
       g_ui_cmd.result = ERR_CANCEL;

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "crypto/address.h"
+#include "crypto/bip32.h"
 #include "crypto/bip39.h"
 #include "crypto/slip39.h"
 #include "bitcoin/bitcoin.h"
@@ -87,6 +88,8 @@ core_evt_t ui_settings_brightness(uint8_t* brightness);
 
 core_evt_t ui_keycard_not_genuine();
 core_evt_t ui_keycard_no_pairing_slots();
+
+core_evt_t ui_verify_address(bip32_ctx_t* ctx, bip32_addr_hash_t hash, const uint8_t target[RIPEMD160_DIGEST_LENGTH], bool* found);
 
 void ui_update_progress(const char* title, uint8_t progress);
 

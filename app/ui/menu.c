@@ -60,9 +60,10 @@ const menu_t menu_connect = {
 };
 
 const menu_t menu_addresses = {
-  2, {
+  3, {
     {MENU_ETHEREUM, NULL},
     {MENU_BITCOIN, NULL},
+    {MENU_ADDRESS_VERIFY, NULL},
   }
 };
 

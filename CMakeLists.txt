@@ -112,6 +112,7 @@ set(APP_SOURCES
     app/ui/menu.c
     app/ui/settings_ui.c
     app/ui/ui.c
+    app/ui/address.c
     app/tasks/core_task.c
     app/tasks/ui_task.c
     app/tasks/usb_task.c

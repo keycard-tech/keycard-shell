@@ -94,6 +94,7 @@ void core_qr_run();
 void core_connect_wallet();
 void core_addresses_ethereum();
 void core_addresses_bitcoin();
+void core_addresses_verify();
 void device_auth_run();
 void device_update_sw();
 void device_info();

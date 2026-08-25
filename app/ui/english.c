@@ -24,6 +24,7 @@ const char *const i18n_english_strings[] = {
     // Addresses menu
     "Ethereum",
     "Bitcoin",
+    "Verify address",
 
     // Settings menu
     "Keycard",
@@ -118,6 +119,16 @@ const char *const i18n_english_strings[] = {
 
     // Address picker
     "Input address index",
+
+    // Address verification
+    "Verifying address",
+    "This may take a while. You can cancel at any time.",
+    "Address verified",
+    "This address belongs to your device.",
+    "Address not found",
+    "This address does not belong to your device.",
+    "Invalid address",
+    "Could not read this address.",
 
     // PIN input
     "Keycard PIN",

@@ -6,6 +6,29 @@
 #include "hmac.h"
 #include "memzero.h"
 
+void bip32_ctx_setup(bip32_ctx_t* ctx, uint32_t purpose, uint32_t coin, uint32_t account, const uint8_t account_pub[BIP32_PUBKEY_LEN], const uint8_t account_chain[BIP32_CHAINCODE_LEN]) {
+  ctx->purpose = purpose;
+  ctx->coin = coin;
+  ctx->account = account;
+  memcpy(ctx->account_pub, account_pub, BIP32_PUBKEY_LEN);
+  memcpy(ctx->account_chain, account_chain, BIP32_CHAINCODE_LEN);
+}
+
+int bip32_ctx_derive_change(bip32_ctx_t* ctx, uint32_t change) {
+  return bip32_ckd_pub(ctx->account_pub, ctx->account_chain, change, ctx->change_pub, ctx->change_chain);
+}
+
+int bip32_ctx_derive_leaf(bip32_ctx_t* ctx, uint32_t index) {
+  int res = bip32_ckd_pub(ctx->change_pub, ctx->change_chain, index, ctx->leaf_pub, NULL);
+
+  if (res == 0) {
+    /* compress the leaf public key: addresses only need the x coordinate */
+    ctx->leaf_pub[0] = 0x02 | (ctx->leaf_pub[BIP32_PUBKEY_LEN - 1] & 1);
+  }
+
+  return res;
+}
+
 int bip32_ckd_pub(const uint8_t* pub65, const uint8_t* chain, uint32_t index, uint8_t* out_pub65, uint8_t* out_chain) {
   uint8_t data[1 + 32 + 4];
   uint8_t I[SHA512_DIGEST_LENGTH];

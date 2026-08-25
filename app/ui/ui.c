@@ -636,3 +636,13 @@ void ui_update_progress(const char* title, uint8_t progress) {
 
   return ui_signal();
 }
+
+core_evt_t ui_verify_address(bip32_ctx_t* ctx, bip32_addr_hash_t hash, const uint8_t target[RIPEMD160_DIGEST_LENGTH], bool* found) {
+  g_ui_cmd.type = UI_CMD_VERIFY_ADDRESS;
+  g_ui_cmd.params.verify_address.ctx = ctx;
+  g_ui_cmd.params.verify_address.hash = hash;
+  g_ui_cmd.params.verify_address.target = target;
+  g_ui_cmd.params.verify_address.found = found;
+
+  return ui_signal_wait(0);
+}

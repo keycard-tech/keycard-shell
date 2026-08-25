@@ -10,6 +10,7 @@
 #include "input.h"
 #include "keypad/keypad.h"
 #include "bitcoin/bitcoin.h"
+#include "crypto/bip32.h"
 #include "core/core.h"
 #include "ethereum/ethUstream.h"
 #include "ur/ur.h"
@@ -39,6 +40,7 @@ enum cmd_type {
   UI_CMD_PROGRESS,
   UI_CMD_DEVINFO,
   UI_CMD_DBINFO,
+  UI_CMD_VERIFY_ADDRESS,
 
   // Testapp only
   UI_CMD_KEYPAD_TEST,
@@ -151,6 +153,13 @@ struct cmd_devinfo {
   const char* sn;
 };
 
+struct cmd_verify_address {
+  bip32_ctx_t* ctx;
+  bip32_addr_hash_t hash;
+  const uint8_t* target;
+  bool* found;
+};
+
 struct cmd_input_number {
   const char* title;
   uint32_t min;
@@ -184,6 +193,7 @@ union cmd_params {
   struct cmd_brightness lcd;
   struct cmd_progress progress;
   struct cmd_devinfo devinfo;
+  struct cmd_verify_address verify_address;
 };
 
 struct ui_cmd {
