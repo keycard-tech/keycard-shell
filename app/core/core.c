@@ -1,6 +1,7 @@
 #include "app_tasks.h"
 #include "core.h"
 #include "crypto/address.h"
+#include "crypto/bip32.h"
 #include "crypto/ripemd160.h"
 #include "crypto/secp256k1.h"
 #include "crypto/util.h"
@@ -552,6 +553,10 @@ void core_display_public_multicoin() {
 
 static void core_addresses(const char* title, uint32_t purpose, uint32_t coin, core_addr_encoder_t encoder) {
   uint32_t index = 0;
+  uint8_t acct_pub[PUBKEY_LEN];
+  uint8_t acct_chain[CHAINCODE_LEN];
+  uint8_t change_pub[PUBKEY_LEN];
+  uint8_t change_chain[CHAINCODE_LEN];
 
   purpose = rev32(purpose);
   coin = rev32(coin);
@@ -560,15 +565,22 @@ static void core_addresses(const char* title, uint32_t purpose, uint32_t coin, c
   memset(&g_core.bip44_path[8], 0, 8);
   g_core.bip44_path[8] = 0x80;
 
-  g_core.bip44_path_len = 20;
+  if (core_export_key(&g_core.keycard, g_core.bip44_path, 12, acct_pub, acct_chain) != ERR_OK) {
+    ui_card_transport_error();
+    return;
+  }
+
+  /* change = 0 (non-hardened): derive the change-level extended key */
+  if (bip32_ckd_pub(acct_pub, acct_chain, 0, change_pub, change_chain) != 0) {
+    return;
+  }
 
   do {
-    uint32_t tmp = rev32(index);
-    memcpy(&g_core.bip44_path[16], &tmp, 4);
-
-    if (core_export_public(g_core.data.key.pub, NULL, NULL, NULL) != ERR_OK) {
-      ui_card_transport_error();
+    if (bip32_ckd_pub(change_pub, change_chain, index, g_core.data.key.pub, NULL) != 0) {
+      return;
     }
+
+    g_core.data.key.pub[0] = 0x02 | (g_core.data.key.pub[PUBKEY_LEN - 1] & 1);
 
     encoder(g_core.data.key.pub, (char*) g_mem_heap);
     if (ui_display_address_qr(title, (char*) g_mem_heap, &index) == CORE_EVT_UI_CANCELLED) {

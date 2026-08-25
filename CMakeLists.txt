@@ -154,6 +154,7 @@ set(APP_SOURCES
     app/crypto/base32.c
     app/crypto/base58.c
     app/crypto/bignum.c
+    app/crypto/bip32.c
     app/crypto/bip39.c
     app/crypto/bip39_english.c
     app/crypto/cash_addr.c
