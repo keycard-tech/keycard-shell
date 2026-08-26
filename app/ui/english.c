@@ -313,4 +313,24 @@ const char *const i18n_english_strings[] = {
     // Export public key
     "Connect wallet",
     "The connected USB device is asking to export public keys. Only click OK if this a wallet you want to use your Shell with.",
+
+    // Multisig
+    "Multisig",
+    "Import multisig",
+    "Browse addresses",
+    "Export multisig",
+    "Delete multisig",
+    "Multisig",
+    "Import this multisig?",
+    "Multisig imported",
+    "The descriptor is now stored on this device",
+    "Invalid multisig",
+    "The scanned QR is not a valid multisig descriptor",
+    "No multisig descriptors",
+    "Import a descriptor with this card to get started",
+    "Select descriptor",
+    "Delete this multisig?",
+    "Multisig deleted",
+    "The descriptor was removed",
+    "Multisig address",
 };

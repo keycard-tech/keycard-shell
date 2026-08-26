@@ -59,10 +59,20 @@ const menu_t menu_connect = {
   }
 };
 
+const menu_t menu_multisig = {
+  4, {
+    {MENU_MULTISIG_IMPORT, NULL},
+    {MENU_MULTISIG_BROWSE, NULL},
+    {MENU_MULTISIG_EXPORT, NULL},
+    {MENU_MULTISIG_DELETE, NULL},
+  }
+};
+
 const menu_t menu_addresses = {
-  3, {
+  4, {
     {MENU_ETHEREUM, NULL},
     {MENU_BITCOIN, NULL},
+    {MENU_MULTISIG, &menu_multisig},
     {MENU_ADDRESS_VERIFY, NULL},
   }
 };

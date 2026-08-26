@@ -104,6 +104,30 @@ app_err_t core_export_key(keycard_t* kc, uint8_t* path, uint16_t len, uint8_t* o
   return ERR_OK;
 }
 
+/* Export the raw 32-byte private scalar at a hardened path (EXPORT, P2=0x00).
+ * The caller is responsible for memzero'ing out_priv after use. */
+app_err_t core_export_private(keycard_t* kc, uint8_t* path, uint16_t len, uint8_t out_priv[32]) {
+  if ((keycard_cmd_export_key(kc, 0, path, len) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+    return ERR_CRYPTO;
+  }
+
+  uint8_t* data = APDU_RESP(&kc->apdu);
+
+  uint16_t tag;
+  uint16_t off = tlv_read_tag(data, &tag);
+  if (tag != 0xa1) {
+    return ERR_DATA;
+  }
+
+  off += tlv_read_length(&data[off], &len);
+
+  if (tlv_read_fixed_primitive(0x81, 32, &data[off], out_priv) == TLV_INVALID) {
+    return ERR_DATA;
+  }
+
+  return ERR_OK;
+}
+
 app_err_t core_get_fingerprint(uint8_t* path, size_t len, uint32_t* fingerprint) {
   if (len == 0 && g_core.master_fingerprint != 0) {
     *fingerprint = g_core.master_fingerprint;

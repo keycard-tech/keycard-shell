@@ -1,5 +1,6 @@
 #include "common.h"
 #include "core/core.h"
+#include "core/core_multisig.h"
 #include "core/card.h"
 #include "core/settings.h"
 #include "keycard/keycard.h"
@@ -28,6 +29,18 @@ static inline void core_action_run(i18n_str_id_t menu) {
     break;
   case MENU_ADDRESS_VERIFY:
     core_addresses_verify();
+    break;
+  case MENU_MULTISIG_IMPORT:
+    core_multisig_import();
+    break;
+  case MENU_MULTISIG_BROWSE:
+    core_multisig_browse();
+    break;
+  case MENU_MULTISIG_EXPORT:
+    core_multisig_export();
+    break;
+  case MENU_MULTISIG_DELETE:
+    core_multisig_delete();
     break;
   // Keycard
   case MENU_CARD_NAME:

@@ -32,5 +32,7 @@ int ecdsa_recover_pub_from_sig(const ecdsa_curve *curve, uint8_t *pub_key, const
 int ecdsa_sig_to_der(const uint8_t *sig, uint8_t *der);
 int ecdsa_sig_from_der(const uint8_t *der, size_t der_len, uint8_t sig[64]);
 
+const uint8_t* ec_uncompress_key(const ecdsa_curve *curve, const uint8_t* pub_key, uint8_t out[ECC256_POINT_SIZE]);
+
 int ecdh_multiply(const ecdsa_curve *curve, const uint8_t *priv_key, const uint8_t *pub_key, uint8_t *session_key);
 #endif

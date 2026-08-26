@@ -79,6 +79,30 @@ static enum fs_iterator_action _fs_get_entry(void* ctx, fs_entry_t* entry, size_
   return FS_ITER_NEXT;
 }
 
+struct fs_iterate_ctx {
+  fs_predicate_t predicate;
+  void* ctx;
+};
+
+static enum fs_iterator_action _fs_iterate_all(void* ctx, fs_entry_t* entry, size_t* to_skip) {
+  (void) to_skip;
+  struct fs_iterate_ctx* iter_ctx = (struct fs_iterate_ctx *) ctx;
+
+  if (entry->magic == FS_MAGIC_FREE) {
+    return FS_ITER_SKIP_PAGE;
+  }
+
+  switch(iter_ctx->predicate(iter_ctx->ctx, entry)) {
+  case FS_REJECT:
+  case FS_ACCEPT:
+    return FS_ITER_NEXT;
+  case FS_STOP:
+    return FS_ITER_END;
+  }
+
+  return FS_ITER_NEXT;
+}
+
 static hal_err_t _fs_pad(uint8_t* addr) {
   if (addr == NULL) {
     return HAL_SUCCESS;
@@ -240,6 +264,11 @@ fs_entry_t* fs_find(fs_predicate_t predicate, void* ctx) {
   struct fs_find_ctx finder_ctx = { .predicate = predicate, .ctx = ctx, .found = NULL };
   _fs_iterate(_fs_get_entry, &finder_ctx);
   return finder_ctx.found;
+}
+
+void fs_iterate(fs_predicate_t predicate, void* ctx) {
+  struct fs_iterate_ctx iter_ctx = { .predicate = predicate, .ctx = ctx };
+  _fs_iterate(_fs_iterate_all, &iter_ctx);
 }
 
 app_err_t fs_write(fs_entry_t* first_entry, size_t total_length) {
