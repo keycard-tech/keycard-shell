@@ -8,7 +8,11 @@
 #include "crypto/memzero.h"
 #include "mem.h"
 #include "storage/multisig_store.h"
+#include "ui/i18n.h"
 #include "ui/ui.h"
+#include "ur/ur.h"
+#include "ur/ur_encode.h"
+#include "zcbor_common.h"
 
 #define MULTISIG_REF_MAX MULTISIG_MAX_KEYS
 #define MULTISIG_SER_MAX 768
@@ -193,8 +197,16 @@ void core_multisig_export() {
     return;
   }
 
-  multisig_to_text(&desc, txt, sizeof(txt));
-  ui_display_msg_qr(LSTR(MULTISIG_ADDR_TITLE), txt, desc.name);
+  multisig_to_text(&desc, txt, MEM_HEAP_SIZE);
+  struct zcbor_string qr_out;
+  qr_out.value = (const uint8_t*) txt;
+  qr_out.len = strlen(txt);
+  size_t out_len;
+
+  uint8_t *out_buf = &g_mem_heap[qr_out.len];
+  cbor_encode_psbt(out_buf, MEM_HEAP_SIZE - qr_out.len, &qr_out, &out_len);
+
+  ui_display_ur_qr(LSTR(MULTISIG_ADDR_TITLE), out_buf, out_len, BYTES);
 
   multisig_crypto_wipe(&m);
 }

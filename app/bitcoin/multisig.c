@@ -371,6 +371,18 @@ app_err_t multisig_derive_address(const multisig_t* d, uint32_t change, uint32_t
     if (_derive_key_pub(&d->keys[i], change, index, pubs[i]) != ERR_OK) goto done;
   }
 
+  /* BIP67: sort the compressed public keys lexicographically so the redeem script matches the reference wallet's address. */
+  for (uint8_t i = 1; i < d->key_count; i++) {
+    uint8_t j = i;
+    while (j > 0 && memcmp(pubs[j - 1], pubs[j], 33) > 0) {
+      uint8_t tmp[33];
+      memcpy(tmp, pubs[j], 33);
+      memcpy(pubs[j], pubs[j - 1], 33);
+      memcpy(pubs[j - 1], tmp, 33);
+      j--;
+    }
+  }
+
   script[off++] = (uint8_t) (0x50 + d->m);
   for (uint8_t i = 0; i < d->key_count; i++) {
     script[off++] = 33;
