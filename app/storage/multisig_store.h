@@ -14,7 +14,7 @@
  * Maximum serialized size of one encrypted descriptor entry (name + body +
  * CCM tag + header). Bounds the internal save scratch buffer.
  */
-#define MULTISIG_MAX_ENTRY_SIZE 1536
+#define MULTISIG_MAX_ENTRY_SIZE 1024
 
 /*
  * Flash layout of a stored multisig descriptor. Only `blob` is searchable in

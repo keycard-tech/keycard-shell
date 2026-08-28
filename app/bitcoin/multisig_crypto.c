@@ -8,8 +8,8 @@
 #include "crypto/sha2.h"
 
 /* m/43'/60'/1581'/0'/0 */
-const uint32_t multisig_eip1581_path[MULTISIG_EIP1581_PATH_LEN] = {
-  0x8000002b, 0x8000003c, 0x8000062d, 0x80000000, 0x80000000,
+const uint32_t MULTISIG_EIP1581_PATH[MULTISIG_EIP1581_PATH_LEN] = {
+  0x8000002b, 0x8000003c, 0x8000062d, 0x80000000, 0x00000000,
 };
 
 #define MULTISIG_FP_INFO  "multisig-fp"

@@ -8,9 +8,9 @@
 #include "error.h"
 #include "crypto/address.h"
 
-#define MULTISIG_MAX_KEYS 15
+#define MULTISIG_MAX_KEYS 6
 #define MULTISIG_MAX_NAME_LEN 33
-#define MULTISIG_MAX_PATH_LEN 10
+#define MULTISIG_MAX_PATH_LEN 6
 #define MULTISIG_XPUB_LEN 78
 #define MULTISIG_FP_LEN 4
 

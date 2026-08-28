@@ -15,7 +15,7 @@
  * card (EXPORT, P2=0x00) and must be wiped with multisig_crypto_wipe() once
  * the session ends.
  */
-extern const uint32_t multisig_eip1581_path[];
+extern const uint32_t MULTISIG_EIP1581_PATH[];
 #define MULTISIG_EIP1581_PATH_LEN 5
 
 /*

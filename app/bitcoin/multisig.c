@@ -12,10 +12,6 @@
 
 #define MULTISIG_OP_CHECKMULTISIG 0xae
 
-/* ------------------------------------------------------------------ */
-/* small numeric / hex helpers                                         */
-/* ------------------------------------------------------------------ */
-
 static bool _parse_u32_dec(const char* s, size_t len, uint32_t* out) {
   uint32_t v = 0;
   if (len == 0 || len > 10) return false;
@@ -27,10 +23,6 @@ static bool _parse_u32_dec(const char* s, size_t len, uint32_t* out) {
   *out = v;
   return true;
 }
-
-/* ------------------------------------------------------------------ */
-/* path parsing / formatting                                           */
-/* ------------------------------------------------------------------ */
 
 static bool _parse_path(const char* s, uint32_t* path, uint8_t* path_len) {
   uint8_t count = 0;
@@ -124,10 +116,6 @@ static bool _parse_format(const char* s, multisig_format_t* fmt) {
   return false;
 }
 
-/* ------------------------------------------------------------------ */
-/* text parsing (Coldcard / Sparrow)                                   */
-/* ------------------------------------------------------------------ */
-
 app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
   memset(out, 0, sizeof(*out));
 
@@ -203,10 +191,6 @@ app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
 
   return ERR_OK;
 }
-
-/* ------------------------------------------------------------------ */
-/* binary serialization (plaintext for the encrypted store)            */
-/* ------------------------------------------------------------------ */
 
 static void _put_u32_le(uint8_t* p, uint32_t v) {
   p[0] = v & 0xff;
@@ -295,10 +279,6 @@ app_err_t multisig_deserialize(const uint8_t* data, size_t len, multisig_t* out)
   return ERR_OK;
 }
 
-/* ------------------------------------------------------------------ */
-/* text regeneration (for QR export)                                   */
-/* ------------------------------------------------------------------ */
-
 static size_t _append(char* out, size_t cap, size_t off, const char* s) {
   size_t n = strlen(s);
   if (off + n >= cap) return off;
@@ -351,10 +331,6 @@ app_err_t multisig_to_text(const multisig_t* d, char* out, size_t cap) {
   return ERR_OK;
 }
 
-/* ------------------------------------------------------------------ */
-/* address derivation                                                  */
-/* ------------------------------------------------------------------ */
-
 static int _derive_key_pub(const multisig_key_t* key, uint32_t change, uint32_t index, uint8_t out33[33]) {
   uint8_t pub65[BIP32_PUBKEY_LEN];
   uint8_t chain[BIP32_CHAINCODE_LEN];
@@ -395,7 +371,6 @@ app_err_t multisig_derive_address(const multisig_t* d, uint32_t change, uint32_t
     if (_derive_key_pub(&d->keys[i], change, index, pubs[i]) != ERR_OK) goto done;
   }
 
-  /* bare multisig script: OP_m <pub>...<pub> OP_n CHECKMULTISIG */
   script[off++] = (uint8_t) (0x50 + d->m);
   for (uint8_t i = 0; i < d->key_count; i++) {
     script[off++] = 33;

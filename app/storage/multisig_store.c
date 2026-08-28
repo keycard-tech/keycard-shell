@@ -7,8 +7,6 @@
 
 #define MULTISIG_ENTRY_FIXED (MULTISIG_FP_BLOB_LEN + CCM_NONCE_SIZE)
 
-static uint8_t s_save_buf[MULTISIG_MAX_ENTRY_SIZE];
-
 struct multisig_list_ctx {
   const uint8_t* blob;
   multisig_entry_t** out;
@@ -38,26 +36,27 @@ static fs_action_t multisig_store_match(void* ctx, fs_entry_t* entry) {
 
 app_err_t multisig_store_save(const multisig_crypto_t* m,
                               const uint8_t* plaintext, size_t len) {
+  uint8_t save_buf[MULTISIG_MAX_ENTRY_SIZE];
   size_t data_len = len + CCM_TAG_SIZE;
   size_t total = sizeof(fs_entry_t) + MULTISIG_ENTRY_FIXED + data_len;
 
-  if (total > sizeof(s_save_buf)) {
+  if (total > sizeof(save_buf)) {
     return ERR_FULL;
   }
 
-  multisig_entry_t* e = (multisig_entry_t*) s_save_buf;
+  multisig_entry_t* e = (multisig_entry_t*) save_buf;
   e->_fs_data.magic = MULTISIG_STORE_MAGIC;
   e->_fs_data.len = MULTISIG_ENTRY_FIXED + data_len;
   memcpy(e->blob, m->blob, MULTISIG_FP_BLOB_LEN);
   random_buffer(e->nonce, CCM_NONCE_SIZE);
 
   if (multisig_crypto_encrypt(m, e->nonce, plaintext, len, e->data) != ERR_OK) {
-    memzero(s_save_buf, sizeof(s_save_buf));
+    memzero(save_buf, sizeof(save_buf));
     return ERR_CRYPTO;
   }
 
   app_err_t err = fs_write((fs_entry_t*) e, total);
-  memzero(s_save_buf, sizeof(s_save_buf));
+  memzero(save_buf, sizeof(save_buf));
 
   return err;
 }

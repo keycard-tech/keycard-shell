@@ -6,30 +6,19 @@
 #include "bitcoin/multisig_crypto.h"
 #include "core.h"
 #include "crypto/memzero.h"
+#include "mem.h"
 #include "storage/multisig_store.h"
 #include "ui/ui.h"
 
 #define MULTISIG_REF_MAX MULTISIG_MAX_KEYS
-#define MULTISIG_SER_MAX 512
-#define MULTISIG_TXT_MAX 512
+#define MULTISIG_SER_MAX 768
 
-/* Scratch state. Only one multisig action runs at a time in the core task. */
-static multisig_t s_desc;
-static multisig_entry_t* s_refs[MULTISIG_REF_MAX];
-static uint8_t s_ser[MULTISIG_SER_MAX];
-static char s_txt[MULTISIG_TXT_MAX];
-
-/*
- * Open a multisig crypto session: export the EIP1581 private scalar from the
- * card and derive the per-card keys + search blob. The card is already
- * authenticated (PIN) from activation, so no extra prompt is needed.
- */
 static app_err_t multisig_session_open(multisig_crypto_t* m) {
   uint8_t path_bytes[MULTISIG_EIP1581_PATH_LEN * 4];
   uint8_t root[MULTISIG_ROOT_LEN];
 
   for (int i = 0; i < MULTISIG_EIP1581_PATH_LEN; i++) {
-    uint32_t v = multisig_eip1581_path[i];
+    uint32_t v = MULTISIG_EIP1581_PATH[i];
     path_bytes[i * 4] = (v >> 24) & 0xff;
     path_bytes[i * 4 + 1] = (v >> 16) & 0xff;
     path_bytes[i * 4 + 2] = (v >> 8) & 0xff;
@@ -47,30 +36,70 @@ static app_err_t multisig_session_open(multisig_crypto_t* m) {
   return ERR_OK;
 }
 
-/*
- * List the descriptors stored for this card and let the user pick one,
- * decrypting it into `out`. Returns false if cancelled / none stored.
- */
-static bool multisig_pick(multisig_crypto_t* m, multisig_t* out) {
-  size_t count = multisig_store_list(m, s_refs, MULTISIG_REF_MAX);
+static multisig_entry_t* multisig_pick_entry(multisig_crypto_t* m) {
+  multisig_entry_t* refs[MULTISIG_REF_MAX];
+  uint8_t ser[MULTISIG_SER_MAX];
+  char names[MULTISIG_REF_MAX][MULTISIG_MAX_NAME_LEN];
+  const char* name_ptrs[MULTISIG_REF_MAX];
+  uint8_t menu_buf[sizeof(menu_t) + MULTISIG_REF_MAX * sizeof(menu_entry_t)];
+  menu_t* menu = (menu_t*) menu_buf;
+
+  size_t count = multisig_store_list(m, refs, MULTISIG_REF_MAX);
   if (count > MULTISIG_REF_MAX) count = MULTISIG_REF_MAX;
 
   if (count == 0) {
     ui_info(ICON_INFO_ERROR, LSTR(MULTISIG_NO_DESCRIPTORS_MSG), LSTR(MULTISIG_NO_DESCRIPTORS_SUB), 0);
-    return false;
+    return NULL;
   }
 
-  uint32_t sel = 0;
-  if (count > 1) {
-    if (ui_read_number(LSTR(MULTISIG_PICK_TITLE), 0, count - 1, &sel, true) != CORE_EVT_UI_OK) {
-      return false;
+  for (size_t i = 0; i < count; i++) {
+    size_t ser_len;
+    if (multisig_store_read(m, refs[i], ser, sizeof(ser), &ser_len) != ERR_OK) {
+      return NULL;
     }
-  }
-  if (sel >= count) return false;
 
+    size_t name_len = 0;
+    if (ser_len >= 5) {
+      name_len = ser[4];
+    }
+    if (name_len >= MULTISIG_MAX_NAME_LEN || ser_len < (5 + name_len)) {
+      names[i][0] = '\0';
+    } else {
+      memcpy(names[i], &ser[5], name_len);
+      names[i][name_len] = '\0';
+    }
+    name_ptrs[i] = names[i];
+  }
+
+  /* Build a dynamic list menu over the names (label_id = index into it). */
+  menu->len = (uint8_t) count;
+  for (size_t i = 0; i < count; i++) {
+    menu->entries[i].label_id = (i18n_str_id_t) i;
+    menu->entries[i].submenu = NULL;
+  }
+
+  const char* const* saved = *i18n_strings;
+  i18n_set_strings(name_ptrs);
+
+  i18n_str_id_t sel = 0;
+  core_evt_t evt = ui_menu(LSTR(MULTISIG_PICK_TITLE), menu, &sel, -1, 0, 0, 0, 0);
+
+  i18n_set_strings(saved);
+
+  if (evt != CORE_EVT_UI_OK || sel >= count) {
+    return NULL;
+  }
+  return refs[sel];
+}
+
+static bool multisig_pick(multisig_crypto_t* m, multisig_t* out) {
+  multisig_entry_t* entry = multisig_pick_entry(m);
+  if (entry == NULL) return false;
+
+  uint8_t ser[MULTISIG_SER_MAX];
   size_t ser_len;
-  if (multisig_store_read(m, s_refs[sel], s_ser, sizeof(s_ser), &ser_len) != ERR_OK) return false;
-  if (multisig_deserialize(s_ser, ser_len, out) != ERR_OK) return false;
+  if (multisig_store_read(m, entry, ser, sizeof(ser), &ser_len) != ERR_OK) return false;
+  if (multisig_deserialize(ser, ser_len, out) != ERR_OK) return false;
   return true;
 }
 
@@ -101,11 +130,12 @@ void core_multisig_import() {
   }
 
   size_t ser_len;
-  app_err_t err = multisig_serialize(&d, s_ser, sizeof(s_ser), &ser_len);
+  uint8_t ser[MULTISIG_SER_MAX];
+  app_err_t err = multisig_serialize(&d, ser, sizeof(ser), &ser_len);
   if (err == ERR_OK) {
-    err = multisig_store_save(&m, s_ser, ser_len);
+    err = multisig_store_save(&m, ser, ser_len);
   }
-  memzero(s_ser, sizeof(s_ser));
+  memzero(ser, sizeof(ser));
   multisig_crypto_wipe(&m);
 
   if (err != ERR_OK) {
@@ -118,13 +148,14 @@ void core_multisig_import() {
 
 void core_multisig_browse() {
   multisig_crypto_t m;
+  multisig_t desc;
 
   if (multisig_session_open(&m) != ERR_OK) {
     ui_card_transport_error();
     return;
   }
 
-  if (!multisig_pick(&m, &s_desc)) {
+  if (!multisig_pick(&m, &desc)) {
     multisig_crypto_wipe(&m);
     return;
   }
@@ -133,7 +164,7 @@ void core_multisig_browse() {
   do {
     char addr[MAX_ADDR_LEN];
 
-    if (multisig_derive_address(&s_desc, 0, index, addr) != ERR_OK) {
+    if (multisig_derive_address(&desc, 0, index, addr) != ERR_OK) {
       ui_info(ICON_INFO_ERROR, LSTR(MULTISIG_IMPORT_INVALID_MSG), LSTR(MULTISIG_IMPORT_INVALID_SUB), 0);
       multisig_crypto_wipe(&m);
       return;
@@ -149,19 +180,21 @@ void core_multisig_browse() {
 
 void core_multisig_export() {
   multisig_crypto_t m;
+  multisig_t desc;
+  char* txt = (char*) g_mem_heap;
 
   if (multisig_session_open(&m) != ERR_OK) {
     ui_card_transport_error();
     return;
   }
 
-  if (!multisig_pick(&m, &s_desc)) {
+  if (!multisig_pick(&m, &desc)) {
     multisig_crypto_wipe(&m);
     return;
   }
 
-  multisig_to_text(&s_desc, s_txt, sizeof(s_txt));
-  ui_display_msg_qr(LSTR(MULTISIG_ADDR_TITLE), s_txt, s_desc.name);
+  multisig_to_text(&desc, txt, sizeof(txt));
+  ui_display_msg_qr(LSTR(MULTISIG_ADDR_TITLE), txt, desc.name);
 
   multisig_crypto_wipe(&m);
 }
@@ -174,23 +207,8 @@ void core_multisig_delete() {
     return;
   }
 
-  size_t count = multisig_store_list(&m, s_refs, MULTISIG_REF_MAX);
-  if (count > MULTISIG_REF_MAX) count = MULTISIG_REF_MAX;
-
-  if (count == 0) {
-    ui_info(ICON_INFO_ERROR, LSTR(MULTISIG_NO_DESCRIPTORS_MSG), LSTR(MULTISIG_NO_DESCRIPTORS_SUB), 0);
-    multisig_crypto_wipe(&m);
-    return;
-  }
-
-  uint32_t sel = 0;
-  if (count > 1) {
-    if (ui_read_number(LSTR(MULTISIG_PICK_TITLE), 0, count - 1, &sel, true) != CORE_EVT_UI_OK) {
-      multisig_crypto_wipe(&m);
-      return;
-    }
-  }
-  if (sel >= count) {
+  multisig_entry_t* entry = multisig_pick_entry(&m);
+  if (entry == NULL) {
     multisig_crypto_wipe(&m);
     return;
   }
@@ -200,7 +218,7 @@ void core_multisig_delete() {
     return;
   }
 
-  multisig_store_delete(&m, s_refs[sel]);
+  multisig_store_delete(&m, entry);
   multisig_crypto_wipe(&m);
 
   ui_info(ICON_INFO_SUCCESS, LSTR(MULTISIG_DELETE_OK_MSG), LSTR(MULTISIG_DELETE_OK_SUB), 0);
