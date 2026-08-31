@@ -150,21 +150,38 @@ app_err_t qrout_display_ur() {
 app_err_t qrout_display_address() {
   qrout_prepare_canvas_options(g_ui_cmd.params.address.title, ICON_NAV_NUM);
 
-  uint16_t qr_height = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - ((TH_FONT_DATA)->yAdvance * 2);
+  const char* addr = g_ui_cmd.params.address.address;
+  size_t addr_len = strlen(addr);
 
-  if (qrout_display(g_ui_cmd.params.address.address, TH_TITLE_HEIGHT, qr_height) != ERR_OK) {
+  const font_t* font = TH_FONT_DATA;
+  uint16_t avail_width = SCREEN_WIDTH - (2 * TH_QRCODE_ADDR_MARGIN);
+  uint16_t addr_lines = 1;
+  size_t line_width = 0;
+
+  for (size_t i = 0; i < addr_len; i++) {
+    const glyph_t* glyph = screen_lookup_glyph(font, (uint32_t) addr[i]);
+    line_width += glyph->xAdvance;
+    if (line_width > avail_width) {
+      addr_lines++;
+      line_width = glyph->xAdvance;
+    }
+  }
+
+  uint16_t qr_height = SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - (font->yAdvance * addr_lines);
+
+  if (qrout_display(addr, TH_TITLE_HEIGHT, qr_height) != ERR_OK) {
     return ERR_DATA;
   }
 
   screen_text_ctx_t ctx = {
       .bg = SCREEN_COLOR_WHITE,
       .fg = SCREEN_COLOR_BLACK,
-      .font = TH_FONT_DATA,
+      .font = font,
       .x = TH_QRCODE_ADDR_MARGIN,
       .y = qr_height + TH_QRCODE_VERTICAL_MARGIN
   };
 
-  screen_draw_text(&ctx, (SCREEN_WIDTH - TH_QRCODE_ADDR_MARGIN), SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT, (uint8_t*) g_ui_cmd.params.address.address, strlen(g_ui_cmd.params.address.address), false, true);
+  screen_draw_text(&ctx, (SCREEN_WIDTH - TH_QRCODE_ADDR_MARGIN), SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT, (uint8_t*) addr, addr_len, false, true);
 
   dialog_pager_colors(*g_ui_cmd.params.address.index, UINT32_MAX, 0, SCREEN_COLOR_WHITE, SCREEN_COLOR_BLACK, true);
 
