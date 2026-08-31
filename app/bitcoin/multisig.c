@@ -119,7 +119,12 @@ static bool _parse_format(const char* s, multisig_format_t* fmt) {
 app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
   memset(out, 0, sizeof(*out));
 
-  bool pending_path = false;
+  /* The derivation path is not strictly per-key: a "Derivation:" directive can
+   * appear anywhere and applies to all following keys until a new directive is
+   * seen. We therefore parse line-by-line and carry the current path. */
+  bool have_path = false;
+  uint32_t cur_path[MULTISIG_MAX_PATH_LEN];
+  uint8_t cur_path_len = 0;
   size_t pos = 0;
 
   while (pos < len) {
@@ -151,8 +156,19 @@ app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
     size_t vlen = strlen(value);
     while (vlen && (value[vlen - 1] == ' ' || value[vlen - 1] == '\t')) value[--vlen] = '\0';
 
-    if (pending_path) {
-      /* expecting "<8-hex-fingerprint>: <xpub>" */
+    if (!strcmp(key, "Name")) {
+      if (strlen(value) >= MULTISIG_MAX_NAME_LEN) return ERR_DATA;
+      memcpy(out->name, value, strlen(value) + 1);
+    } else if (!strcmp(key, "Policy")) {
+      if (!_parse_policy(value, &out->m, &out->n)) return ERR_DATA;
+    } else if (!strcmp(key, "Format")) {
+      if (!_parse_format(value, &out->format)) return ERR_DATA;
+    } else if (!strcmp(key, "Derivation")) {
+      /* Sets the path for all following keys until a new directive appears. */
+      if (!_parse_path(value, cur_path, &cur_path_len)) return ERR_DATA;
+      have_path = true;
+    } else {
+      /* key line: "<8-hex-fingerprint>: <xpub>" */
       if (out->key_count >= MULTISIG_MAX_KEYS) return ERR_FULL;
       multisig_key_t* k = &out->keys[out->key_count];
 
@@ -162,29 +178,19 @@ app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
       if (base58_decode_check(value, k->xpub, MULTISIG_XPUB_LEN) != MULTISIG_XPUB_LEN) {
         return ERR_DATA;
       }
-      out->key_count++;
-      pending_path = false;
-      continue;
-    }
 
-    if (!strcmp(key, "Name")) {
-      if (strlen(value) >= MULTISIG_MAX_NAME_LEN) return ERR_DATA;
-      memcpy(out->name, value, strlen(value) + 1);
-    } else if (!strcmp(key, "Policy")) {
-      if (!_parse_policy(value, &out->m, &out->n)) return ERR_DATA;
-    } else if (!strcmp(key, "Format")) {
-      if (!_parse_format(value, &out->format)) return ERR_DATA;
-    } else if (!strcmp(key, "Derivation")) {
-      if (out->key_count >= MULTISIG_MAX_KEYS) return ERR_FULL;
-      if (!_parse_path(value, out->keys[out->key_count].path, &out->keys[out->key_count].path_len)) {
-        return ERR_DATA;
+      if (have_path) {
+        memcpy(k->path, cur_path, (size_t) cur_path_len * sizeof(uint32_t));
+        k->path_len = cur_path_len;
+      } else {
+        k->path_len = 0;
       }
-      pending_path = true;
-    } else {
-      return ERR_DATA;
+
+      out->key_count++;
     }
   }
 
+  /* consistency check at the end */
   if (out->n == 0 || out->key_count != out->n || out->m == 0 || out->m > out->n) {
     return ERR_DATA;
   }
