@@ -690,10 +690,34 @@ static bool core_btc_legacy_addr_decoder(const char* addr, uint8_t out[RIPEMD160
   return true;
 }
 
+typedef struct {
+  bip32_ctx_t ctx;
+  bip32_addr_hash_t hash;
+  const uint8_t* target;
+} core_bip32_verify_ctx_t;
+
+static app_err_t core_bip32_verify_match(void* v, uint32_t change, uint32_t index, bool* match) {
+  core_bip32_verify_ctx_t* s = (core_bip32_verify_ctx_t*) v;
+  uint8_t raw[RIPEMD160_DIGEST_LENGTH];
+
+  *match = false;
+
+  if (index == 0 && bip32_ctx_derive_change(&s->ctx, change) != 0) {
+    return ERR_CRYPTO;
+  }
+  if (bip32_ctx_derive_leaf(&s->ctx, index) != 0) {
+    return ERR_CRYPTO;
+  }
+
+  s->hash(s->ctx.leaf_pub, raw);
+  *match = (memcmp(raw, s->target, RIPEMD160_DIGEST_LENGTH) == 0);
+  return ERR_OK;
+}
+
 void core_addresses_verify() {
   data_t qr;
   uint8_t target[RIPEMD160_DIGEST_LENGTH];
-  bip32_ctx_t ctx;
+  core_bip32_verify_ctx_t ctx;
   bip32_addr_hash_t hash;
   uint32_t purpose, coin;
 
@@ -720,13 +744,15 @@ void core_addresses_verify() {
     return;
   }
 
-  if (core_bip32_ctx_export(&ctx, purpose, coin, 0) != ERR_OK) {
+  if (core_bip32_ctx_export(&ctx.ctx, purpose, coin, 0) != ERR_OK) {
     ui_card_transport_error();
     return;
   }
+  ctx.hash = hash;
+  ctx.target = target;
 
   bool found;
-  if (ui_verify_address(&ctx, hash, target, &found) == CORE_EVT_UI_OK) {
+  if (ui_verify_address(core_bip32_verify_match, &ctx, &found) == CORE_EVT_UI_OK) {
     if (found) {
       ui_info(ICON_INFO_SUCCESS, LSTR(ADDRESS_VERIFY_FOUND_MSG), LSTR(ADDRESS_VERIFY_FOUND_SUB), 0);
     } else {

@@ -319,6 +319,7 @@ const char *const i18n_english_strings[] = {
     "Import multisig",
     "Browse addresses",
     "Export multisig",
+    "Verify address",
     "Delete multisig",
     "Multisig",
     "Import this multisig?",

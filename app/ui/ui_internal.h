@@ -161,9 +161,8 @@ struct cmd_devinfo {
 };
 
 struct cmd_verify_address {
-  bip32_ctx_t* ctx;
-  bip32_addr_hash_t hash;
-  const uint8_t* target;
+  ui_verify_match_fn_t match;
+  void* ctx;
   bool* found;
 };
 

@@ -4,6 +4,7 @@
 void core_multisig_import();
 void core_multisig_browse();
 void core_multisig_export();
+void core_multisig_verify();
 void core_multisig_delete();
 
 #endif

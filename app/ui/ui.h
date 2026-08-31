@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 #include "crypto/address.h"
-#include "crypto/bip32.h"
 #include "crypto/bip39.h"
 #include "crypto/slip39.h"
 #include "bitcoin/bitcoin.h"
@@ -13,6 +12,7 @@
 #include "dialog.h"
 #include "input.h"
 #include "ur/ur.h"
+#include "error.h"
 
 typedef enum {
   CORE_EVT_USB_CMD,
@@ -90,7 +90,8 @@ core_evt_t ui_settings_brightness(uint8_t* brightness);
 core_evt_t ui_keycard_not_genuine();
 core_evt_t ui_keycard_no_pairing_slots();
 
-core_evt_t ui_verify_address(bip32_ctx_t* ctx, bip32_addr_hash_t hash, const uint8_t target[RIPEMD160_DIGEST_LENGTH], bool* found);
+typedef app_err_t (*ui_verify_match_fn_t)(void* ctx, uint32_t change, uint32_t index, bool* match);
+core_evt_t ui_verify_address(ui_verify_match_fn_t match, void* ctx, bool* found);
 
 void ui_update_progress(const char* title, uint8_t progress);
 

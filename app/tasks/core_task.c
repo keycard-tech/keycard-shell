@@ -39,6 +39,9 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_MULTISIG_EXPORT:
     core_multisig_export();
     break;
+  case MENU_MULTISIG_VERIFY:
+    core_multisig_verify();
+    break;
   case MENU_MULTISIG_DELETE:
     core_multisig_delete();
     break;

@@ -4,6 +4,7 @@
 
 #include "bitcoin/multisig.h"
 #include "bitcoin/multisig_crypto.h"
+#include "common.h"
 #include "core.h"
 #include "crypto/memzero.h"
 #include "mem.h"
@@ -234,4 +235,81 @@ void core_multisig_delete() {
   multisig_crypto_wipe(&m);
 
   ui_info(ICON_INFO_SUCCESS, LSTR(MULTISIG_DELETE_OK_MSG), LSTR(MULTISIG_DELETE_OK_SUB), 0);
+}
+
+/*
+ * Adapter from the generic ui_verify_address search to multisig. Multisig
+ * addresses are derived purely from the descriptor's xpubs (no card access is
+ * needed for derivation), so the search just compares the derived address
+ * string against the scanned one.
+ */
+typedef struct {
+  multisig_t desc;
+  const char* target;
+} multisig_verify_ctx_t;
+
+static app_err_t multisig_verify_match(void* v, uint32_t change, uint32_t index, bool* match) {
+  multisig_verify_ctx_t* s = (multisig_verify_ctx_t*) v;
+  char addr[MAX_ADDR_LEN];
+
+  *match = false;
+
+  if (multisig_derive_address(&s->desc, change, index, addr) != ERR_OK) {
+    return ERR_CRYPTO;
+  }
+
+  *match = (strcmp(addr, s->target) == 0);
+  return ERR_OK;
+}
+
+void core_multisig_verify() {
+  multisig_crypto_t m;
+  multisig_t desc;
+
+  if (multisig_session_open(&m) != ERR_OK) {
+    ui_card_transport_error();
+    return;
+  }
+
+  if (!multisig_pick(&m, &desc)) {
+    multisig_crypto_wipe(&m);
+    return;
+  }
+
+  data_t qr;
+  if (ui_qrscan(NO_UR, &qr) != CORE_EVT_UI_OK) {
+    multisig_crypto_wipe(&m);
+    return;
+  }
+
+  char target[MAX_ADDR_LEN];
+  size_t len = strnlen((const char*) qr.data, MAX_ADDR_LEN);
+  if (len == 0 || len >= MAX_ADDR_LEN) {
+    ui_info(ICON_INFO_ERROR, LSTR(ADDRESS_VERIFY_INVALID_MSG), LSTR(ADDRESS_VERIFY_INVALID_SUB), 0);
+    multisig_crypto_wipe(&m);
+    return;
+  }
+  memcpy(target, qr.data, len + 1);
+
+  /* Multisig descriptors resolve to P2SH ('3...') or P2WSH ('bc1...') addresses. */
+  if ((target[0] != '3') && !(target[0] == 'b' && target[1] == 'c')) {
+    ui_info(ICON_INFO_ERROR, LSTR(ADDRESS_VERIFY_INVALID_MSG), LSTR(ADDRESS_VERIFY_INVALID_SUB), 0);
+    multisig_crypto_wipe(&m);
+    return;
+  }
+
+  multisig_verify_ctx_t ctx;
+  ctx.desc = desc;
+  ctx.target = target;
+
+  bool found;
+  if (ui_verify_address(multisig_verify_match, &ctx, &found) == CORE_EVT_UI_OK) {
+    if (found) {
+      ui_info(ICON_INFO_SUCCESS, LSTR(ADDRESS_VERIFY_FOUND_MSG), LSTR(ADDRESS_VERIFY_FOUND_SUB), 0);
+    } else {
+      ui_info(ICON_INFO_ERROR, LSTR(ADDRESS_VERIFY_NOT_FOUND_MSG), LSTR(ADDRESS_VERIFY_NOT_FOUND_SUB), 0);
+    }
+  }
+
+  multisig_crypto_wipe(&m);
 }

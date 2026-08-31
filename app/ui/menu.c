@@ -60,10 +60,11 @@ const menu_t menu_connect = {
 };
 
 const menu_t menu_multisig = {
-  4, {
+  5, {
     {MENU_MULTISIG_IMPORT, NULL},
     {MENU_MULTISIG_BROWSE, NULL},
     {MENU_MULTISIG_EXPORT, NULL},
+    {MENU_MULTISIG_VERIFY, NULL},
     {MENU_MULTISIG_DELETE, NULL},
   }
 };

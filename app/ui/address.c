@@ -1,4 +1,3 @@
-#include "crypto/bip32.h"
 #include "screen/screen.h"
 #include "ui/dialog.h"
 #include "ui/settings_ui.h"
@@ -8,17 +7,8 @@
 #define BIP32_VERIFY_MAX_INDEX 2048
 #define BIP32_VERIFY_PROGRESS_STEP 100
 
-/*
- * Brute-force search for a scanned address, run in the UI thread so it can
- * render a progress bar and be cancelled from the keypad. The account key is
- * already exported (card is only involved during init), so all further
- * derivation is done on device.
- */
 app_err_t ui_verify_address_search() {
   struct cmd_verify_address* va = &g_ui_cmd.params.verify_address;
-  bip32_ctx_t* ctx = va->ctx;
-  bip32_addr_hash_t hash = va->hash;
-  const uint8_t* target = va->target;
   bool *found = va->found;
 
   dialog_title(LSTR(ADDRESS_VERIFY_TITLE));
@@ -35,7 +25,7 @@ app_err_t ui_verify_address_search() {
       .font = TH_FONT_TEXT,
       .fg = TH_COLOR_TEXT_FG,
       .bg = TH_COLOR_TEXT_BG,
-      .x = 0,
+      .x = TH_SCREEN_MARGIN,
       .y = TH_TITLE_HEIGHT + TH_PROGRESS_WARN_VERTICAL_MARGIN,
   };
 
@@ -49,21 +39,15 @@ app_err_t ui_verify_address_search() {
   *found = false;
 
   for (uint32_t change = 0; change < 2; change++) {
-    if (bip32_ctx_derive_change(ctx, change) != 0) {
-      continue;
-    }
-
     for (uint32_t index = 0; index <= BIP32_VERIFY_MAX_INDEX; index++) {
-      uint8_t raw[RIPEMD160_DIGEST_LENGTH];
+      bool match = false;
 
-      if (bip32_ctx_derive_leaf(ctx, index) != 0) {
+      if (va->match(va->ctx, change, index, &match) != ERR_OK) {
         break;
       }
-
-      hash(ctx->leaf_pub, raw);
       checked++;
 
-      if (memcmp(raw, target, RIPEMD160_DIGEST_LENGTH) == 0) {
+      if (match) {
         *found = true;
         return ERR_OK;
       }
