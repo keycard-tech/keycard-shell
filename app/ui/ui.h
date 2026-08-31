@@ -33,6 +33,7 @@ core_evt_t ui_display_address_qr(const char* title, const char* address, uint32_
 core_evt_t ui_display_msg_qr(const char* title, const char* msg, const char* label);
 core_evt_t ui_info(info_icon_t icon, const char* msg, const char* subtext, ui_info_opt_t opts);
 core_evt_t ui_prompt(const char* title, const char* msg, ui_info_opt_t opts);
+core_evt_t ui_display_paged_text(const char* title, const char* text, uint32_t len);
 core_evt_t ui_wrong_auth(const char* msg, uint8_t retries);
 core_evt_t ui_devinfo(const char* fw_ver, const char* db_ver, const char* sn);
 core_evt_t ui_dbinfo(const char* db_ver);

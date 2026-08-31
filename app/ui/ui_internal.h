@@ -36,6 +36,7 @@ enum cmd_type {
   UI_CMD_INPUT_NUMBER_DIRECT,
   UI_CMD_INPUT_MNEMO,
   UI_CMD_DISPLAY_MNEMO,
+  UI_CMD_DISPLAY_PAGED_TEXT,
   UI_CMD_LCD_BRIGHTNESS,
   UI_CMD_PROGRESS,
   UI_CMD_DEVINFO,
@@ -138,6 +139,12 @@ struct cmd_mnemo {
   uint32_t len;
 };
 
+struct cmd_paged_text {
+  const char* title;
+  const char* text;
+  uint32_t len;
+};
+
 struct cmd_brightness {
   uint8_t* brightness;
 };
@@ -190,6 +197,7 @@ union cmd_params {
   struct cmd_input_number input_number;
   struct cmd_input_number_direct input_number_direct;
   struct cmd_mnemo mnemo;
+  struct cmd_paged_text paged_text;
   struct cmd_brightness lcd;
   struct cmd_progress progress;
   struct cmd_devinfo devinfo;

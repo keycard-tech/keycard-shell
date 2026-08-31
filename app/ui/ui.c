@@ -105,6 +105,14 @@ core_evt_t ui_prompt(const char* title, const char* msg, ui_info_opt_t opts) {
   return ui_signal_wait(0);
 }
 
+core_evt_t ui_display_paged_text(const char* title, const char* text, uint32_t len) {
+  g_ui_cmd.type = UI_CMD_DISPLAY_PAGED_TEXT;
+  g_ui_cmd.params.paged_text.title = title;
+  g_ui_cmd.params.paged_text.text = text;
+  g_ui_cmd.params.paged_text.len = len;
+  return ui_signal_wait(0);
+}
+
 core_evt_t ui_wrong_auth(const char* msg, uint8_t retries) {
   size_t label_len = strlen(LSTR(PIN_LABEL_REMAINING_ATTEMPTS));
   char remaining_attempts[label_len + 2];

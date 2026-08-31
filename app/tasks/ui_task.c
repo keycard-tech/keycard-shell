@@ -96,6 +96,9 @@ void ui_task_entry(void* pvParameters) {
     case UI_CMD_DISPLAY_MNEMO:
       g_ui_cmd.result = input_display_mnemonic();
       break;
+    case UI_CMD_DISPLAY_PAGED_TEXT:
+      g_ui_cmd.result = dialog_display_paged_text();
+      break;
     case UI_CMD_LCD_BRIGHTNESS:
       g_ui_cmd.result = settings_ui_lcd_brightness();
       break;

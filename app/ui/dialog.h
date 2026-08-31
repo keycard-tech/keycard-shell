@@ -35,6 +35,7 @@ app_err_t dialog_confirm_eip712();
 
 app_err_t dialog_info();
 app_err_t dialog_prompt();
+app_err_t dialog_display_paged_text();
 
 static inline app_err_t dialog_title(const char* title) {
   return dialog_title_colors(title, TH_COLOR_TITLE_BG, TH_COLOR_TITLE_FG);

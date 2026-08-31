@@ -128,7 +128,7 @@ void core_multisig_import() {
     return;
   }
 
-  if (ui_prompt(LSTR(MULTISIG_TITLE), LSTR(MULTISIG_IMPORT_CONFIRM), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+  if (ui_display_paged_text(LSTR(MULTISIG_IMPORT_CONFIRM), (const char*) desc.value, desc.len) != CORE_EVT_UI_OK) {
     multisig_crypto_wipe(&m);
     return;
   }
