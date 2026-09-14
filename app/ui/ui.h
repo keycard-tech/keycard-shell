@@ -12,6 +12,7 @@
 #include "dialog.h"
 #include "input.h"
 #include "ur/ur.h"
+#include "error.h"
 
 typedef enum {
   CORE_EVT_USB_CMD,
@@ -32,6 +33,7 @@ core_evt_t ui_display_address_qr(const char* title, const char* address, uint32_
 core_evt_t ui_display_msg_qr(const char* title, const char* msg, const char* label);
 core_evt_t ui_info(info_icon_t icon, const char* msg, const char* subtext, ui_info_opt_t opts);
 core_evt_t ui_prompt(const char* title, const char* msg, ui_info_opt_t opts);
+core_evt_t ui_display_paged_text(const char* title, const char* text, uint32_t len);
 core_evt_t ui_wrong_auth(const char* msg, uint8_t retries);
 core_evt_t ui_devinfo(const char* fw_ver, const char* db_ver, const char* sn);
 core_evt_t ui_dbinfo(const char* db_ver);
@@ -87,6 +89,9 @@ core_evt_t ui_settings_brightness(uint8_t* brightness);
 
 core_evt_t ui_keycard_not_genuine();
 core_evt_t ui_keycard_no_pairing_slots();
+
+typedef app_err_t (*ui_verify_match_fn_t)(void* ctx, uint32_t change, uint32_t index, bool* match);
+core_evt_t ui_verify_address(ui_verify_match_fn_t match, void* ctx, bool* found);
 
 void ui_update_progress(const char* title, uint8_t progress);
 

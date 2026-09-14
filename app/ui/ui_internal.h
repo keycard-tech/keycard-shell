@@ -10,6 +10,7 @@
 #include "input.h"
 #include "keypad/keypad.h"
 #include "bitcoin/bitcoin.h"
+#include "crypto/bip32.h"
 #include "core/core.h"
 #include "ethereum/ethUstream.h"
 #include "ur/ur.h"
@@ -35,10 +36,12 @@ enum cmd_type {
   UI_CMD_INPUT_NUMBER_DIRECT,
   UI_CMD_INPUT_MNEMO,
   UI_CMD_DISPLAY_MNEMO,
+  UI_CMD_DISPLAY_PAGED_TEXT,
   UI_CMD_LCD_BRIGHTNESS,
   UI_CMD_PROGRESS,
   UI_CMD_DEVINFO,
   UI_CMD_DBINFO,
+  UI_CMD_VERIFY_ADDRESS,
 
   // Testapp only
   UI_CMD_KEYPAD_TEST,
@@ -136,6 +139,12 @@ struct cmd_mnemo {
   uint32_t len;
 };
 
+struct cmd_paged_text {
+  const char* title;
+  const char* text;
+  uint32_t len;
+};
+
 struct cmd_brightness {
   uint8_t* brightness;
 };
@@ -149,6 +158,12 @@ struct cmd_devinfo {
   const char* fw_version;
   const char* db_version;
   const char* sn;
+};
+
+struct cmd_verify_address {
+  ui_verify_match_fn_t match;
+  void* ctx;
+  bool* found;
 };
 
 struct cmd_input_number {
@@ -181,9 +196,11 @@ union cmd_params {
   struct cmd_input_number input_number;
   struct cmd_input_number_direct input_number_direct;
   struct cmd_mnemo mnemo;
+  struct cmd_paged_text paged_text;
   struct cmd_brightness lcd;
   struct cmd_progress progress;
   struct cmd_devinfo devinfo;
+  struct cmd_verify_address verify_address;
 };
 
 struct ui_cmd {

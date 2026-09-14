@@ -88,6 +88,9 @@ app_err_t qrscan_deserialize(ur_t* ur) {
     data->len = ur->data_len;
     err = ERR_OK;
     break;
+  case BYTES:
+    err = cbor_decode_psbt(ur->data, ur->data_len, g_ui_cmd.params.qrscan.out, NULL) == ZCBOR_SUCCESS ? ERR_OK : ERR_DATA; 
+    break;
   case DEV_AUTH:
     err = cbor_decode_dev_auth(ur->data, ur->data_len, g_ui_cmd.params.qrscan.out, NULL) == ZCBOR_SUCCESS ? ERR_OK : ERR_DATA;
     break;

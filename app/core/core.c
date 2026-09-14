@@ -1,6 +1,8 @@
 #include "app_tasks.h"
 #include "core.h"
 #include "crypto/address.h"
+#include "crypto/base58.h"
+#include "crypto/bip32.h"
 #include "crypto/ripemd160.h"
 #include "crypto/secp256k1.h"
 #include "crypto/util.h"
@@ -10,6 +12,7 @@
 #include "keycard/keycard_cmdset.h"
 #include "settings.h"
 #include "storage/keys.h"
+#include "ui/ui.h"
 #include "ui/ui_internal.h"
 #include "util/tlv.h"
 #include "ur/ur_encode.h"
@@ -96,6 +99,30 @@ app_err_t core_export_key(keycard_t* kc, uint8_t* path, uint16_t len, uint8_t* o
     if (tlv_read_fixed_primitive(0x82, CHAINCODE_LEN, &data[off], out_chain) == TLV_INVALID) {
       return ERR_DATA;
     }
+  }
+
+  return ERR_OK;
+}
+
+/* Export the raw 32-byte private scalar at a hardened path (EXPORT, P2=0x00).
+ * The caller is responsible for memzero'ing out_priv after use. */
+app_err_t core_export_private(keycard_t* kc, uint8_t* path, uint16_t len, uint8_t out_priv[32]) {
+  if ((keycard_cmd_export_key(kc, 0, path, len) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+    return ERR_CRYPTO;
+  }
+
+  uint8_t* data = APDU_RESP(&kc->apdu);
+
+  uint16_t tag;
+  uint16_t off = tlv_read_tag(data, &tag);
+  if (tag != 0xa1) {
+    return ERR_DATA;
+  }
+
+  off += tlv_read_length(&data[off], &len);
+
+  if (tlv_read_fixed_primitive(0x81, 32, &data[off], out_priv) == TLV_INVALID) {
+    return ERR_DATA;
   }
 
   return ERR_OK;
@@ -550,27 +577,52 @@ void core_display_public_multicoin() {
   ui_display_ur_qr(NULL, &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_MULTI_ACCOUNTS);
 }
 
+/*
+ * Build the account-level path m/purpose'/coin'/account', export the account
+ * extended key from the card and initialise a derivation context with it.
+ */
+static app_err_t core_bip32_ctx_export(bip32_ctx_t* ctx, uint32_t purpose, uint32_t coin, uint32_t account) {
+  uint8_t acct_pub[PUBKEY_LEN];
+  uint8_t acct_chain[CHAINCODE_LEN];
+  uint32_t pur = rev32(purpose);
+  uint32_t coi = rev32(coin);
+
+  memcpy(g_core.bip44_path, &pur, 4);
+  memcpy(&g_core.bip44_path[4], &coi, 4);
+  g_core.bip44_path[8] = 0x80 | (account >> 24);
+  g_core.bip44_path[9] = (account >> 16) & 0xff;
+  g_core.bip44_path[10] = (account >> 8) & 0xff;
+  g_core.bip44_path[11] = account & 0xff;
+
+  app_err_t err = core_export_key(&g_core.keycard, g_core.bip44_path, 12, acct_pub, acct_chain);
+
+  if (err == ERR_OK) {
+    bip32_ctx_setup(ctx, purpose, coin, account, acct_pub, acct_chain);
+  }
+
+  return err;
+}
+
 static void core_addresses(const char* title, uint32_t purpose, uint32_t coin, core_addr_encoder_t encoder) {
   uint32_t index = 0;
+  bip32_ctx_t ctx;
 
-  purpose = rev32(purpose);
-  coin = rev32(coin);
-  memcpy(g_core.bip44_path, &purpose, 4);
-  memcpy(&g_core.bip44_path[4], &coin, 4);
-  memset(&g_core.bip44_path[8], 0, 8);
-  g_core.bip44_path[8] = 0x80;
+  if (core_bip32_ctx_export(&ctx, purpose, coin, 0) != ERR_OK) {
+    ui_card_transport_error();
+    return;
+  }
 
-  g_core.bip44_path_len = 20;
+  /* change = 0 (non-hardened): derive the change-level extended key */
+  if (bip32_ctx_derive_change(&ctx, 0) != 0) {
+    return;
+  }
 
   do {
-    uint32_t tmp = rev32(index);
-    memcpy(&g_core.bip44_path[16], &tmp, 4);
-
-    if (core_export_public(g_core.data.key.pub, NULL, NULL, NULL) != ERR_OK) {
-      ui_card_transport_error();
+    if (bip32_ctx_derive_leaf(&ctx, index) != 0) {
+      return;
     }
 
-    encoder(g_core.data.key.pub, (char*) g_mem_heap);
+    encoder(ctx.leaf_pub, (char*) g_mem_heap);
     if (ui_display_address_qr(title, (char*) g_mem_heap, &index) == CORE_EVT_UI_CANCELLED) {
       ui_read_number_direct(LSTR(ADDRESS_INDEX_TITLE), &index);
     }
@@ -595,6 +647,118 @@ void core_addresses_ethereum() {
 
 void core_addresses_bitcoin() {
   core_addresses(LSTR(QR_ADDRESS_BTC_TITLE), BTC_NATIVE_SEGWIT_PURPOSE, BTC_MAINNET_COIN, core_btc_addr_encoder);
+}
+
+static void core_eth_addr_hash(const uint8_t* pub, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
+  ethereum_address(pub, out);
+}
+
+static bool core_eth_addr_decoder(const char* addr, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
+  if (strnlen(addr, MAX_ADDR_LEN) != 42 || addr[0] != '0' || addr[1] != 'x') {
+    return false;
+  }
+  return base16_decode(addr + 2, out, RIPEMD160_DIGEST_LENGTH);
+}
+
+static void core_btc_addr_hash(const uint8_t* pub, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
+  hash160(pub, PUBKEY_COMPRESSED_LEN, out);
+}
+
+static bool core_btc_segwit_addr_decoder(const char* addr, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
+  int ver;
+  size_t len;
+  uint8_t prog[40];
+
+  if (!segwit_addr_decode(&ver, prog, &len, BTC_BECH32_HRP, addr) ||
+      (ver != BTC_SEGWIT_VER) || (len != RIPEMD160_DIGEST_LENGTH)) {
+    return false;
+  }
+
+  memcpy(out, prog, RIPEMD160_DIGEST_LENGTH);
+  return true;
+}
+
+static bool core_btc_legacy_addr_decoder(const char* addr, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
+  uint8_t raw[1 + RIPEMD160_DIGEST_LENGTH];
+
+  if ((base58_decode_check(addr, raw, sizeof(raw)) != (int) sizeof(raw)) ||
+      (raw[0] != BTC_P2PKH_ADDR_PREFIX)) {
+    return false;
+  }
+
+  memcpy(out, &raw[1], RIPEMD160_DIGEST_LENGTH);
+  return true;
+}
+
+typedef struct {
+  bip32_ctx_t ctx;
+  bip32_addr_hash_t hash;
+  const uint8_t* target;
+} core_bip32_verify_ctx_t;
+
+static app_err_t core_bip32_verify_match(void* v, uint32_t change, uint32_t index, bool* match) {
+  core_bip32_verify_ctx_t* s = (core_bip32_verify_ctx_t*) v;
+  uint8_t raw[RIPEMD160_DIGEST_LENGTH];
+
+  *match = false;
+
+  if (index == 0 && bip32_ctx_derive_change(&s->ctx, change) != 0) {
+    return ERR_CRYPTO;
+  }
+  if (bip32_ctx_derive_leaf(&s->ctx, index) != 0) {
+    return ERR_CRYPTO;
+  }
+
+  s->hash(s->ctx.leaf_pub, raw);
+  *match = (memcmp(raw, s->target, RIPEMD160_DIGEST_LENGTH) == 0);
+  return ERR_OK;
+}
+
+void core_addresses_verify() {
+  data_t qr;
+  uint8_t target[RIPEMD160_DIGEST_LENGTH];
+  core_bip32_verify_ctx_t ctx;
+  bip32_addr_hash_t hash;
+  uint32_t purpose, coin;
+
+  if (ui_qrscan(NO_UR, &qr) != CORE_EVT_UI_OK) {
+    return;
+  }
+
+  const char* addr = (const char*) qr.data;
+
+  if (core_eth_addr_decoder(addr, target)) {
+    purpose = ETH_PURPOSE;
+    coin = ETH_COIN;
+    hash = core_eth_addr_hash;
+  } else if (core_btc_segwit_addr_decoder(addr, target)) {
+    purpose = BTC_NATIVE_SEGWIT_PURPOSE;
+    coin = BTC_MAINNET_COIN;
+    hash = core_btc_addr_hash;
+  } else if (core_btc_legacy_addr_decoder(addr, target)) {
+    purpose = BTC_LEGACY_PURPOSE;
+    coin = BTC_MAINNET_COIN;
+    hash = core_btc_addr_hash;
+  } else {
+    ui_info(ICON_INFO_ERROR, LSTR(ADDRESS_VERIFY_INVALID_MSG), LSTR(ADDRESS_VERIFY_INVALID_SUB), 0);
+    return;
+  }
+
+  if (core_bip32_ctx_export(&ctx.ctx, purpose, coin, 0) != ERR_OK) {
+    ui_card_transport_error();
+    return;
+  }
+  ctx.hash = hash;
+  ctx.target = target;
+
+  bool found;
+  if (ui_verify_address(core_bip32_verify_match, &ctx, &found) == CORE_EVT_UI_OK) {
+    if (found) {
+      ui_info(ICON_INFO_SUCCESS, LSTR(ADDRESS_VERIFY_FOUND_MSG), LSTR(ADDRESS_VERIFY_FOUND_SUB), 0);
+    } else {
+      ui_info(ICON_INFO_ERROR, LSTR(ADDRESS_VERIFY_NOT_FOUND_MSG), LSTR(ADDRESS_VERIFY_NOT_FOUND_SUB), 0);
+    }
+  }
 }
 
 core_evt_t core_wait_event(uint32_t timeout, uint8_t accept_usb) {

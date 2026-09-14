@@ -112,11 +112,13 @@ set(APP_SOURCES
     app/ui/menu.c
     app/ui/settings_ui.c
     app/ui/ui.c
+    app/ui/address.c
     app/tasks/core_task.c
     app/tasks/ui_task.c
     app/tasks/usb_task.c
     app/storage/fs.c
     app/storage/keys.c
+    app/storage/multisig_store.c
     app/screen/screen.c
     app/screen/st7789.c
     app/qrcode/qrcode.c
@@ -154,6 +156,7 @@ set(APP_SOURCES
     app/crypto/base32.c
     app/crypto/base58.c
     app/crypto/bignum.c
+    app/crypto/bip32.c
     app/crypto/bip39.c
     app/crypto/bip39_english.c
     app/crypto/cash_addr.c
@@ -181,12 +184,15 @@ set(APP_SOURCES
     app/core/auth.c
     app/core/card.c
     app/core/core.c
+    app/core/core_multisig.c
     app/core/core_btc.c
     app/core/core_eth.c
     app/core/settings.c
     app/core/updater.c
     app/camera/camera.c
     app/bitcoin/compactsize.c
+    app/bitcoin/multisig.c
+    app/bitcoin/multisig_crypto.c
     app/bitcoin/psbt.c
     app/bitcoin/psbt_tx.c
     app/freertos_support.c

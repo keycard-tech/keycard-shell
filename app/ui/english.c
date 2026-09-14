@@ -24,6 +24,7 @@ const char *const i18n_english_strings[] = {
     // Addresses menu
     "Ethereum",
     "Bitcoin",
+    "Verify address",
 
     // Settings menu
     "Keycard",
@@ -118,6 +119,16 @@ const char *const i18n_english_strings[] = {
 
     // Address picker
     "Input address index",
+
+    // Address verification
+    "Verifying address",
+    "This may take a while. You can cancel at any time.",
+    "Address verified",
+    "This address belongs to your device.",
+    "Address not found",
+    "This address does not belong to your device.",
+    "Invalid address",
+    "Could not read this address.",
 
     // PIN input
     "Keycard PIN",
@@ -302,4 +313,25 @@ const char *const i18n_english_strings[] = {
     // Export public key
     "Connect wallet",
     "The connected USB device is asking to export public keys. Only click OK if this a wallet you want to use your Shell with.",
+
+    // Multisig
+    "Multisig",
+    "Import multisig",
+    "Browse addresses",
+    "Export multisig",
+    "Verify address",
+    "Delete multisig",
+    "Multisig",
+    "Import this multisig?",
+    "Multisig imported",
+    "The descriptor is now stored on this device",
+    "Invalid multisig",
+    "The scanned QR is not a valid multisig descriptor",
+    "No multisig descriptors",
+    "Import a descriptor with this card to get started",
+    "Select descriptor",
+    "Delete this multisig?",
+    "Multisig deleted",
+    "The descriptor was removed",
+    "Multisig address",
 };

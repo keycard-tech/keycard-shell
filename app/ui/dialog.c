@@ -947,6 +947,38 @@ app_err_t dialog_confirm_msg() {
   return ret;
 }
 
+app_err_t dialog_display_paged_text() {
+  const char* title = g_ui_cmd.params.paged_text.title;
+  const uint8_t* data = (const uint8_t*) g_ui_cmd.params.paged_text.text;
+  size_t len = g_ui_cmd.params.paged_text.len;
+
+  screen_text_ctx_t ctx = {
+      .font = TH_FONT_TEXT,
+      .fg = TH_COLOR_TEXT_FG,
+      .bg = TH_COLOR_TEXT_BG,
+  };
+
+  pager_ctx_t pager = { .page = 0, .last_page = 0 };
+  dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN), 0, data, len);
+
+  app_err_t ret = ERR_NEED_MORE_DATA;
+
+  while(ret == ERR_NEED_MORE_DATA) {
+    uint16_t offset = pager.pages[pager.page];
+
+    dialog_title(title);
+
+    ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
+    ctx.y = TH_TITLE_HEIGHT + TH_TEXT_VERTICAL_MARGIN;
+    dialog_blank(TH_TITLE_HEIGHT);
+
+    screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &data[offset], (len - offset), false, false);
+    ret = dialog_wait_paged(&pager.page, pager.last_page);
+  }
+
+  return ret;
+}
+
 static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr, const uint8_t* hash) {
   screen_text_ctx_t ctx = {
       .font = TH_FONT_TEXT,
