@@ -140,4 +140,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ needs.build.outputs.release }}" assets/* --clobber
+          gh release upload "${{ needs.build.outputs.release }}" assets/* --repo "${{ github.repository }}" --clobber
