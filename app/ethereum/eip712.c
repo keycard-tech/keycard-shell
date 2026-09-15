@@ -28,42 +28,44 @@ struct eip712_type {
 static app_err_t eip712_hash_struct(uint8_t out[32], uint8_t* heap, size_t heap_size, int type, const struct eip712_type types[], int types_count, int data, const eip712_ctx_t* ctx);
 static size_t eip712_encode_token(const eip712_ctx_t* ctx, uint8_t* out, int* token, int indent);
 
+static inline int eip712_token_eq(const eip712_ctx_t* ctx, int index, const char* key) {
+  int len = ctx->tokens[index].end - ctx->tokens[index].start;
+  size_t key_len = strlen(key);
+  if (len != key_len) {
+    return 0;
+  }
+  return memcmp(&ctx->json[ctx->tokens[index].start], key, len) == 0;
+}
+
 static app_err_t eip712_top_level(eip712_ctx_t* ctx) {
   int found = 0;
 
   for (int i = 1; (i < (ctx->token_count - 1)) && (found != 0xf); i++) {
     if ((ctx->tokens[i].parent == 0) && (ctx->tokens[i].type == JSMN_STRING)) {
-      switch(ctx->json[ctx->tokens[i].start]) {
-      case 't': // types
+      if (eip712_token_eq(ctx, i, "types")) {
         if (ctx->tokens[++i].type != JSMN_OBJECT) {
           return ERR_DATA;
         }
         ctx->index.types = i;
         found |= 1;
-        break;
-      case 'p': // primaryType
+      } else if (eip712_token_eq(ctx, i, "primaryType")) {
         if (ctx->tokens[++i].type != JSMN_STRING) {
           return ERR_DATA;
         }
         ctx->index.primary_type = i;
         found |= 2;
-        break;
-      case 'd': // domain
+      } else if (eip712_token_eq(ctx, i, "domain")) {
         if (ctx->tokens[++i].type != JSMN_OBJECT) {
           return ERR_DATA;
         }
         ctx->index.domain = i;
         found |= 4;
-        break;
-      case 'm': // message
+      } else if (eip712_token_eq(ctx, i, "message")) {
         if (ctx->tokens[++i].type != JSMN_OBJECT) {
           return ERR_DATA;
         }
         ctx->index.message = i;
         found |= 8;
-        break;
-      default:
-        return ERR_DATA;
       }
     }
   }
@@ -551,35 +553,6 @@ static app_err_t eip712_hash_struct(uint8_t out[32], uint8_t* heap, size_t heap_
   return ERR_OK;
 }
 
-static app_err_t eip712_check_declared_keys(int data_token, int type_index, const struct eip712_type types[], int types_count, const eip712_ctx_t* ctx) {
-  const struct eip712_type *t = &types[type_index];
-
-  for (int i = data_token + 1; i < ctx->token_count; i++) {
-    if (ctx->tokens[i].parent == data_token) {
-      if (ctx->tokens[i].type != JSMN_STRING) {
-        return ERR_DATA;
-      }
-
-      struct eip712_string key;
-      eip712_string_from_field(&key, i, ctx);
-
-      bool found = false;
-      for (int j = 0; j < t->field_count; j++) {
-        if (eip712_streq(&key, &t->fields[j].name)) {
-          found = true;
-          break;
-        }
-      }
-
-      if (!found) {
-        return ERR_DATA;
-      }
-    }
-  }
-
-  return ERR_OK;
-}
-
 app_err_t eip712_hash(eip712_ctx_t *ctx, SHA3_CTX *sha3, uint8_t* heap, size_t heap_size, const char* json, size_t json_len) {
   ALIGN_HEAP(heap, heap_size);
   ctx->tokens = (jsmntok_t *) heap;
@@ -596,7 +569,7 @@ app_err_t eip712_hash(eip712_ctx_t *ctx, SHA3_CTX *sha3, uint8_t* heap, size_t h
   heap += token_size;
   heap_size -= token_size;
 
-  if (!((ctx->tokens[0].type == JSMN_OBJECT) && (ctx->tokens[0].size == 4))) {
+  if ((ctx->tokens[0].type != JSMN_OBJECT) || (ctx->tokens[0].size < 4)) {
     return ERR_DATA;
   }
 
@@ -642,10 +615,6 @@ app_err_t eip712_hash(eip712_ctx_t *ctx, SHA3_CTX *sha3, uint8_t* heap, size_t h
 
   uint8_t tmp[32];
 
-  if (eip712_check_declared_keys(ctx->index.domain, struct_idx, types, types_count, ctx) != ERR_OK) {
-    return ERR_DATA;
-  }
-
   if (eip712_hash_struct(tmp, heap, heap_size, struct_idx, types, types_count, ctx->index.domain, ctx) != ERR_OK) {
     return ERR_DATA;
   }
@@ -655,10 +624,6 @@ app_err_t eip712_hash(eip712_ctx_t *ctx, SHA3_CTX *sha3, uint8_t* heap, size_t h
   struct_idx = eip712_find_type(types, types_count, &tmpstr);
 
   if (struct_idx == -1) {
-    return ERR_DATA;
-  }
-
-  if (eip712_check_declared_keys(ctx->index.message, struct_idx, types, types_count, ctx) != ERR_OK) {
     return ERR_DATA;
   }
 
