@@ -318,7 +318,7 @@ typedef enum {
   PUBKEY_EXPORT_TITLE,
   PUBKEY_EXPORT_MSG,
 
-  // Multisig
+  // Bitcoin multisig
   MENU_MULTISIG,
   MENU_MULTISIG_IMPORT,
   MENU_MULTISIG_BROWSE,

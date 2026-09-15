@@ -314,8 +314,8 @@ const char *const i18n_english_strings[] = {
     "Connect wallet",
     "The connected USB device is asking to export public keys. Only click OK if this a wallet you want to use your Shell with.",
 
-    // Multisig
-    "Multisig",
+    // Bitcoin multisig
+    "Bitcoin multisig",
     "Import multisig",
     "Browse addresses",
     "Export multisig",
