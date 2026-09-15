@@ -23,10 +23,13 @@ jobs:
         id: vars
         run: |
           if [ "${{ github.event_name }}" = "release" ]; then
-            echo "release=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            release="${{ github.event.release.tag_name }}"
           else
-            echo "release=${{ github.event.inputs.release }}" >> $GITHUB_OUTPUT
+            release="${{ github.event.inputs.release }}"
           fi
+          echo "release=${release}" >> "$GITHUB_OUTPUT"
+          echo "version=${release#v}" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
 
       - name: Install build dependencies
         run: |
@@ -66,9 +69,32 @@ jobs:
         run: |
           cp build/shellos.bin shellos-${{ steps.vars.outputs.release }}-reproduction.bin
 
-      - name: Generate firmware hash
+      - name: Copy bootloader binary
         run: |
-          uv run python tools/firmware-hash.py -b build/shellos.bin > shellos-${{ steps.vars.outputs.release }}-sha256.txt
+          cp build/shellos-bootloader.bin shellos-bootloader-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.version }}.bin
+
+      - name: Generate checksums
+        run: |
+          set -e
+          boot_bin="shellos-bootloader-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.version }}.bin"
+          fw_bin="shellos-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.version }}.bin"
+          # The firmware hash skips the signature bytes (bootloader-compatible), the
+          # bootloader is unsigned, so a plain SHA256 is enough for it.
+          fw_hash=$(uv run python tools/firmware-hash.py -b build/shellos.bin)
+          boot_hash=$(sha256sum "${boot_bin}" | cut -d' ' -f1)
+          {
+            echo "# Format: <sha256>  <filename>"
+            echo "#"
+            echo "# The firmware hash is computed by tools/firmware-hash.py (the same hash the"
+            echo "# bootloader verifies at boot), which skips the 64 signature bytes at offset 588,"
+            echo "# so a plain sha256sum does NOT reproduce it. Verify it with:"
+            echo "#   python3 tools/firmware-hash.py -b ${fw_bin}"
+            echo "#"
+            echo "# The bootloader is unsigned and uses a plain SHA256, which can be verified with:"
+            echo "#   sha256sum -c --ignore-missing <this file>"
+            echo "${fw_hash}  ${fw_bin}"
+            echo "${boot_hash}  ${boot_bin}"
+          } > shellos-${{ steps.vars.outputs.release }}-sha256.txt
 
       - name: Upload signed binary artifact
         uses: actions/upload-artifact@v4
@@ -76,8 +102,42 @@ jobs:
           name: shellos-${{ steps.vars.outputs.release }}-reproduction
           path: shellos-${{ steps.vars.outputs.release }}-reproduction.bin
 
+      - name: Upload bootloader artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shellos-${{ steps.vars.outputs.release }}-bootloader
+          path: shellos-bootloader-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.version }}.bin
+
       - name: Upload hash artifact
         uses: actions/upload-artifact@v4
         with:
           name: shellos-${{ steps.vars.outputs.release }}-sha256
           path: shellos-${{ steps.vars.outputs.release }}-sha256.txt
+
+  # Attach the automatically verifiable files to the release. The signed firmware is
+  # intentionally left out here, since it has to be signed with the production keys and
+  # uploaded manually.
+  release:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download bootloader artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shellos-${{ needs.build.outputs.release }}-bootloader
+          path: assets
+
+      - name: Download hash artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shellos-${{ needs.build.outputs.release }}-sha256
+          path: assets
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.build.outputs.release }}" assets/* --clobber
