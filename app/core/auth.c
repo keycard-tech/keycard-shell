@@ -16,7 +16,7 @@
 
 void device_auth_run() {
   // Inform the user
-  if (!g_settings.skip_help && (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
+  if (!g_settings.skip_help && (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT_STEP1), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return;
   }
 
@@ -55,6 +55,11 @@ void device_auth_run() {
   ecdsa_sign(&secp256k1, auth_key, digest, g_core.data.sig.plain_sig);
   memzero(auth_key, ECC256_ELEMENT_SIZE);
 
+  // Step 2
+  if (!g_settings.skip_help && (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT_STEP2), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
+    return;
+  }  
+
   // Response
   random_buffer((uint8_t*) auth.dev_auth_challenge.dev_auth_challenge.value, AUTH_CHALLENGE_LEN);
 
@@ -76,6 +81,11 @@ void device_auth_run() {
   sha256_Init(&sha256);
   sha256_Update(&sha256, uid, HAL_DEVICE_UID_LEN);
   sha256_Update(&sha256, auth.dev_auth_challenge.dev_auth_challenge.value, auth.dev_auth_challenge.dev_auth_challenge.len);
+
+  // Step 3
+  if (!g_settings.skip_help && (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT_STEP3), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
+    return;
+  }
 
   // Final QR
   if (ui_qrscan(DEV_AUTH, &auth) != CORE_EVT_UI_OK) {
