@@ -1,5 +1,16 @@
 # Keycard Shell Dev Firmware
 
+## 1.4.0 (2026-09-15)
+
+* [keycard] support Keycard v4
+* [btc] support Bitcoin Taproot (requires Keycard v4)
+* [btc] support storing and managing multisig descriptors
+* [core] add address verification by QR scan
+* [eip712] more tolerant parser
+* [ui] guided Verify flow
+* [misc] various robustness improvements
+* [ci] add bootloader to GitHub releases
+
 ## 1.3.0 (2026-05-11)
 
 * [eth] support ERC-8213
