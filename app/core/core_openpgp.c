@@ -2,7 +2,10 @@
 
 #include "core.h"
 #include "crypto/bip32.h"
+#include "crypto/util.h"
 #include "openpgp/openpgp_protocol.h"
+#include "ui/i18n.h"
+#include "ui/ui.h"
 
 app_err_t core_openpgp_prepare_primary_key(
     uint8_t *path,
@@ -116,6 +119,60 @@ app_err_t core_openpgp_prepare_uid_certification(
             sig_fields_len,
             certification->digest) != 0) {
         return ERR_CRYPTO;
+    }
+
+    return ERR_OK;
+}
+
+app_err_t core_openpgp_confirm_identity(
+    const uint8_t *uid,
+    size_t uid_len,
+    const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN])
+{
+    char fingerprint_hex[(OPENPGP_V4_FINGERPRINT_LEN * 2) + 1];
+
+    if (uid == NULL ||
+        uid_len == 0 ||
+        uid_len > OPENPGP_UID_MAX_LEN ||
+        fingerprint == NULL) {
+        return ERR_DATA;
+    }
+
+    /*
+     * The certification digest commits to the exact UID bytes.
+     * Reject bytes that cannot be unambiguously reviewed by the
+     * existing text UI before allowing certification.
+     */
+    for (size_t i = 0; i < uid_len; i++) {
+        if (uid[i] < 0x20 || uid[i] > 0x7e) {
+            return ERR_DATA;
+        }
+    }
+
+    base16_encode(
+        fingerprint,
+        fingerprint_hex,
+        OPENPGP_V4_FINGERPRINT_LEN);
+
+    if (ui_display_paged_text(
+            LSTR(OPENPGP_UID_TITLE),
+            (const char *) uid,
+            uid_len) != CORE_EVT_UI_OK) {
+        return ERR_CANCEL;
+    }
+
+    if (ui_display_paged_text(
+            LSTR(OPENPGP_FINGERPRINT_TITLE),
+            fingerprint_hex,
+            OPENPGP_V4_FINGERPRINT_LEN * 2) != CORE_EVT_UI_OK) {
+        return ERR_CANCEL;
+    }
+
+    if (ui_prompt(
+            LSTR(OPENPGP_APPROVE_TITLE),
+            LSTR(OPENPGP_APPROVE_MSG),
+            UI_INFO_CANCELLABLE | UI_INFO_DANGEROUS) != CORE_EVT_UI_OK) {
+        return ERR_CANCEL;
     }
 
     return ERR_OK;

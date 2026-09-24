@@ -30,4 +30,9 @@ app_err_t core_openpgp_prepare_uid_certification(
     uint32_t creation_time,
     core_openpgp_uid_certification_t *certification);
 
+app_err_t core_openpgp_confirm_identity(
+    const uint8_t *uid,
+    size_t uid_len,
+    const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN]);
+
 #endif

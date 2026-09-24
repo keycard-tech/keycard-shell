@@ -336,4 +336,10 @@ const char *const i18n_english_strings[] = {
     "Multisig deleted",
     "The descriptor was removed",
     "Multisig address",
+
+    // OpenPGP identity
+    "OpenPGP UID",
+    "OpenPGP fingerprint",
+    "Create OpenPGP identity",
+    "Approve this UID and fingerprint?",
 };
