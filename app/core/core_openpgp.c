@@ -5,11 +5,15 @@
 #include "crypto/util.h"
 #include "crypto/memzero.h"
 #include "keycard/keycard_cmdset.h"
+#include "openpgp/openpgp_packet.h"
 #include "openpgp/openpgp_protocol.h"
 #include "ui/i18n.h"
 #include "ui/ui.h"
 
 #define OPENPGP_UID_CERT_SIGNATURE_TYPE 0x13
+#define OPENPGP_UID_CERT_ISSUER_FINGERPRINT_OFFSET 9
+#define OPENPGP_UID_CERT_ISSUER_KEY_ID_OFFSET \
+    (OPENPGP_V4_SIG_FIELDS_LEN + 4)
 
 app_err_t core_openpgp_prepare_primary_key(
     uint8_t *path,
@@ -303,5 +307,228 @@ app_err_t core_openpgp_build_uid_certification_packet(
         return ERR_CRYPTO;
     }
 
+    return ERR_OK;
+}
+
+static int core_openpgp_append_new_format_packet(
+    uint8_t tag,
+    const uint8_t *body,
+    size_t body_len,
+    uint8_t *out,
+    size_t out_capacity,
+    size_t *offset)
+{
+    size_t p;
+    size_t remaining;
+    size_t encoded_len;
+
+    if (tag > 0x3f ||
+        body == NULL ||
+        body_len == 0 ||
+        out == NULL ||
+        offset == NULL ||
+        *offset > out_capacity) {
+        return -1;
+    }
+
+    p = *offset;
+    remaining = out_capacity - p;
+
+    if (body_len < 192) {
+        if (remaining < 2) {
+            return -1;
+        }
+
+        out[p++] = (uint8_t)(0xc0 | tag);
+        out[p++] = (uint8_t)body_len;
+    } else if (body_len <= 8383) {
+        if (remaining < 3) {
+            return -1;
+        }
+
+        encoded_len = body_len - 192;
+
+        out[p++] = (uint8_t)(0xc0 | tag);
+        out[p++] = (uint8_t)((encoded_len >> 8) + 192);
+        out[p++] = (uint8_t)encoded_len;
+    } else {
+        return -1;
+    }
+
+    if (body_len > out_capacity - p) {
+        return -1;
+    }
+
+    memcpy(&out[p], body, body_len);
+    p += body_len;
+
+    *offset = p;
+    return 0;
+}
+
+static int core_openpgp_validate_identity_binding(
+    const openpgp_cert_target_t *target)
+{
+    uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN];
+    const uint8_t *signature_body;
+
+    if (target == NULL ||
+        target->primary_key_body == NULL ||
+        target->self_cert_body == NULL) {
+        return -1;
+    }
+
+    if (openpgp_v4_primary_key_fingerprint(
+            target->primary_key_body,
+            target->primary_key_body_len,
+            fingerprint) != 0) {
+        return -1;
+    }
+
+    signature_body = target->self_cert_body;
+
+    /*
+     * Require the exact certification metadata layout emitted by
+     * openpgp_v4_build_sig_fields_for_type() and
+     * openpgp_v4_build_signature_packet().
+     */
+    if (target->self_cert_body_len <
+            OPENPGP_UID_CERT_ISSUER_KEY_ID_OFFSET + 8 ||
+        signature_body[4] != 0x00 ||
+        signature_body[5] != 0x1d ||
+        signature_body[6] != 0x16 ||
+        signature_body[7] != 0x21 ||
+        signature_body[8] != 0x04 ||
+        signature_body[OPENPGP_V4_SIG_FIELDS_LEN] != 0x00 ||
+        signature_body[OPENPGP_V4_SIG_FIELDS_LEN + 1] != 0x0a ||
+        signature_body[OPENPGP_V4_SIG_FIELDS_LEN + 2] != 0x09 ||
+        signature_body[OPENPGP_V4_SIG_FIELDS_LEN + 3] != 0x10) {
+        return -1;
+    }
+
+    if (memcmp(
+            &signature_body[OPENPGP_UID_CERT_ISSUER_FINGERPRINT_OFFSET],
+            fingerprint,
+            OPENPGP_V4_FINGERPRINT_LEN) != 0) {
+        return -1;
+    }
+
+    if (memcmp(
+            &signature_body[OPENPGP_UID_CERT_ISSUER_KEY_ID_OFFSET],
+            &fingerprint[OPENPGP_V4_FINGERPRINT_LEN - 8],
+            8) != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+app_err_t core_openpgp_assemble_and_verify_identity(
+    const uint8_t *primary_key_body,
+    size_t primary_key_body_len,
+    const uint8_t *uid,
+    size_t uid_len,
+    const uint8_t *certification_packet,
+    size_t certification_packet_len,
+    uint8_t *out,
+    size_t out_capacity,
+    size_t *out_len)
+{
+    openpgp_cert_target_t target;
+    size_t p = 0;
+
+    if (primary_key_body == NULL ||
+        primary_key_body_len != OPENPGP_V4_SECP256K1_PUBLIC_KEY_BODY_LEN ||
+        uid == NULL ||
+        uid_len == 0 ||
+        uid_len > OPENPGP_UID_MAX_LEN ||
+        certification_packet == NULL ||
+        certification_packet_len == 0 ||
+        out == NULL ||
+        out_len == NULL) {
+        return ERR_DATA;
+    }
+
+    *out_len = 0;
+
+    if (core_openpgp_append_new_format_packet(
+            6,
+            primary_key_body,
+            primary_key_body_len,
+            out,
+            out_capacity,
+            &p) != 0) {
+        return ERR_DATA;
+    }
+
+    if (core_openpgp_append_new_format_packet(
+            13,
+            uid,
+            uid_len,
+            out,
+            out_capacity,
+            &p) != 0) {
+        return ERR_DATA;
+    }
+
+    if (certification_packet_len > out_capacity - p) {
+        return ERR_DATA;
+    }
+
+    memcpy(
+        &out[p],
+        certification_packet,
+        certification_packet_len);
+    p += certification_packet_len;
+
+    /*
+     * Parse the exact bytes we are about to return. This checks packet
+     * framing, ordering, signature type and rejection of trailing data.
+     */
+    if (openpgp_parse_cert_target(
+            out,
+            p,
+            &target) != 0) {
+        return ERR_DATA;
+    }
+
+    /*
+     * Make sure parsing recovered exactly the objects supplied to this
+     * assembly step before performing the cryptographic self-check.
+     */
+    if (target.primary_key_body_len != primary_key_body_len ||
+        memcmp(
+            target.primary_key_body,
+            primary_key_body,
+            primary_key_body_len) != 0 ||
+        target.user_id_len != uid_len ||
+        memcmp(
+            target.user_id,
+            uid,
+            uid_len) != 0 ||
+        target.self_cert_packet_len != certification_packet_len ||
+        memcmp(
+            target.self_cert_packet,
+            certification_packet,
+            certification_packet_len) != 0 ||
+        target.self_cert_type != OPENPGP_UID_CERT_SIGNATURE_TYPE) {
+        return ERR_DATA;
+    }
+
+    if (core_openpgp_validate_identity_binding(&target) != 0) {
+        return ERR_DATA;
+    }
+
+    if (openpgp_v4_verify_uid_self_cert(
+            target.primary_key_body,
+            target.primary_key_body_len,
+            target.user_id,
+            target.user_id_len,
+            target.self_cert_body,
+            target.self_cert_body_len) != 0) {
+        return ERR_CRYPTO;
+    }
+
+    *out_len = p;
     return ERR_OK;
 }

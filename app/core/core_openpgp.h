@@ -55,4 +55,15 @@ app_err_t core_openpgp_build_uid_certification_packet(
     size_t out_capacity,
     size_t *out_len);
 
+app_err_t core_openpgp_assemble_and_verify_identity(
+    const uint8_t *primary_key_body,
+    size_t primary_key_body_len,
+    const uint8_t *uid,
+    size_t uid_len,
+    const uint8_t *certification_packet,
+    size_t certification_packet_len,
+    uint8_t *out,
+    size_t out_capacity,
+    size_t *out_len);
+
 #endif
