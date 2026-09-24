@@ -12,6 +12,7 @@ typedef struct {
     uint8_t operation;
     const uint8_t *uid;
     size_t uid_len;
+    uint32_t creation_time;
 } openpgp_request_t;
 
 /*
@@ -20,11 +21,13 @@ typedef struct {
  * {
  *   1: version,
  *   2: operation,
- *   3: uid
+ *   3: uid,
+ *   4: creation_time
  * }
  *
- * The derivation path and all trusted cryptographic values are selected or
- * derived by the Shell and are intentionally absent from the request.
+ * creation_time is host-provided OpenPGP metadata. The derivation path and
+ * trusted cryptographic values are selected or derived by the Shell and are
+ * intentionally absent from the request.
  */
 int openpgp_protocol_parse_request(
     const uint8_t *data,
@@ -35,6 +38,7 @@ int openpgp_protocol_build_request(
     uint8_t operation,
     const uint8_t *uid,
     size_t uid_len,
+    uint32_t creation_time,
     uint8_t *out,
     size_t out_capacity,
     size_t *out_len);

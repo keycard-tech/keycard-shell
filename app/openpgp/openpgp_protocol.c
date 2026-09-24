@@ -3,10 +3,11 @@
 #include "zcbor_decode.h"
 #include "zcbor_encode.h"
 
-#define OPENPGP_REQUEST_MAP_ENTRIES 3
+#define OPENPGP_REQUEST_MAP_ENTRIES 4
 #define OPENPGP_REQUEST_KEY_VERSION 1
 #define OPENPGP_REQUEST_KEY_OPERATION 2
 #define OPENPGP_REQUEST_KEY_UID 3
+#define OPENPGP_REQUEST_KEY_CREATION_TIME 4
 
 int openpgp_protocol_parse_request(
     const uint8_t *data,
@@ -17,6 +18,7 @@ int openpgp_protocol_parse_request(
     struct zcbor_string uid;
     uint32_t version;
     uint32_t operation;
+    uint32_t creation_time;
 
     if (data == NULL || request == NULL || data_len == 0) {
         return -1;
@@ -32,6 +34,8 @@ int openpgp_protocol_parse_request(
         !zcbor_uint32_decode(states, &operation) ||
         !zcbor_uint32_expect(states, OPENPGP_REQUEST_KEY_UID) ||
         !zcbor_bstr_decode(states, &uid) ||
+        !zcbor_uint32_expect(states, OPENPGP_REQUEST_KEY_CREATION_TIME) ||
+        !zcbor_uint32_decode(states, &creation_time) ||
         !zcbor_map_end_decode(states)) {
         return -1;
     }
@@ -43,13 +47,15 @@ int openpgp_protocol_parse_request(
     if (version != OPENPGP_PROTOCOL_VERSION ||
         operation != OPENPGP_OP_CREATE_IDENTITY ||
         uid.len == 0 ||
-        uid.len > OPENPGP_UID_MAX_LEN) {
+        uid.len > OPENPGP_UID_MAX_LEN ||
+        creation_time == 0) {
         return -1;
     }
 
     request->operation = (uint8_t)operation;
     request->uid = uid.value;
     request->uid_len = uid.len;
+    request->creation_time = creation_time;
 
     return 0;
 }
@@ -58,6 +64,7 @@ int openpgp_protocol_build_request(
     uint8_t operation,
     const uint8_t *uid,
     size_t uid_len,
+    uint32_t creation_time,
     uint8_t *out,
     size_t out_capacity,
     size_t *out_len)
@@ -71,7 +78,8 @@ int openpgp_protocol_build_request(
 
     if (operation != OPENPGP_OP_CREATE_IDENTITY ||
         uid_len == 0 ||
-        uid_len > OPENPGP_UID_MAX_LEN) {
+        uid_len > OPENPGP_UID_MAX_LEN ||
+        creation_time == 0) {
         return -1;
     }
 
@@ -88,7 +96,9 @@ int openpgp_protocol_build_request(
         !zcbor_uint32_put(states, OPENPGP_REQUEST_KEY_OPERATION) ||
         !zcbor_uint32_put(states, operation) ||
         !zcbor_uint32_put(states, OPENPGP_REQUEST_KEY_UID) ||
-        !zcbor_bstr_encode(states, &uid_string)) {
+        !zcbor_bstr_encode(states, &uid_string) ||
+        !zcbor_uint32_put(states, OPENPGP_REQUEST_KEY_CREATION_TIME) ||
+        !zcbor_uint32_put(states, creation_time)) {
         zcbor_list_map_end_force_encode(states);
         return -1;
     }
