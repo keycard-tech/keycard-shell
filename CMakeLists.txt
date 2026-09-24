@@ -136,6 +136,7 @@ set(APP_SOURCES
     app/keycard/secure_channel_v1.c
     app/keycard/secure_channel_v2.c
     app/openpgp/openpgp_packet.c
+    app/openpgp/openpgp_protocol.c
     app/openpgp/openpgp_v4.c
     app/json/jsmn.c
     app/iso7816/atr.c
