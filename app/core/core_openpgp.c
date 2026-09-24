@@ -9,6 +9,8 @@
 #include "ui/i18n.h"
 #include "ui/ui.h"
 
+#define OPENPGP_UID_CERT_SIGNATURE_TYPE 0x13
+
 app_err_t core_openpgp_prepare_primary_key(
     uint8_t *path,
     uint16_t path_len,
@@ -101,7 +103,8 @@ app_err_t core_openpgp_prepare_uid_certification(
         return ERR_CRYPTO;
     }
 
-    if (openpgp_v4_build_sig_fields(
+    if (openpgp_v4_build_sig_fields_for_type(
+            OPENPGP_UID_CERT_SIGNATURE_TYPE,
             fingerprint,
             creation_time,
             certification->sig_fields,
