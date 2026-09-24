@@ -187,6 +187,7 @@ set(APP_SOURCES
     app/core/auth.c
     app/core/card.c
     app/core/core.c
+    app/core/core_openpgp.c
     app/core/core_multisig.c
     app/core/core_btc.c
     app/core/core_eth.c
