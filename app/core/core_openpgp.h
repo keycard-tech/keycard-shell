@@ -85,4 +85,13 @@ app_err_t core_openpgp_create_identity_at_path(
     size_t out_capacity,
     size_t *out_len);
 
+/*
+ * Scan a versioned OpenPGP request from UR:BYTES, create the identity using a
+ * trusted Shell-selected path, and display the verified certificate as
+ * UR:BYTES.
+ */
+app_err_t core_openpgp_qr_run(
+    uint8_t *path,
+    uint16_t path_len);
+
 #endif

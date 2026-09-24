@@ -5,10 +5,12 @@
 #include "crypto/util.h"
 #include "crypto/memzero.h"
 #include "keycard/keycard_cmdset.h"
+#include "mem.h"
 #include "openpgp/openpgp_packet.h"
 #include "openpgp/openpgp_protocol.h"
 #include "ui/i18n.h"
 #include "ui/ui.h"
+#include "ur/ur_encode.h"
 
 #define OPENPGP_UID_CERT_SIGNATURE_TYPE 0x13
 #define OPENPGP_UID_CERT_ISSUER_FINGERPRINT_OFFSET 9
@@ -629,4 +631,89 @@ app_err_t core_openpgp_create_identity_at_path(
         out,
         out_capacity,
         out_len);
+}
+
+app_err_t core_openpgp_qr_run(
+    uint8_t *path,
+    uint16_t path_len)
+{
+    struct zcbor_string qr_request;
+    struct zcbor_string qr_response;
+    openpgp_request_t request;
+
+    uint8_t *identity = g_mem_heap;
+    uint8_t *encoded =
+        &g_mem_heap[CORE_OPENPGP_IDENTITY_MAX_LEN];
+
+    size_t identity_len = 0;
+    size_t encoded_len = 0;
+    app_err_t err;
+
+    if (path == NULL ||
+        path_len == 0) {
+        return ERR_DATA;
+    }
+
+    /*
+     * OpenPGP has a dedicated UR:BYTES entry point. Do not widen
+     * UR_ANY_TX to accept arbitrary BYTES payloads.
+     */
+    if (ui_qrscan(BYTES, &qr_request) != CORE_EVT_UI_OK) {
+        return ERR_CANCEL;
+    }
+
+    if (openpgp_protocol_parse_request(
+            qr_request.value,
+            qr_request.len,
+            &request) != 0) {
+        return ERR_DATA;
+    }
+
+    if (request.operation != OPENPGP_OP_CREATE_IDENTITY) {
+        return ERR_DATA;
+    }
+
+    /*
+     * qr_request points into g_mem_heap. create_identity_at_path() snapshots
+     * the UID before writing identity output, so the scanned request may be
+     * safely replaced here.
+     */
+    err = core_openpgp_create_identity_at_path(
+        path,
+        path_len,
+        request.uid,
+        request.uid_len,
+        request.creation_time,
+        identity,
+        CORE_OPENPGP_IDENTITY_MAX_LEN,
+        &identity_len);
+
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    qr_response.value = identity;
+    qr_response.len = identity_len;
+
+    /*
+     * Keep the CBOR output separate from the raw certificate input.
+     * The raw identity occupies at most [0, 458), so encoding begins at 458.
+     */
+    if (cbor_encode_psbt(
+            encoded,
+            MEM_HEAP_SIZE - CORE_OPENPGP_IDENTITY_MAX_LEN,
+            &qr_response,
+            &encoded_len) != ZCBOR_SUCCESS) {
+        return ERR_DATA;
+    }
+
+    if (ui_display_ur_qr(
+            NULL,
+            encoded,
+            encoded_len,
+            BYTES) != CORE_EVT_UI_OK) {
+        return ERR_CANCEL;
+    }
+
+    return ERR_OK;
 }
