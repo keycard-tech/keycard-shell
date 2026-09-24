@@ -16,4 +16,18 @@ app_err_t core_openpgp_prepare_primary_key(
     size_t *primary_key_body_len,
     uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN]);
 
+typedef struct {
+    uint8_t sig_fields[OPENPGP_V4_SIG_FIELDS_LEN];
+    uint8_t digest[OPENPGP_SHA256_LEN];
+} core_openpgp_uid_certification_t;
+
+app_err_t core_openpgp_prepare_uid_certification(
+    const uint8_t *primary_key_body,
+    size_t primary_key_body_len,
+    const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN],
+    const uint8_t *uid,
+    size_t uid_len,
+    uint32_t creation_time,
+    core_openpgp_uid_certification_t *certification);
+
 #endif

@@ -8,6 +8,7 @@
 #define OPENPGP_V4_FINGERPRINT_LEN 20
 #define OPENPGP_V4_SIG_FIELDS_LEN 35
 #define OPENPGP_RAW_ECDSA_LEN 64
+#define OPENPGP_V4_SECP256K1_PUBLIC_KEY_BODY_LEN 79
 
 int openpgp_v4_build_public_key_body(
     const uint8_t *point,
