@@ -3,6 +3,8 @@
 #include "core.h"
 #include "crypto/bip32.h"
 #include "crypto/util.h"
+#include "crypto/memzero.h"
+#include "keycard/keycard_cmdset.h"
 #include "openpgp/openpgp_protocol.h"
 #include "ui/i18n.h"
 #include "ui/ui.h"
@@ -174,6 +176,85 @@ app_err_t core_openpgp_confirm_identity(
             UI_INFO_CANCELLABLE | UI_INFO_DANGEROUS) != CORE_EVT_UI_OK) {
         return ERR_CANCEL;
     }
+
+    return ERR_OK;
+}
+
+app_err_t core_openpgp_certify_uid(
+    uint8_t *path,
+    uint16_t path_len,
+    const uint8_t *primary_key_body,
+    size_t primary_key_body_len,
+    const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN],
+    const uint8_t *uid,
+    size_t uid_len,
+    uint32_t creation_time,
+    core_openpgp_uid_certification_t *certification,
+    uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN])
+{
+    uint8_t card_signature[OPENPGP_RAW_ECDSA_LEN + 1];
+
+    if (path == NULL ||
+        path_len == 0 ||
+        (path_len % sizeof(uint32_t)) != 0 ||
+        path_len > UINT8_MAX ||
+        certification == NULL ||
+        raw_signature == NULL) {
+        return ERR_DATA;
+    }
+
+    memzero(raw_signature, OPENPGP_RAW_ECDSA_LEN);
+    memzero(card_signature, sizeof(card_signature));
+
+    app_err_t err = core_openpgp_prepare_uid_certification(
+        primary_key_body,
+        primary_key_body_len,
+        fingerprint,
+        uid,
+        uid_len,
+        creation_time,
+        certification);
+
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    err = core_openpgp_confirm_identity(
+        uid,
+        uid_len,
+        fingerprint);
+
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    keycard_t *kc = &g_core.keycard;
+
+    if (keycard_cmd_sign(
+            kc,
+            KEYCARD_SIGN_ECDSA_SECP256K1,
+            path,
+            (uint8_t) path_len,
+            certification->digest) != ERR_OK ||
+        APDU_SW(&kc->apdu) != 0x9000) {
+        return ERR_CRYPTO;
+    }
+
+    if (keycard_read_signature(
+            APDU_RESP(&kc->apdu),
+            kc->apdu.lr,
+            certification->digest,
+            card_signature) != ERR_OK) {
+        memzero(card_signature, sizeof(card_signature));
+        return ERR_DATA;
+    }
+
+    memcpy(
+        raw_signature,
+        card_signature,
+        OPENPGP_RAW_ECDSA_LEN);
+
+    memzero(card_signature, sizeof(card_signature));
 
     return ERR_OK;
 }
