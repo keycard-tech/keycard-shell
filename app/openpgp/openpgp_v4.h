@@ -9,6 +9,14 @@
 #define OPENPGP_V4_SIG_FIELDS_LEN 35
 #define OPENPGP_RAW_ECDSA_LEN 64
 
+int openpgp_v4_build_public_key_body(
+    const uint8_t *point,
+    size_t point_len,
+    uint32_t creation_time,
+    uint8_t *out,
+    size_t out_capacity,
+    size_t *out_len);
+
 int openpgp_v4_build_sig_fields(
     const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN],
     uint32_t creation_time,

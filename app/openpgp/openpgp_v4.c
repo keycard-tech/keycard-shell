@@ -12,8 +12,88 @@
 
 #define OPENPGP_HASH_SHA256    8
 
+static const uint8_t secp256k1_oid[] = {
+  0x2b, 0x81, 0x04, 0x00, 0x0a
+};
+
+static size_t openpgp_mpi_bit_length(const uint8_t *data, size_t len) {
+  size_t i;
+  uint8_t byte;
+  size_t bits;
+
+  for (i = 0; i < len; i++) {
+    if (data[i] != 0) {
+      break;
+    }
+  }
+
+  if (i == len) {
+    return 0;
+  }
+
+  byte = data[i];
+  bits = (len - i - 1) * 8;
+
+  while (byte) {
+    bits++;
+    byte >>= 1;
+  }
+
+  return bits;
+}
+
 static uint16_t openpgp_read_be16(const uint8_t *p) {
   return ((uint16_t)p[0] << 8) | p[1];
+}
+
+int openpgp_v4_build_public_key_body(
+    const uint8_t *point,
+    size_t point_len,
+    uint32_t creation_time,
+    uint8_t *out,
+    size_t out_capacity,
+    size_t *out_len) {
+  size_t p = 0;
+  size_t bits;
+  size_t needed;
+
+  if (!point || !out || !out_len) {
+    return -1;
+  }
+
+  if (point_len != 65 || point[0] != 0x04) {
+    return -1;
+  }
+
+  needed = 1 + 4 + 1 + 1 + sizeof(secp256k1_oid) + 2 + point_len;
+
+  if (out_capacity < needed) {
+    return -1;
+  }
+
+  out[p++] = 0x04;
+
+  out[p++] = (uint8_t)(creation_time >> 24);
+  out[p++] = (uint8_t)(creation_time >> 16);
+  out[p++] = (uint8_t)(creation_time >> 8);
+  out[p++] = (uint8_t)creation_time;
+
+  out[p++] = OPENPGP_ALGO_ECDSA;
+
+  out[p++] = (uint8_t)sizeof(secp256k1_oid);
+  memcpy(&out[p], secp256k1_oid, sizeof(secp256k1_oid));
+  p += sizeof(secp256k1_oid);
+
+  bits = openpgp_mpi_bit_length(point, point_len);
+
+  out[p++] = (uint8_t)(bits >> 8);
+  out[p++] = (uint8_t)bits;
+
+  memcpy(&out[p], point, point_len);
+  p += point_len;
+
+  *out_len = p;
+  return 0;
 }
 
 int openpgp_v4_build_sig_fields(
@@ -395,9 +475,6 @@ static int openpgp_ecdsa_point(
     const uint8_t *primary_key_body,
     size_t primary_key_body_len,
     uint8_t point[65]) {
-  static const uint8_t secp256k1_oid[] = {
-    0x2b, 0x81, 0x04, 0x00, 0x0a
-  };
 
   size_t pos = 6;
   uint16_t point_bits;
