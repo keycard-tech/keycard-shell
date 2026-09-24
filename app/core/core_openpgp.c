@@ -532,3 +532,101 @@ app_err_t core_openpgp_assemble_and_verify_identity(
     *out_len = p;
     return ERR_OK;
 }
+
+app_err_t core_openpgp_create_identity_at_path(
+    uint8_t *path,
+    uint16_t path_len,
+    const uint8_t *uid,
+    size_t uid_len,
+    uint32_t creation_time,
+    uint8_t *out,
+    size_t out_capacity,
+    size_t *out_len)
+{
+    uint8_t primary_key_body[
+        OPENPGP_V4_SECP256K1_PUBLIC_KEY_BODY_LEN];
+    uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN];
+    uint8_t uid_copy[OPENPGP_UID_MAX_LEN];
+    core_openpgp_uid_certification_t certification;
+    uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN];
+    uint8_t certification_packet[
+        CORE_OPENPGP_SIGNATURE_PACKET_MAX_LEN];
+
+    size_t primary_key_body_len = 0;
+    size_t certification_packet_len = 0;
+    app_err_t err;
+
+    if (path == NULL ||
+        path_len == 0 ||
+        uid == NULL ||
+        uid_len == 0 ||
+        uid_len > OPENPGP_UID_MAX_LEN ||
+        creation_time == 0 ||
+        out == NULL ||
+        out_len == NULL) {
+        return ERR_DATA;
+    }
+
+    *out_len = 0;
+
+    /*
+     * Keep the reviewed UID stable for the entire operation and permit the
+     * caller's input and output storage to alias safely.
+     */
+    memcpy(uid_copy, uid, uid_len);
+
+    err = core_openpgp_prepare_primary_key(
+        path,
+        path_len,
+        creation_time,
+        primary_key_body,
+        sizeof(primary_key_body),
+        &primary_key_body_len,
+        fingerprint);
+
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    err = core_openpgp_certify_uid(
+        path,
+        path_len,
+        primary_key_body,
+        primary_key_body_len,
+        fingerprint,
+        uid_copy,
+        uid_len,
+        creation_time,
+        &certification,
+        raw_signature);
+
+    if (err != ERR_OK) {
+        memzero(raw_signature, sizeof(raw_signature));
+        return err;
+    }
+
+    err = core_openpgp_build_uid_certification_packet(
+        &certification,
+        fingerprint,
+        raw_signature,
+        certification_packet,
+        sizeof(certification_packet),
+        &certification_packet_len);
+
+    memzero(raw_signature, sizeof(raw_signature));
+
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    return core_openpgp_assemble_and_verify_identity(
+        primary_key_body,
+        primary_key_body_len,
+        uid_copy,
+        uid_len,
+        certification_packet,
+        certification_packet_len,
+        out,
+        out_capacity,
+        out_len);
+}

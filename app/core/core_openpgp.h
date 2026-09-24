@@ -7,6 +7,9 @@
 #include "error.h"
 #include "openpgp/openpgp_v4.h"
 
+#define CORE_OPENPGP_SIGNATURE_PACKET_MAX_LEN 119
+#define CORE_OPENPGP_IDENTITY_MAX_LEN 458
+
 app_err_t core_openpgp_prepare_primary_key(
     uint8_t *path,
     uint16_t path_len,
@@ -62,6 +65,22 @@ app_err_t core_openpgp_assemble_and_verify_identity(
     size_t uid_len,
     const uint8_t *certification_packet,
     size_t certification_packet_len,
+    uint8_t *out,
+    size_t out_capacity,
+    size_t *out_len);
+
+/*
+ * Internal orchestration primitive.
+ *
+ * path must be selected by trusted Shell policy, never supplied by the
+ * untrusted OpenPGP request.
+ */
+app_err_t core_openpgp_create_identity_at_path(
+    uint8_t *path,
+    uint16_t path_len,
+    const uint8_t *uid,
+    size_t uid_len,
+    uint32_t creation_time,
     uint8_t *out,
     size_t out_capacity,
     size_t *out_len);
