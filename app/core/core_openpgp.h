@@ -47,4 +47,12 @@ app_err_t core_openpgp_certify_uid(
     core_openpgp_uid_certification_t *certification,
     uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN]);
 
+app_err_t core_openpgp_build_uid_certification_packet(
+    const core_openpgp_uid_certification_t *certification,
+    const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN],
+    const uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN],
+    uint8_t *out,
+    size_t out_capacity,
+    size_t *out_len);
+
 #endif

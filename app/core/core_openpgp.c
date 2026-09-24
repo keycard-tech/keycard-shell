@@ -258,3 +258,47 @@ app_err_t core_openpgp_certify_uid(
 
     return ERR_OK;
 }
+
+app_err_t core_openpgp_build_uid_certification_packet(
+    const core_openpgp_uid_certification_t *certification,
+    const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN],
+    const uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN],
+    uint8_t *out,
+    size_t out_capacity,
+    size_t *out_len)
+{
+    uint8_t issuer_key_id[8];
+
+    if (certification == NULL ||
+        fingerprint == NULL ||
+        raw_signature == NULL ||
+        out == NULL ||
+        out_len == NULL) {
+        return ERR_DATA;
+    }
+
+    *out_len = 0;
+
+    /*
+     * For an OpenPGP v4 key, the key ID is the low 64 bits
+     * (final 8 bytes) of the primary-key fingerprint.
+     */
+    memcpy(
+        issuer_key_id,
+        &fingerprint[OPENPGP_V4_FINGERPRINT_LEN - sizeof(issuer_key_id)],
+        sizeof(issuer_key_id));
+
+    if (openpgp_v4_build_signature_packet(
+            certification->sig_fields,
+            sizeof(certification->sig_fields),
+            certification->digest,
+            raw_signature,
+            issuer_key_id,
+            out,
+            out_capacity,
+            out_len) != 0) {
+        return ERR_CRYPTO;
+    }
+
+    return ERR_OK;
+}
