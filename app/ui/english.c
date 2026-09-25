@@ -342,4 +342,5 @@ const char *const i18n_english_strings[] = {
     "OpenPGP fingerprint",
     "Create OpenPGP identity",
     "Approve this UID and fingerprint?",
+    "OpenPGP",
 };
