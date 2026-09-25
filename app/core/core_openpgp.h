@@ -94,4 +94,11 @@ app_err_t core_openpgp_qr_run(
     uint8_t *path,
     uint16_t path_len);
 
+/*
+ * Run the dedicated OpenPGP flow using the Shell-owned derivation policy.
+ *
+ * The host/request does not select the Keycard derivation path.
+ */
+app_err_t core_openpgp_run(void);
+
 #endif

@@ -13,6 +13,28 @@
 #include "ur/ur_encode.h"
 
 #define OPENPGP_UID_CERT_SIGNATURE_TYPE 0x13
+
+/*
+ * Shell-owned OpenPGP identity path:
+ *
+ *   m/43'/60'/1581'/5261136'/0
+ *
+ * 5261136 == 0x504750 == "PGP".
+ *
+ * Pending final maintainer confirmation, the final non-hardened component
+ * is treated as the OpenPGP identity/key index and the initial identity uses
+ * index 0. The host never supplies this path.
+ */
+#define OPENPGP_EIP1581_PATH_LEN 5
+
+static const uint32_t OPENPGP_EIP1581_PATH[OPENPGP_EIP1581_PATH_LEN] = {
+    0x8000002b,
+    0x8000003c,
+    0x8000062d,
+    0x80504750,
+    0x00000000,
+};
+
 #define OPENPGP_UID_CERT_ISSUER_FINGERPRINT_OFFSET 9
 #define OPENPGP_UID_CERT_ISSUER_KEY_ID_OFFSET \
     (OPENPGP_V4_SIG_FIELDS_LEN + 4)
@@ -716,4 +738,20 @@ app_err_t core_openpgp_qr_run(
     }
 
     return ERR_OK;
+}
+
+app_err_t core_openpgp_run(void)
+{
+    uint8_t path[OPENPGP_EIP1581_PATH_LEN * sizeof(uint32_t)];
+
+    for (size_t i = 0; i < OPENPGP_EIP1581_PATH_LEN; i++) {
+        uint32_t v = OPENPGP_EIP1581_PATH[i];
+
+        path[i * 4] = (uint8_t)(v >> 24);
+        path[i * 4 + 1] = (uint8_t)(v >> 16);
+        path[i * 4 + 2] = (uint8_t)(v >> 8);
+        path[i * 4 + 3] = (uint8_t)v;
+    }
+
+    return core_openpgp_qr_run(path, (uint16_t)sizeof(path));
 }
