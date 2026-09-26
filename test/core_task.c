@@ -26,6 +26,7 @@ const uint8_t TEST_AID[] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01
 #define P1_TEST_CARD_PRESENCE 0x07
 #define P1_TEST_CAMERA 0x08
 #define P1_TEST_SECURITY 0x09
+#define P1_TEST_TLV_BOUNDS 0x0a
 
 #define TEST_GPIO_POLL_MS 5
 #define TEST_GPIO_TIMEOUT_MS 10000
@@ -208,6 +209,100 @@ static void core_usb_test(apdu_t* apdu) {
   core_usb_err_sw(apdu, 0x90, 0x00);
 }
 
+static app_err_t test_signature_rejects(uint8_t* data, uint16_t data_len) {
+  uint8_t digest[32] = {0};
+  uint8_t out_sig[65];
+
+  for (size_t i = 0; i < sizeof(out_sig); i++) {
+    out_sig[i] = 0xa5;
+  }
+
+  if (keycard_read_signature(data, data_len, digest, out_sig) != ERR_DATA) {
+    return ERR_DATA;
+  }
+
+  for (size_t i = 0; i < sizeof(out_sig); i++) {
+    if (out_sig[i] != 0xa5) {
+      return ERR_DATA;
+    }
+  }
+
+  return ERR_OK;
+}
+
+static void core_tlv_bounds_test(apdu_t* apdu) {
+  /*
+   * The backing array is deliberately larger than the logical response.
+   * A length-unaware parser can incorrectly consume the stale bytes after
+   * data_len and treat this truncated response as a valid signature.
+   */
+  uint8_t direct_short_backing[67];
+
+  for (size_t i = 0; i < sizeof(direct_short_backing); i++) {
+    direct_short_backing[i] = 0x5a;
+  }
+
+  direct_short_backing[0] = 0x80;
+  direct_short_backing[1] = 0x41;
+
+  if (test_signature_rejects(direct_short_backing, 2) != ERR_OK) {
+    core_usb_err_sw(apdu, 0x6f, 0x01);
+    return;
+  }
+
+  uint8_t direct_long_length[] = {0x80, 0x81};
+  if (test_signature_rejects(direct_long_length, sizeof(direct_long_length)) != ERR_OK) {
+    core_usb_err_sw(apdu, 0x6f, 0x02);
+    return;
+  }
+
+  uint8_t wrapped_long_length[] = {0xa0, 0x81};
+  if (test_signature_rejects(wrapped_long_length, sizeof(wrapped_long_length)) != ERR_OK) {
+    core_usb_err_sw(apdu, 0x6f, 0x03);
+    return;
+  }
+
+  uint8_t wrapped_inner_tag[] = {0xa0, 0x01, 0x1f};
+  if (test_signature_rejects(wrapped_inner_tag, sizeof(wrapped_inner_tag)) != ERR_OK) {
+    core_usb_err_sw(apdu, 0x6f, 0x04);
+    return;
+  }
+
+  uint8_t wrapped_inner_length[] = {0xa0, 0x02, 0x80, 0x81};
+  if (test_signature_rejects(wrapped_inner_length, sizeof(wrapped_inner_length)) != ERR_OK) {
+    core_usb_err_sw(apdu, 0x6f, 0x05);
+    return;
+  }
+
+  /*
+   * Preserve the existing direct signature response format:
+   * tag 0x80, length 65, followed by the 65-byte card signature.
+   */
+  uint8_t valid_direct[67] = {0x80, 0x41};
+  uint8_t digest[32] = {0};
+  uint8_t out_sig[65] = {0};
+
+  for (size_t i = 0; i < sizeof(out_sig); i++) {
+    valid_direct[i + 2] = (uint8_t) (i + 1);
+  }
+
+  if (keycard_read_signature(
+          valid_direct,
+          sizeof(valid_direct),
+          digest,
+          out_sig) != ERR_OK) {
+    core_usb_err_sw(apdu, 0x6f, 0x06);
+    return;
+  }
+
+  if (memcmp(out_sig, &valid_direct[2], sizeof(out_sig))) {
+    core_usb_err_sw(apdu, 0x6f, 0x07);
+    return;
+  }
+
+  core_usb_err_sw(apdu, 0x90, 0x00);
+}
+
 static void core_security_test(apdu_t* apdu) {
   if (hal_check_hardened() == HAL_SUCCESS) {
     core_usb_err_sw(apdu, 0x90, 0x00);
@@ -244,6 +339,9 @@ static void core_test_run(apdu_t* apdu) {
     break;
   case P1_TEST_SECURITY:
     core_security_test(apdu);
+    break;
+  case P1_TEST_TLV_BOUNDS:
+    core_tlv_bounds_test(apdu);
     break;
   default:
     core_usb_err_sw(apdu, 0x6a, 0x86);
