@@ -160,13 +160,17 @@ app_err_t core_openpgp_prepare_uid_certification(
 app_err_t core_openpgp_confirm_identity(
     const uint8_t *uid,
     size_t uid_len,
+    uint32_t creation_time,
     const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN])
 {
     char fingerprint_hex[(OPENPGP_V4_FINGERPRINT_LEN * 2) + 1];
+    uint8_t creation_time_buf[UINT32_STRING_LEN];
+    uint8_t *creation_time_str;
 
     if (uid == NULL ||
         uid_len == 0 ||
         uid_len > OPENPGP_UID_MAX_LEN ||
+        creation_time == 0 ||
         fingerprint == NULL) {
         return ERR_DATA;
     }
@@ -187,10 +191,23 @@ app_err_t core_openpgp_confirm_identity(
         fingerprint_hex,
         OPENPGP_V4_FINGERPRINT_LEN);
 
+    creation_time_str = u32toa(
+        creation_time,
+        creation_time_buf,
+        sizeof(creation_time_buf));
+
     if (ui_display_paged_text(
             LSTR(OPENPGP_UID_TITLE),
             (const char *) uid,
             uid_len) != CORE_EVT_UI_OK) {
+        return ERR_CANCEL;
+    }
+
+    if (ui_display_paged_text(
+            LSTR(OPENPGP_CREATION_TIME_TITLE),
+            (const char *) creation_time_str,
+            (uint32_t) strlen((const char *) creation_time_str))
+            != CORE_EVT_UI_OK) {
         return ERR_CANCEL;
     }
 
@@ -253,6 +270,7 @@ app_err_t core_openpgp_certify_uid(
     err = core_openpgp_confirm_identity(
         uid,
         uid_len,
+        creation_time,
         fingerprint);
 
     if (err != ERR_OK) {
