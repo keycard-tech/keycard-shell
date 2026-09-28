@@ -459,6 +459,10 @@ static int openpgp_read_mpi_fixed(
     return -1;
   }
 
+  if (openpgp_mpi_bit_length(data + *offset, bytes) != bits) {
+    return -1;
+  }
+
   memset(out, 0, out_len);
   memcpy(out + (out_len - bytes), data + *offset, bytes);
 
@@ -516,6 +520,11 @@ static int openpgp_ecdsa_point(
   if (point_bytes != 65 ||
       primary_key_body_len - pos != 65 ||
       primary_key_body[pos] != 0x04) {
+    return -1;
+  }
+
+  if (openpgp_mpi_bit_length(primary_key_body + pos, point_bytes) !=
+      point_bits) {
     return -1;
   }
 
