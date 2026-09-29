@@ -5,6 +5,7 @@ const char *const i18n_english_strings[] = {
     "Scan QR",
     "Connect software wallet",
     "Addresses",
+    "Extras",
     "Settings",
     "Information",
 
