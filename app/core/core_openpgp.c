@@ -166,6 +166,12 @@ app_err_t core_openpgp_confirm_identity(
     char fingerprint_hex[(OPENPGP_V4_FINGERPRINT_LEN * 2) + 1];
     uint8_t creation_time_buf[UINT32_STRING_LEN];
     uint8_t *creation_time_str;
+    char *review = (char *) g_mem_heap;
+    size_t review_len = 0;
+    size_t creation_time_len;
+    size_t uid_title_len;
+    size_t creation_time_title_len;
+    size_t fingerprint_title_len;
 
     if (uid == NULL ||
         uid_len == 0 ||
@@ -196,32 +202,65 @@ app_err_t core_openpgp_confirm_identity(
         creation_time_buf,
         sizeof(creation_time_buf));
 
-    if (ui_display_paged_text(
-            LSTR(OPENPGP_UID_TITLE),
-            (const char *) uid,
-            uid_len) != CORE_EVT_UI_OK) {
-        return ERR_CANCEL;
+    creation_time_len = strlen((const char *) creation_time_str);
+    uid_title_len = strlen(LSTR(OPENPGP_UID_TITLE));
+    creation_time_title_len = strlen(LSTR(OPENPGP_CREATION_TIME_TITLE));
+    fingerprint_title_len = strlen(LSTR(OPENPGP_FINGERPRINT_TITLE));
+
+    /*
+     * Build one review document in the shared heap. The scanned request UID
+     * has already been copied by the caller, so the QR input may be replaced.
+     */
+    if (uid_title_len + 1 +
+        uid_len + 2 +
+        creation_time_title_len + 1 +
+        creation_time_len + 2 +
+        fingerprint_title_len + 1 +
+        (OPENPGP_V4_FINGERPRINT_LEN * 2) > MEM_HEAP_SIZE) {
+        return ERR_DATA;
     }
 
-    if (ui_display_paged_text(
-            LSTR(OPENPGP_CREATION_TIME_TITLE),
-            (const char *) creation_time_str,
-            (uint32_t) strlen((const char *) creation_time_str))
-            != CORE_EVT_UI_OK) {
-        return ERR_CANCEL;
-    }
+    memcpy(&review[review_len], LSTR(OPENPGP_UID_TITLE), uid_title_len);
+    review_len += uid_title_len;
+    review[review_len++] = '\n';
+
+    memcpy(&review[review_len], uid, uid_len);
+    review_len += uid_len;
+    review[review_len++] = '\n';
+    review[review_len++] = '\n';
+
+    memcpy(
+        &review[review_len],
+        LSTR(OPENPGP_CREATION_TIME_TITLE),
+        creation_time_title_len);
+    review_len += creation_time_title_len;
+    review[review_len++] = '\n';
+
+    memcpy(
+        &review[review_len],
+        creation_time_str,
+        creation_time_len);
+    review_len += creation_time_len;
+    review[review_len++] = '\n';
+    review[review_len++] = '\n';
+
+    memcpy(
+        &review[review_len],
+        LSTR(OPENPGP_FINGERPRINT_TITLE),
+        fingerprint_title_len);
+    review_len += fingerprint_title_len;
+    review[review_len++] = '\n';
+
+    memcpy(
+        &review[review_len],
+        fingerprint_hex,
+        OPENPGP_V4_FINGERPRINT_LEN * 2);
+    review_len += OPENPGP_V4_FINGERPRINT_LEN * 2;
 
     if (ui_display_paged_text(
-            LSTR(OPENPGP_FINGERPRINT_TITLE),
-            fingerprint_hex,
-            OPENPGP_V4_FINGERPRINT_LEN * 2) != CORE_EVT_UI_OK) {
-        return ERR_CANCEL;
-    }
-
-    if (ui_prompt(
             LSTR(OPENPGP_APPROVE_TITLE),
-            LSTR(OPENPGP_APPROVE_MSG),
-            UI_INFO_CANCELLABLE | UI_INFO_DANGEROUS) != CORE_EVT_UI_OK) {
+            review,
+            review_len) != CORE_EVT_UI_OK) {
         return ERR_CANCEL;
     }
 
