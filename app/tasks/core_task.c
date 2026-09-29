@@ -96,7 +96,7 @@ static inline void core_action_run(i18n_str_id_t menu) {
   }
 }
 
-static inline void core_print_fingerprint(char fingerprint[sizeof(uint32_t) + 1]) {
+static inline void core_print_fingerprint(char fingerprint[(sizeof(uint32_t) * 2) + 1]) {
   uint32_t mfp;
   core_get_fingerprint(g_core.bip44_path, 0, &mfp);
   mfp = rev32(mfp);
@@ -121,7 +121,7 @@ void core_task_entry(void* pvParameters) {
 
   i18n_str_id_t selected = MENU_QRCODE;
 
-  char fingerprint[sizeof(uint32_t) + 1];
+  char fingerprint[(sizeof(uint32_t) * 2) + 1];
   core_print_fingerprint(fingerprint);
 
   while(1) {
