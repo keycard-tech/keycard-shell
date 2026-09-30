@@ -1,5 +1,8 @@
 #include "core_openpgp.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "core.h"
 #include "crypto/bip32.h"
 #include "crypto/util.h"
@@ -8,11 +11,39 @@
 #include "mem.h"
 #include "openpgp/openpgp_packet.h"
 #include "openpgp/openpgp_protocol.h"
+#include "openpgp/openpgp_v4.h"
 #include "ui/i18n.h"
 #include "ui/ui.h"
 #include "ur/ur_encode.h"
 
 #define OPENPGP_UID_CERT_SIGNATURE_TYPE 0x13
+
+#define CORE_OPENPGP_SIGNATURE_PACKET_MAX_LEN 119
+#define CORE_OPENPGP_IDENTITY_MAX_LEN 458
+
+typedef struct {
+    uint8_t sig_fields[OPENPGP_V4_SIG_FIELDS_LEN];
+    uint8_t digest[OPENPGP_SHA256_LEN];
+} core_openpgp_uid_certification_t;
+
+typedef struct {
+    uint8_t *path;
+    uint16_t path_len;
+
+    uint8_t uid[OPENPGP_UID_MAX_LEN];
+    size_t uid_len;
+    uint32_t creation_time;
+
+    uint8_t primary_key_body[OPENPGP_V4_SECP256K1_PUBLIC_KEY_BODY_LEN];
+    size_t primary_key_body_len;
+    uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN];
+
+    core_openpgp_uid_certification_t certification;
+    uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN];
+
+    uint8_t certification_packet[CORE_OPENPGP_SIGNATURE_PACKET_MAX_LEN];
+    size_t certification_packet_len;
+} core_openpgp_identity_t;
 
 /*
  * Shell-owned OpenPGP identity path:
@@ -39,8 +70,19 @@ static const uint32_t OPENPGP_EIP1581_PATH[OPENPGP_EIP1581_PATH_LEN] = {
 #define OPENPGP_UID_CERT_ISSUER_KEY_ID_OFFSET \
     (OPENPGP_V4_SIG_FIELDS_LEN + 4)
 
-app_err_t core_openpgp_prepare_primary_key(uint8_t *path, uint16_t path_len, uint32_t creation_time, uint8_t *primary_key_body, size_t primary_key_body_capacity, size_t *primary_key_body_len, uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN]) {
+static app_err_t core_openpgp_prepare_primary_key(core_openpgp_identity_t *identity) {
 
+    if (identity == NULL) {
+        return ERR_DATA;
+    }
+
+    uint8_t *path = identity->path;
+    uint16_t path_len = identity->path_len;
+    uint32_t creation_time = identity->creation_time;
+    uint8_t *primary_key_body = identity->primary_key_body;
+    size_t primary_key_body_capacity = sizeof(identity->primary_key_body);
+    size_t *primary_key_body_len = &identity->primary_key_body_len;
+    uint8_t *fingerprint = identity->fingerprint;
     uint8_t point[BIP32_PUBKEY_LEN];
 
     if (path == NULL ||
@@ -76,7 +118,19 @@ app_err_t core_openpgp_prepare_primary_key(uint8_t *path, uint16_t path_len, uin
     return ERR_OK;
 }
 
-app_err_t core_openpgp_prepare_uid_certification(const uint8_t *primary_key_body, size_t primary_key_body_len, const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN], const uint8_t *uid, size_t uid_len, uint32_t creation_time, core_openpgp_uid_certification_t *certification) {
+static app_err_t core_openpgp_prepare_uid_certification(core_openpgp_identity_t *identity) {
+
+    if (identity == NULL) {
+        return ERR_DATA;
+    }
+
+    const uint8_t *primary_key_body = identity->primary_key_body;
+    size_t primary_key_body_len = identity->primary_key_body_len;
+    const uint8_t *fingerprint = identity->fingerprint;
+    const uint8_t *uid = identity->uid;
+    size_t uid_len = identity->uid_len;
+    uint32_t creation_time = identity->creation_time;
+    core_openpgp_uid_certification_t *certification = &identity->certification;
 
     uint8_t signed_data[
         3 +
@@ -116,7 +170,16 @@ app_err_t core_openpgp_prepare_uid_certification(const uint8_t *primary_key_body
     return ERR_OK;
 }
 
-app_err_t core_openpgp_confirm_identity(const uint8_t *uid, size_t uid_len, uint32_t creation_time, const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN]) {
+static app_err_t core_openpgp_confirm_identity(const core_openpgp_identity_t *identity) {
+
+    if (identity == NULL) {
+        return ERR_DATA;
+    }
+
+    const uint8_t *uid = identity->uid;
+    size_t uid_len = identity->uid_len;
+    uint32_t creation_time = identity->creation_time;
+    const uint8_t *fingerprint = identity->fingerprint;
 
     char fingerprint_hex[(OPENPGP_V4_FINGERPRINT_LEN * 2) + 1];
     uint8_t creation_time_buf[UINT32_STRING_LEN];
@@ -201,7 +264,16 @@ app_err_t core_openpgp_confirm_identity(const uint8_t *uid, size_t uid_len, uint
     return ERR_OK;
 }
 
-app_err_t core_openpgp_certify_uid(uint8_t *path, uint16_t path_len, const uint8_t *primary_key_body, size_t primary_key_body_len, const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN], const uint8_t *uid, size_t uid_len, uint32_t creation_time, core_openpgp_uid_certification_t *certification, uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN]) {
+static app_err_t core_openpgp_certify_uid(core_openpgp_identity_t *identity) {
+
+    if (identity == NULL) {
+        return ERR_DATA;
+    }
+
+    uint8_t *path = identity->path;
+    uint16_t path_len = identity->path_len;
+    core_openpgp_uid_certification_t *certification = &identity->certification;
+    uint8_t *raw_signature = identity->raw_signature;
 
     uint8_t card_signature[OPENPGP_RAW_ECDSA_LEN + 1];
 
@@ -217,13 +289,13 @@ app_err_t core_openpgp_certify_uid(uint8_t *path, uint16_t path_len, const uint8
     memzero(raw_signature, OPENPGP_RAW_ECDSA_LEN);
     memzero(card_signature, sizeof(card_signature));
 
-    app_err_t err = core_openpgp_prepare_uid_certification(primary_key_body, primary_key_body_len, fingerprint, uid, uid_len, creation_time, certification);
+    app_err_t err = core_openpgp_prepare_uid_certification(identity);
 
     if (err != ERR_OK) {
         return err;
     }
 
-    err = core_openpgp_confirm_identity(uid, uid_len, creation_time, fingerprint);
+    err = core_openpgp_confirm_identity(identity);
 
     if (err != ERR_OK) {
         return err;
@@ -248,7 +320,18 @@ app_err_t core_openpgp_certify_uid(uint8_t *path, uint16_t path_len, const uint8
     return ERR_OK;
 }
 
-app_err_t core_openpgp_build_uid_certification_packet(const core_openpgp_uid_certification_t *certification, const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN], const uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN], uint8_t *out, size_t out_capacity, size_t *out_len) {
+static app_err_t core_openpgp_build_uid_certification_packet(core_openpgp_identity_t *identity) {
+
+    if (identity == NULL) {
+        return ERR_DATA;
+    }
+
+    const core_openpgp_uid_certification_t *certification = &identity->certification;
+    const uint8_t *fingerprint = identity->fingerprint;
+    const uint8_t *raw_signature = identity->raw_signature;
+    uint8_t *out = identity->certification_packet;
+    size_t out_capacity = sizeof(identity->certification_packet);
+    size_t *out_len = &identity->certification_packet_len;
 
     uint8_t issuer_key_id[8];
 
@@ -372,7 +455,18 @@ static int core_openpgp_validate_identity_binding(const openpgp_cert_target_t *t
     return 0;
 }
 
-app_err_t core_openpgp_assemble_and_verify_identity(const uint8_t *primary_key_body, size_t primary_key_body_len, const uint8_t *uid, size_t uid_len, const uint8_t *certification_packet, size_t certification_packet_len, uint8_t *out, size_t out_capacity, size_t *out_len) {
+static app_err_t core_openpgp_assemble_and_verify_identity(const core_openpgp_identity_t *identity, uint8_t *out, size_t out_capacity, size_t *out_len) {
+
+    if (identity == NULL) {
+        return ERR_DATA;
+    }
+
+    const uint8_t *primary_key_body = identity->primary_key_body;
+    size_t primary_key_body_len = identity->primary_key_body_len;
+    const uint8_t *uid = identity->uid;
+    size_t uid_len = identity->uid_len;
+    const uint8_t *certification_packet = identity->certification_packet;
+    size_t certification_packet_len = identity->certification_packet_len;
 
     openpgp_cert_target_t target;
     size_t p = 0;
@@ -440,27 +534,22 @@ app_err_t core_openpgp_assemble_and_verify_identity(const uint8_t *primary_key_b
     return ERR_OK;
 }
 
-app_err_t core_openpgp_create_identity_at_path(uint8_t *path, uint16_t path_len, const uint8_t *uid, size_t uid_len, uint32_t creation_time, uint8_t *out, size_t out_capacity, size_t *out_len) {
+/*
+ * Internal orchestration primitive.
+ *
+ * path must be selected by trusted Shell policy, never supplied by the
+ * untrusted OpenPGP request.
+ */
+static app_err_t core_openpgp_create_identity_at_path(core_openpgp_identity_t *identity, uint8_t *out, size_t out_capacity, size_t *out_len) {
 
-    uint8_t primary_key_body[
-        OPENPGP_V4_SECP256K1_PUBLIC_KEY_BODY_LEN];
-    uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN];
-    uint8_t uid_copy[OPENPGP_UID_MAX_LEN];
-    core_openpgp_uid_certification_t certification;
-    uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN];
-    uint8_t certification_packet[
-        CORE_OPENPGP_SIGNATURE_PACKET_MAX_LEN];
-
-    size_t primary_key_body_len = 0;
-    size_t certification_packet_len = 0;
     app_err_t err;
 
-    if (path == NULL ||
-        path_len == 0 ||
-        uid == NULL ||
-        uid_len == 0 ||
-        uid_len > OPENPGP_UID_MAX_LEN ||
-        creation_time == 0 ||
+    if (identity == NULL ||
+        identity->path == NULL ||
+        identity->path_len == 0 ||
+        identity->uid_len == 0 ||
+        identity->uid_len > OPENPGP_UID_MAX_LEN ||
+        identity->creation_time == 0 ||
         out == NULL ||
         out_len == NULL) {
         return ERR_DATA;
@@ -468,45 +557,44 @@ app_err_t core_openpgp_create_identity_at_path(uint8_t *path, uint16_t path_len,
 
     *out_len = 0;
 
-    /*
-     * Keep the reviewed UID stable for the entire operation and permit the
-     * caller's input and output storage to alias safely.
-     */
-    memcpy(uid_copy, uid, uid_len);
-
-    err = core_openpgp_prepare_primary_key(path, path_len, creation_time, primary_key_body, sizeof(primary_key_body), &primary_key_body_len, fingerprint);
+    err = core_openpgp_prepare_primary_key(identity);
 
     if (err != ERR_OK) {
         return err;
     }
 
-    err = core_openpgp_certify_uid(path, path_len, primary_key_body, primary_key_body_len, fingerprint, uid_copy, uid_len, creation_time, &certification, raw_signature);
+    err = core_openpgp_certify_uid(identity);
 
     if (err != ERR_OK) {
-        memzero(raw_signature, sizeof(raw_signature));
+        memzero(identity->raw_signature, sizeof(identity->raw_signature));
         return err;
     }
 
-    err = core_openpgp_build_uid_certification_packet(&certification, fingerprint, raw_signature, certification_packet, sizeof(certification_packet), &certification_packet_len);
+    err = core_openpgp_build_uid_certification_packet(identity);
 
-    memzero(raw_signature, sizeof(raw_signature));
+    memzero(identity->raw_signature, sizeof(identity->raw_signature));
 
     if (err != ERR_OK) {
         return err;
     }
 
-    return core_openpgp_assemble_and_verify_identity(primary_key_body, primary_key_body_len, uid_copy, uid_len, certification_packet, certification_packet_len, out, out_capacity, out_len);
+    return core_openpgp_assemble_and_verify_identity(identity, out, out_capacity, out_len);
 }
 
-app_err_t core_openpgp_qr_run(uint8_t *path, uint16_t path_len) {
+/*
+ * Scan a versioned OpenPGP request from UR:BYTES, create the identity using a
+ * trusted Shell-selected path, and display the verified certificate as
+ * UR:BYTES.
+ */
+static app_err_t core_openpgp_qr_run(uint8_t *path, uint16_t path_len) {
 
     struct zcbor_string qr_request;
     struct zcbor_string qr_response;
     openpgp_request_t request;
+    core_openpgp_identity_t identity;
 
-    uint8_t *identity = g_mem_heap;
-    uint8_t *encoded =
-        &g_mem_heap[CORE_OPENPGP_IDENTITY_MAX_LEN];
+    uint8_t *identity_output = g_mem_heap;
+    uint8_t *encoded = &g_mem_heap[CORE_OPENPGP_IDENTITY_MAX_LEN];
 
     size_t identity_len = 0;
     size_t encoded_len = 0;
@@ -529,22 +617,38 @@ app_err_t core_openpgp_qr_run(uint8_t *path, uint16_t path_len) {
         return ERR_DATA;
     }
 
-    if (request.operation != OPENPGP_OP_CREATE_IDENTITY) {
+    if (request.operation != OPENPGP_OP_CREATE_IDENTITY ||
+        request.uid == NULL ||
+        request.uid_len == 0 ||
+        request.uid_len > OPENPGP_UID_MAX_LEN ||
+        request.creation_time == 0) {
         return ERR_DATA;
     }
 
     /*
-     * qr_request points into g_mem_heap. create_identity_at_path() snapshots
-     * the UID before writing identity output, so the scanned request may be
+     * Keep the reviewed UID stable for the entire operation and permit the
+     * caller's input and output storage to alias safely.
+     */
+    memzero(&identity, sizeof(identity));
+
+    identity.path = path;
+    identity.path_len = path_len;
+    memcpy(identity.uid, request.uid, request.uid_len);
+    identity.uid_len = request.uid_len;
+    identity.creation_time = request.creation_time;
+
+    /*
+     * qr_request points into g_mem_heap. The UID has been copied into the
+     * identity context before writing output, so the scanned request may be
      * safely replaced here.
      */
-    err = core_openpgp_create_identity_at_path(path, path_len, request.uid, request.uid_len, request.creation_time, identity, CORE_OPENPGP_IDENTITY_MAX_LEN, &identity_len);
+    err = core_openpgp_create_identity_at_path(&identity, identity_output, CORE_OPENPGP_IDENTITY_MAX_LEN, &identity_len);
 
     if (err != ERR_OK) {
         return err;
     }
 
-    qr_response.value = identity;
+    qr_response.value = identity_output;
     qr_response.len = identity_len;
 
     /*
