@@ -63,7 +63,7 @@ typedef struct {
   uint32_t master_fingerprint;
 
   uint8_t address[ADDRESS_LENGTH];
-  uint8_t bip44_path[BIP44_MAX_PATH_LEN];
+  uint8_t bip44_path[BIP44_MAX_PATH_LEN + SC_PAD];
   uint8_t bip44_path_len;
   SHA3_CTX hash_ctx;
   core_data_t data;
