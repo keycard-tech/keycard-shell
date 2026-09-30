@@ -31,9 +31,6 @@ typedef struct {
  * Partial and indeterminate lengths are rejected.
  * Trailing packets/bytes are rejected.
  */
-int openpgp_parse_cert_target(
-    const uint8_t *packets,
-    size_t packets_len,
-    openpgp_cert_target_t *target);
+int openpgp_parse_cert_target(const uint8_t *packets, size_t packets_len, openpgp_cert_target_t *target);
 
 #endif

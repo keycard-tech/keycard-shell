@@ -9,11 +9,8 @@
 #define OPENPGP_REQUEST_KEY_UID 3
 #define OPENPGP_REQUEST_KEY_CREATION_TIME 4
 
-int openpgp_protocol_parse_request(
-    const uint8_t *data,
-    size_t data_len,
-    openpgp_request_t *request)
-{
+int openpgp_protocol_parse_request(const uint8_t *data, size_t data_len, openpgp_request_t *request) {
+
     zcbor_state_t states[4];
     struct zcbor_string uid;
     uint32_t version;
@@ -24,8 +21,7 @@ int openpgp_protocol_parse_request(
         return -1;
     }
 
-    zcbor_new_decode_state(
-        states, 4, data, data_len, 1, NULL, 0);
+    zcbor_new_decode_state(states, 4, data, data_len, 1, NULL, 0);
 
     if (!zcbor_map_start_decode(states) ||
         !zcbor_uint32_expect(states, OPENPGP_REQUEST_KEY_VERSION) ||
@@ -60,15 +56,8 @@ int openpgp_protocol_parse_request(
     return 0;
 }
 
-int openpgp_protocol_build_request(
-    uint8_t operation,
-    const uint8_t *uid,
-    size_t uid_len,
-    uint32_t creation_time,
-    uint8_t *out,
-    size_t out_capacity,
-    size_t *out_len)
-{
+int openpgp_protocol_build_request(uint8_t operation, const uint8_t *uid, size_t uid_len, uint32_t creation_time, uint8_t *out, size_t out_capacity, size_t *out_len) {
+
     zcbor_state_t states[4];
     struct zcbor_string uid_string;
 
@@ -86,11 +75,9 @@ int openpgp_protocol_build_request(
     uid_string.value = uid;
     uid_string.len = uid_len;
 
-    zcbor_new_encode_state(
-        states, 4, out, out_capacity, 1);
+    zcbor_new_encode_state(states, 4, out, out_capacity, 1);
 
-    if (!zcbor_map_start_encode(
-            states, OPENPGP_REQUEST_MAP_ENTRIES) ||
+    if (!zcbor_map_start_encode(states, OPENPGP_REQUEST_MAP_ENTRIES) ||
         !zcbor_uint32_put(states, OPENPGP_REQUEST_KEY_VERSION) ||
         !zcbor_uint32_put(states, OPENPGP_PROTOCOL_VERSION) ||
         !zcbor_uint32_put(states, OPENPGP_REQUEST_KEY_OPERATION) ||
@@ -103,8 +90,7 @@ int openpgp_protocol_build_request(
         return -1;
     }
 
-    if (!zcbor_map_end_encode(
-            states, OPENPGP_REQUEST_MAP_ENTRIES)) {
+    if (!zcbor_map_end_encode(states, OPENPGP_REQUEST_MAP_ENTRIES)) {
         return -1;
     }
 

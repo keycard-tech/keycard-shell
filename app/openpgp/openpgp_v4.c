@@ -46,13 +46,7 @@ static uint16_t openpgp_read_be16(const uint8_t *p) {
   return ((uint16_t)p[0] << 8) | p[1];
 }
 
-int openpgp_v4_build_public_key_body(
-    const uint8_t *point,
-    size_t point_len,
-    uint32_t creation_time,
-    uint8_t *out,
-    size_t out_capacity,
-    size_t *out_len) {
+int openpgp_v4_build_public_key_body(const uint8_t *point, size_t point_len, uint32_t creation_time, uint8_t *out, size_t out_capacity, size_t *out_len) {
   size_t p = 0;
   size_t bits;
   size_t needed;
@@ -96,23 +90,11 @@ int openpgp_v4_build_public_key_body(
   return 0;
 }
 
-int openpgp_v4_build_sig_fields(
-    const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN],
-    uint32_t creation_time,
-    uint8_t *out,
-    size_t out_capacity,
-    size_t *out_len) {
-  return openpgp_v4_build_sig_fields_for_type(
-      0x01, fingerprint, creation_time, out, out_capacity, out_len);
+int openpgp_v4_build_sig_fields(const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN], uint32_t creation_time, uint8_t *out, size_t out_capacity, size_t *out_len) {
+  return openpgp_v4_build_sig_fields_for_type(0x01, fingerprint, creation_time, out, out_capacity, out_len);
 }
 
-int openpgp_v4_build_sig_fields_for_type(
-    uint8_t signature_type,
-    const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN],
-    uint32_t creation_time,
-    uint8_t *out,
-    size_t out_capacity,
-    size_t *out_len) {
+int openpgp_v4_build_sig_fields_for_type(uint8_t signature_type, const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN], uint32_t creation_time, uint8_t *out, size_t out_capacity, size_t *out_len) {
   size_t p = 0;
 
   if (!fingerprint || !out || !out_len) {
@@ -170,14 +152,7 @@ int openpgp_v4_build_sig_fields_for_type(
   return 0;
 }
 
-int openpgp_v4_build_certification_data(
-    const uint8_t *primary_key_body,
-    size_t primary_key_body_len,
-    const uint8_t *user_id,
-    size_t user_id_len,
-    uint8_t *out,
-    size_t out_capacity,
-    size_t *out_len) {
+int openpgp_v4_build_certification_data(const uint8_t *primary_key_body, size_t primary_key_body_len, const uint8_t *user_id, size_t user_id_len, uint8_t *out, size_t out_capacity, size_t *out_len) {
   size_t p = 0;
   uint32_t uid_len32;
 
@@ -237,10 +212,7 @@ int openpgp_v4_build_certification_data(
   return 0;
 }
 
-int openpgp_v4_primary_key_fingerprint(
-    const uint8_t *primary_key_body,
-    size_t primary_key_body_len,
-    uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN]) {
+int openpgp_v4_primary_key_fingerprint(const uint8_t *primary_key_body, size_t primary_key_body_len, uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN]) {
   SHA1_CTX ctx;
   uint8_t prefix[3];
 
@@ -271,12 +243,7 @@ int openpgp_v4_primary_key_fingerprint(
   return 0;
 }
 
-int openpgp_v4_digest(
-    const uint8_t *signed_data,
-    size_t signed_data_len,
-    const uint8_t *sig_fields,
-    size_t sig_fields_len,
-    uint8_t digest[OPENPGP_SHA256_LEN]) {
+int openpgp_v4_digest(const uint8_t *signed_data, size_t signed_data_len, const uint8_t *sig_fields, size_t sig_fields_len, uint8_t digest[OPENPGP_SHA256_LEN]) {
   SHA256_CTX ctx;
   uint8_t trailer[6];
   uint32_t n;
@@ -307,12 +274,7 @@ int openpgp_v4_digest(
   return 0;
 }
 
-static int encode_mpi(
-    const uint8_t *value,
-    size_t value_len,
-    uint8_t *out,
-    size_t out_capacity,
-    size_t *out_len) {
+static int encode_mpi(const uint8_t *value, size_t value_len, uint8_t *out, size_t out_capacity, size_t *out_len) {
   size_t start = 0;
   unsigned leading = 0;
   unsigned bit_len;
@@ -348,15 +310,7 @@ static int encode_mpi(
   return 0;
 }
 
-int openpgp_v4_build_signature_packet(
-    const uint8_t *sig_fields,
-    size_t sig_fields_len,
-    const uint8_t digest[OPENPGP_SHA256_LEN],
-    const uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN],
-    const uint8_t issuer_key_id[8],
-    uint8_t *out,
-    size_t out_capacity,
-    size_t *out_len) {
+int openpgp_v4_build_signature_packet(const uint8_t *sig_fields, size_t sig_fields_len, const uint8_t digest[OPENPGP_SHA256_LEN], const uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN], const uint8_t issuer_key_id[8], uint8_t *out, size_t out_capacity, size_t *out_len) {
   uint8_t body[160];
   size_t p = 0;
   size_t mpi_len;
@@ -429,12 +383,7 @@ int openpgp_v4_build_signature_packet(
  * Read an OpenPGP MPI into a fixed-width big-endian buffer, left-padding
  * with zeroes. Used for ECDSA r and s, which are at most 32 bytes.
  */
-static int openpgp_read_mpi_fixed(
-    const uint8_t *data,
-    size_t data_len,
-    size_t *offset,
-    uint8_t *out,
-    size_t out_len) {
+static int openpgp_read_mpi_fixed(const uint8_t *data, size_t data_len, size_t *offset, uint8_t *out, size_t out_len) {
   uint16_t bits;
   size_t bytes;
 
@@ -475,10 +424,7 @@ static int openpgp_read_mpi_fixed(
  *
  *   version | creation time | algorithm | OID length | OID | MPI(point)
  */
-static int openpgp_ecdsa_point(
-    const uint8_t *primary_key_body,
-    size_t primary_key_body_len,
-    uint8_t point[65]) {
+static int openpgp_ecdsa_point(const uint8_t *primary_key_body, size_t primary_key_body_len, uint8_t point[65]) {
 
   size_t pos = 6;
   uint16_t point_bits;
@@ -501,8 +447,7 @@ static int openpgp_ecdsa_point(
     return -1;
   }
 
-  if (memcmp(primary_key_body + pos, secp256k1_oid,
-             sizeof(secp256k1_oid)) != 0) {
+  if (memcmp(primary_key_body + pos, secp256k1_oid, sizeof(secp256k1_oid)) != 0) {
     return -1;
   }
 
@@ -532,13 +477,7 @@ static int openpgp_ecdsa_point(
   return 0;
 }
 
-int openpgp_v4_verify_uid_self_cert(
-    const uint8_t *primary_key_body,
-    size_t primary_key_body_len,
-    const uint8_t *user_id,
-    size_t user_id_len,
-    const uint8_t *signature_body,
-    size_t signature_body_len) {
+int openpgp_v4_verify_uid_self_cert(const uint8_t *primary_key_body, size_t primary_key_body_len, const uint8_t *user_id, size_t user_id_len, const uint8_t *signature_body, size_t signature_body_len) {
   uint8_t point[65];
   uint8_t signature[64];
   uint8_t digest[SHA256_DIGEST_LENGTH];
