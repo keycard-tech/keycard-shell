@@ -231,8 +231,14 @@ app_err_t keycard_cmd_sign(keycard_t* kc, keycard_sign_algo_t algo, uint8_t* pat
   APDU_P1(&kc->apdu) = 1;
   APDU_P2(&kc->apdu) = algo;
 
-  SC_BUF(data, 104);
+  enum { SIGN_DATA_MAX_LEN = 104 };
+  SC_BUF(data, SIGN_DATA_MAX_LEN);
   uint8_t hash_len = (algo == KEYCARD_SIGN_BIP340_SCHNORR) ? 64 : 32;
+
+  if (hash_len > SIGN_DATA_MAX_LEN ||
+      path_len > (SIGN_DATA_MAX_LEN - hash_len)) {
+    return ERR_DATA;
+  }
 
   memcpy(data, hash, hash_len);
   memcpy(&data[hash_len], path, path_len);
