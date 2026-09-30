@@ -19,7 +19,7 @@
 #define MULTISIG_SER_MAX 768
 
 static app_err_t multisig_session_open(multisig_crypto_t* m) {
-  uint8_t path_bytes[MULTISIG_EIP1581_PATH_LEN * 4];
+  SC_BUF(path_bytes, MULTISIG_EIP1581_PATH_LEN * 4);
   uint8_t root[MULTISIG_ROOT_LEN];
 
   for (int i = 0; i < MULTISIG_EIP1581_PATH_LEN; i++) {
