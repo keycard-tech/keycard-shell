@@ -339,9 +339,9 @@ const char *const i18n_english_strings[] = {
     "Multisig address",
 
     // OpenPGP identity
-    "OpenPGP UID",
-    "OpenPGP Unix time",
-    "OpenPGP fingerprint",
+    "UID",
+    "Unix time",
+    "Fingerprint",
     "Create OpenPGP identity",
     "Approve this UID, Unix time, and fingerprint?",
     "OpenPGP",
