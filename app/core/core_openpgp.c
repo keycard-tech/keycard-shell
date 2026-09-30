@@ -45,17 +45,7 @@ typedef struct {
     size_t certification_packet_len;
 } core_openpgp_identity_t;
 
-/*
- * Shell-owned OpenPGP identity path:
- *
- *   m/43'/60'/1581'/5261136'/0
- *
- * 5261136 == 0x504750 == "PGP".
- *
- * Pending final maintainer confirmation, the final non-hardened component
- * is treated as the OpenPGP identity/key index and the initial identity uses
- * index 0. The host never supplies this path.
- */
+/* Shell-owned path: m/43'/60'/1581'/5261136'/0; the host never supplies it. */
 #define OPENPGP_EIP1581_PATH_LEN 5
 
 static const uint32_t OPENPGP_EIP1581_PATH[OPENPGP_EIP1581_PATH_LEN] = {
@@ -199,11 +189,7 @@ static app_err_t core_openpgp_confirm_identity(const core_openpgp_identity_t *id
         return ERR_DATA;
     }
 
-    /*
-     * The certification digest commits to the exact UID bytes.
-     * Reject bytes that cannot be unambiguously reviewed by the
-     * existing text UI before allowing certification.
-     */
+    /* Only certify UID bytes that can be reviewed unambiguously. */
     for (size_t i = 0; i < uid_len; i++) {
         if (uid[i] < 0x20 || uid[i] > 0x7e) {
             return ERR_DATA;
@@ -219,10 +205,6 @@ static app_err_t core_openpgp_confirm_identity(const core_openpgp_identity_t *id
     creation_time_title_len = strlen(LSTR(OPENPGP_CREATION_TIME_TITLE));
     fingerprint_title_len = strlen(LSTR(OPENPGP_FINGERPRINT_TITLE));
 
-    /*
-     * Build one review document in the shared heap. The scanned request UID
-     * has already been copied by the caller, so the QR input may be replaced.
-     */
     if (uid_title_len + 1 +
         uid_len + 2 +
         creation_time_title_len + 1 +
@@ -345,10 +327,7 @@ static app_err_t core_openpgp_build_uid_certification_packet(core_openpgp_identi
 
     *out_len = 0;
 
-    /*
-     * For an OpenPGP v4 key, the key ID is the low 64 bits
-     * (final 8 bytes) of the primary-key fingerprint.
-     */
+    /* OpenPGP v4 key ID is the low 64 bits of the fingerprint. */
     memcpy(issuer_key_id, &fingerprint[OPENPGP_V4_FINGERPRINT_LEN - sizeof(issuer_key_id)], sizeof(issuer_key_id));
 
     if (openpgp_v4_build_signature_packet(certification->sig_fields, sizeof(certification->sig_fields), certification->digest, raw_signature, issuer_key_id, out, out_capacity, out_len) != 0) {
@@ -425,11 +404,7 @@ static int core_openpgp_validate_identity_binding(const openpgp_cert_target_t *t
 
     signature_body = target->self_cert_body;
 
-    /*
-     * Require the exact certification metadata layout emitted by
-     * openpgp_v4_build_sig_fields_for_type() and
-     * openpgp_v4_build_signature_packet().
-     */
+    /* Validate the certification metadata layout we emit. */
     if (target->self_cert_body_len <
             OPENPGP_UID_CERT_ISSUER_KEY_ID_OFFSET + 8 ||
         signature_body[4] != 0x00 ||
@@ -500,18 +475,10 @@ static app_err_t core_openpgp_assemble_and_verify_identity(const core_openpgp_id
     memcpy(&out[p], certification_packet, certification_packet_len);
     p += certification_packet_len;
 
-    /*
-     * Parse the exact bytes we are about to return. This checks packet
-     * framing, ordering, signature type and rejection of trailing data.
-     */
     if (openpgp_parse_cert_target(out, p, &target) != 0) {
         return ERR_DATA;
     }
 
-    /*
-     * Make sure parsing recovered exactly the objects supplied to this
-     * assembly step before performing the cryptographic self-check.
-     */
     if (target.primary_key_body_len != primary_key_body_len ||
         memcmp(target.primary_key_body, primary_key_body, primary_key_body_len) != 0 ||
         target.user_id_len != uid_len ||
@@ -534,12 +501,6 @@ static app_err_t core_openpgp_assemble_and_verify_identity(const core_openpgp_id
     return ERR_OK;
 }
 
-/*
- * Internal orchestration primitive.
- *
- * path must be selected by trusted Shell policy, never supplied by the
- * untrusted OpenPGP request.
- */
 static app_err_t core_openpgp_create_identity_at_path(core_openpgp_identity_t *identity, uint8_t *out, size_t out_capacity, size_t *out_len) {
 
     app_err_t err;
@@ -581,11 +542,6 @@ static app_err_t core_openpgp_create_identity_at_path(core_openpgp_identity_t *i
     return core_openpgp_assemble_and_verify_identity(identity, out, out_capacity, out_len);
 }
 
-/*
- * Scan a versioned OpenPGP request from UR:BYTES, create the identity using a
- * trusted Shell-selected path, and display the verified certificate as
- * UR:BYTES.
- */
 static app_err_t core_openpgp_qr_run(uint8_t *path, uint16_t path_len) {
 
     struct zcbor_string qr_request;
@@ -605,10 +561,7 @@ static app_err_t core_openpgp_qr_run(uint8_t *path, uint16_t path_len) {
         return ERR_DATA;
     }
 
-    /*
-     * OpenPGP has a dedicated UR:BYTES entry point. Do not widen
-     * UR_ANY_TX to accept arbitrary BYTES payloads.
-     */
+    /* Keep arbitrary BYTES payloads out of UR_ANY_TX. */
     if (ui_qrscan(BYTES, &qr_request) != CORE_EVT_UI_OK) {
         return ERR_CANCEL;
     }
@@ -625,10 +578,7 @@ static app_err_t core_openpgp_qr_run(uint8_t *path, uint16_t path_len) {
         return ERR_DATA;
     }
 
-    /*
-     * Keep the reviewed UID stable for the entire operation and permit the
-     * caller's input and output storage to alias safely.
-     */
+    /* Snapshot the UID before reusing g_mem_heap for output. */
     memzero(&identity, sizeof(identity));
 
     identity.path = path;
@@ -637,11 +587,6 @@ static app_err_t core_openpgp_qr_run(uint8_t *path, uint16_t path_len) {
     identity.uid_len = request.uid_len;
     identity.creation_time = request.creation_time;
 
-    /*
-     * qr_request points into g_mem_heap. The UID has been copied into the
-     * identity context before writing output, so the scanned request may be
-     * safely replaced here.
-     */
     err = core_openpgp_create_identity_at_path(&identity, identity_output, CORE_OPENPGP_IDENTITY_MAX_LEN, &identity_len);
 
     if (err != ERR_OK) {
@@ -651,10 +596,7 @@ static app_err_t core_openpgp_qr_run(uint8_t *path, uint16_t path_len) {
     qr_response.value = identity_output;
     qr_response.len = identity_len;
 
-    /*
-     * Keep the CBOR output separate from the raw certificate input.
-     * The raw identity occupies at most [0, 458), so encoding begins at 458.
-     */
+    /* Encode after the raw certificate region to avoid overlap. */
     if (cbor_encode_psbt(encoded, MEM_HEAP_SIZE - CORE_OPENPGP_IDENTITY_MAX_LEN, &qr_response, &encoded_len) != ZCBOR_SUCCESS) {
         return ERR_DATA;
     }
