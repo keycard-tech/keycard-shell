@@ -70,22 +70,13 @@ union qr_tx_data {
 app_err_t core_export_key(keycard_t* kc, uint8_t* path, uint16_t len, uint8_t* out_pub, uint8_t* out_chain) {
   uint8_t export_type;
 
-  if (len > BIP44_MAX_PATH_LEN || (len > 0 && path == NULL)) {
-    return ERR_DATA;
-  }
-
-  SC_BUF(path_copy, BIP44_MAX_PATH_LEN);
-  if (len > 0) {
-    memcpy(path_copy, path, len);
-  }
-
   if (out_chain) {
     export_type = 2;
   } else {
     export_type = 1;
   }
 
-  if ((keycard_cmd_export_key(kc, export_type, path_copy, len) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+  if ((keycard_cmd_export_key(kc, export_type, path, len) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
     return ERR_CRYPTO;
   }
 
@@ -116,16 +107,7 @@ app_err_t core_export_key(keycard_t* kc, uint8_t* path, uint16_t len, uint8_t* o
 /* Export the raw 32-byte private scalar at a hardened path (EXPORT, P2=0x00).
  * The caller is responsible for memzero'ing out_priv after use. */
 app_err_t core_export_private(keycard_t* kc, uint8_t* path, uint16_t len, uint8_t out_priv[32]) {
-  if (len > BIP44_MAX_PATH_LEN || (len > 0 && path == NULL)) {
-    return ERR_DATA;
-  }
-
-  SC_BUF(path_copy, BIP44_MAX_PATH_LEN);
-  if (len > 0) {
-    memcpy(path_copy, path, len);
-  }
-
-  if ((keycard_cmd_export_key(kc, 0, path_copy, len) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
+  if ((keycard_cmd_export_key(kc, 0, path, len) != ERR_OK) || (APDU_SW(&kc->apdu) != 0x9000)) {
     return ERR_CRYPTO;
   }
 

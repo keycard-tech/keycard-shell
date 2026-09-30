@@ -53,7 +53,7 @@ app_err_t core_openpgp_prepare_primary_key(
     if (path == NULL ||
         path_len == 0 ||
         (path_len % sizeof(uint32_t)) != 0 ||
-        path_len > UINT8_MAX ||
+        path_len > BIP44_MAX_PATH_LEN ||
         creation_time == 0 ||
         primary_key_body == NULL ||
         primary_key_body_len == NULL ||
@@ -61,12 +61,17 @@ app_err_t core_openpgp_prepare_primary_key(
         return ERR_DATA;
     }
 
+    memcpy(g_core.bip44_path, path, path_len);
+    g_core.bip44_path_len = (uint8_t) path_len;
+
     app_err_t err = core_export_key(
         &g_core.keycard,
-        path,
-        path_len,
+        g_core.bip44_path,
+        g_core.bip44_path_len,
         point,
         NULL);
+
+    g_core.bip44_path_len = 0;
 
     if (err != ERR_OK) {
         return err;
