@@ -340,9 +340,9 @@ const char *const i18n_english_strings[] = {
 
     // OpenPGP identity
     "UID",
-    "Unix time",
+    "Creation time",
     "Fingerprint",
     "Create OpenPGP identity",
-    "Approve this UID, Unix time, and fingerprint?",
+    "Approve this UID, creation time, and fingerprint?",
     "OpenPGP",
 };

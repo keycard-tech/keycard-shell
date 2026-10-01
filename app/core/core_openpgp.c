@@ -20,6 +20,8 @@
 
 #define CORE_OPENPGP_SIGNATURE_PACKET_MAX_LEN 119
 #define CORE_OPENPGP_IDENTITY_MAX_LEN 458
+#define CORE_OPENPGP_UTC_TIME_LEN 23
+#define CORE_OPENPGP_UTC_TIME_BUF_LEN (CORE_OPENPGP_UTC_TIME_LEN + 1)
 
 typedef struct {
     uint8_t sig_fields[OPENPGP_V4_SIG_FIELDS_LEN];
@@ -160,6 +162,92 @@ static app_err_t core_openpgp_prepare_uid_certification(core_openpgp_identity_t 
     return ERR_OK;
 }
 
+static uint8_t core_openpgp_is_leap_year(uint32_t year) {
+    return (year % 4U) == 0U && ((year % 100U) != 0U || (year % 400U) == 0U);
+}
+
+static void core_openpgp_write_two_digits(char *out, uint32_t value) {
+    out[0] = (char) ('0' + ((value / 10U) % 10U));
+    out[1] = (char) ('0' + (value % 10U));
+}
+
+static void core_openpgp_write_four_digits(char *out, uint32_t value) {
+    out[0] = (char) ('0' + ((value / 1000U) % 10U));
+    out[1] = (char) ('0' + ((value / 100U) % 10U));
+    out[2] = (char) ('0' + ((value / 10U) % 10U));
+    out[3] = (char) ('0' + (value % 10U));
+}
+
+static int core_openpgp_format_unix_time_utc(uint32_t timestamp, char *out, size_t out_capacity) {
+    static const uint8_t month_days[12] = {
+        31, 28, 31, 30, 31, 30,
+        31, 31, 30, 31, 30, 31,
+    };
+
+    uint32_t days = timestamp / 86400U;
+    uint32_t seconds_of_day = timestamp % 86400U;
+    uint32_t year = 1970U;
+    uint32_t month = 0U;
+
+    if (out == NULL || out_capacity < CORE_OPENPGP_UTC_TIME_BUF_LEN) {
+        return -1;
+    }
+
+    while (1) {
+        uint32_t days_in_year = core_openpgp_is_leap_year(year) ? 366U : 365U;
+
+        if (days < days_in_year) {
+            break;
+        }
+
+        days -= days_in_year;
+        year++;
+    }
+
+    while (month < 12U) {
+        uint32_t days_in_month = month_days[month];
+
+        if (month == 1U && core_openpgp_is_leap_year(year)) {
+            days_in_month++;
+        }
+
+        if (days < days_in_month) {
+            break;
+        }
+
+        days -= days_in_month;
+        month++;
+    }
+
+    if (month >= 12U) {
+        return -1;
+    }
+
+    uint32_t day = days + 1U;
+    uint32_t hour = seconds_of_day / 3600U;
+    uint32_t minute = (seconds_of_day % 3600U) / 60U;
+    uint32_t second = seconds_of_day % 60U;
+
+    core_openpgp_write_four_digits(&out[0], year);
+    out[4] = '-';
+    core_openpgp_write_two_digits(&out[5], month + 1U);
+    out[7] = '-';
+    core_openpgp_write_two_digits(&out[8], day);
+    out[10] = ' ';
+    core_openpgp_write_two_digits(&out[11], hour);
+    out[13] = ':';
+    core_openpgp_write_two_digits(&out[14], minute);
+    out[16] = ':';
+    core_openpgp_write_two_digits(&out[17], second);
+    out[19] = ' ';
+    out[20] = 'U';
+    out[21] = 'T';
+    out[22] = 'C';
+    out[23] = '\0';
+
+    return 0;
+}
+
 static app_err_t core_openpgp_confirm_identity(const core_openpgp_identity_t *identity) {
 
     if (identity == NULL) {
@@ -172,8 +260,7 @@ static app_err_t core_openpgp_confirm_identity(const core_openpgp_identity_t *id
     const uint8_t *fingerprint = identity->fingerprint;
 
     char fingerprint_hex[(OPENPGP_V4_FINGERPRINT_LEN * 2) + 1];
-    uint8_t creation_time_buf[UINT32_STRING_LEN];
-    uint8_t *creation_time_str;
+    char creation_time_utc[CORE_OPENPGP_UTC_TIME_BUF_LEN];
     char *review = (char *) g_mem_heap;
     size_t review_len = 0;
     size_t creation_time_len;
@@ -198,9 +285,11 @@ static app_err_t core_openpgp_confirm_identity(const core_openpgp_identity_t *id
 
     base16_encode(fingerprint, fingerprint_hex, OPENPGP_V4_FINGERPRINT_LEN);
 
-    creation_time_str = u32toa(creation_time, creation_time_buf, sizeof(creation_time_buf));
+    if (core_openpgp_format_unix_time_utc(creation_time, creation_time_utc, sizeof(creation_time_utc)) != 0) {
+        return ERR_DATA;
+    }
 
-    creation_time_len = strlen((const char *) creation_time_str);
+    creation_time_len = CORE_OPENPGP_UTC_TIME_LEN;
     uid_title_len = strlen(LSTR(OPENPGP_UID_TITLE));
     creation_time_title_len = strlen(LSTR(OPENPGP_CREATION_TIME_TITLE));
     fingerprint_title_len = strlen(LSTR(OPENPGP_FINGERPRINT_TITLE));
@@ -227,7 +316,7 @@ static app_err_t core_openpgp_confirm_identity(const core_openpgp_identity_t *id
     review_len += creation_time_title_len;
     review[review_len++] = '\n';
 
-    memcpy(&review[review_len], creation_time_str, creation_time_len);
+    memcpy(&review[review_len], creation_time_utc, creation_time_len);
     review_len += creation_time_len;
     review[review_len++] = '\n';
     review[review_len++] = '\n';
