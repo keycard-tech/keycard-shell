@@ -243,6 +243,57 @@ int openpgp_v4_primary_key_fingerprint(const uint8_t *primary_key_body, size_t p
   return 0;
 }
 
+int openpgp_v4_canonicalize_text(const uint8_t *text, size_t text_len, uint8_t *out, size_t out_capacity, size_t *out_len) {
+    size_t in_offset = 0;
+    size_t out_offset = 0;
+
+    if ((text == NULL && text_len != 0) ||
+        out == NULL ||
+        out_len == NULL) {
+        return -1;
+    }
+
+    *out_len = 0;
+
+    while (in_offset < text_len) {
+        uint8_t c = text[in_offset];
+
+        if (c == '\r') {
+            if (in_offset + 1 >= text_len ||
+                text[in_offset + 1] != '\n' ||
+                out_capacity - out_offset < 2) {
+                return -1;
+            }
+
+            out[out_offset++] = '\r';
+            out[out_offset++] = '\n';
+            in_offset += 2;
+            continue;
+        }
+
+        if (c == '\n') {
+            if (out_capacity - out_offset < 2) {
+                return -1;
+            }
+
+            out[out_offset++] = '\r';
+            out[out_offset++] = '\n';
+            in_offset++;
+            continue;
+        }
+
+        if (out_offset >= out_capacity) {
+            return -1;
+        }
+
+        out[out_offset++] = c;
+        in_offset++;
+    }
+
+    *out_len = out_offset;
+    return 0;
+}
+
 int openpgp_v4_digest(const uint8_t *signed_data, size_t signed_data_len, const uint8_t *sig_fields, size_t sig_fields_len, uint8_t digest[OPENPGP_SHA256_LEN]) {
   SHA256_CTX ctx;
   uint8_t trailer[6];

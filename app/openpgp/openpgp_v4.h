@@ -20,6 +20,8 @@ int openpgp_v4_build_certification_data(const uint8_t *primary_key_body, size_t 
 
 int openpgp_v4_primary_key_fingerprint(const uint8_t *primary_key_body, size_t primary_key_body_len, uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN]);
 
+int openpgp_v4_canonicalize_text(const uint8_t *text, size_t text_len, uint8_t *out, size_t out_capacity, size_t *out_len);
+
 int openpgp_v4_digest(const uint8_t *signed_data, size_t signed_data_len, const uint8_t *sig_fields, size_t sig_fields_len, uint8_t digest[OPENPGP_SHA256_LEN]);
 
 int openpgp_v4_build_signature_packet(const uint8_t *sig_fields, size_t sig_fields_len, const uint8_t digest[OPENPGP_SHA256_LEN], const uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN], const uint8_t issuer_key_id[8], uint8_t *out, size_t out_capacity, size_t *out_len);
