@@ -348,7 +348,11 @@ static app_err_t core_openpgp_confirm_identity(const core_openpgp_identity_t *id
     memcpy(&review[review_len], fingerprint_hex, OPENPGP_V4_FINGERPRINT_LEN * 2);
     review_len += OPENPGP_V4_FINGERPRINT_LEN * 2;
 
-    if (ui_display_paged_text(LSTR(OPENPGP_APPROVE_TITLE), review, review_len) != CORE_EVT_UI_OK) {
+    if (ui_display_paged_text_opts(
+            LSTR(OPENPGP_APPROVE_TITLE),
+            review,
+            review_len,
+            UI_INFO_DANGEROUS) != CORE_EVT_UI_OK) {
         return ERR_CANCEL;
     }
 
@@ -470,16 +474,6 @@ static app_err_t core_openpgp_confirm_message(const core_openpgp_message_t *mess
         return ERR_DATA;
     }
 
-    for (size_t i = 0; i < message->message_len; i++) {
-        if (message->message[i] != '\r') {
-            review[review_len++] = (char) message->message[i];
-        }
-    }
-
-    if (ui_display_paged_text(LSTR(OPENPGP_MESSAGE_TITLE), review, review_len) != CORE_EVT_UI_OK) {
-        return ERR_CANCEL;
-    }
-
     base16_encode(message->fingerprint, fingerprint_hex, OPENPGP_V4_FINGERPRINT_LEN);
 
     if (core_openpgp_format_unix_time_utc(
@@ -489,17 +483,31 @@ static app_err_t core_openpgp_confirm_message(const core_openpgp_message_t *mess
         return ERR_DATA;
     }
 
-    review_len = 0;
-
+    size_t message_title_len = strlen(LSTR(OPENPGP_MESSAGE_TITLE));
     size_t signature_time_title_len = strlen(LSTR(OPENPGP_SIGNATURE_TIME_TITLE));
     size_t fingerprint_title_len = strlen(LSTR(OPENPGP_FINGERPRINT_TITLE));
 
-    if (signature_time_title_len + 1 +
+    if (message_title_len + 1 +
+        message->message_len + 2 +
+        signature_time_title_len + 1 +
         CORE_OPENPGP_UTC_TIME_LEN + 2 +
         fingerprint_title_len + 1 +
         (OPENPGP_V4_FINGERPRINT_LEN * 2) > MEM_HEAP_SIZE) {
         return ERR_DATA;
     }
+
+    memcpy(&review[review_len], LSTR(OPENPGP_MESSAGE_TITLE), message_title_len);
+    review_len += message_title_len;
+    review[review_len++] = '\n';
+
+    for (size_t i = 0; i < message->message_len; i++) {
+        if (message->message[i] != '\r') {
+            review[review_len++] = (char) message->message[i];
+        }
+    }
+
+    review[review_len++] = '\n';
+    review[review_len++] = '\n';
 
     memcpy(&review[review_len], LSTR(OPENPGP_SIGNATURE_TIME_TITLE), signature_time_title_len);
     review_len += signature_time_title_len;
@@ -517,7 +525,11 @@ static app_err_t core_openpgp_confirm_message(const core_openpgp_message_t *mess
     memcpy(&review[review_len], fingerprint_hex, OPENPGP_V4_FINGERPRINT_LEN * 2);
     review_len += OPENPGP_V4_FINGERPRINT_LEN * 2;
 
-    if (ui_display_paged_text(LSTR(OPENPGP_SIGN_APPROVE_TITLE), review, review_len) != CORE_EVT_UI_OK) {
+    if (ui_display_paged_text_opts(
+            LSTR(OPENPGP_SIGN_APPROVE_TITLE),
+            review,
+            review_len,
+            UI_INFO_DANGEROUS) != CORE_EVT_UI_OK) {
         return ERR_CANCEL;
     }
 
