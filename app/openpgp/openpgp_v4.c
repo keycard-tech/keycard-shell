@@ -152,6 +152,43 @@ int openpgp_v4_build_sig_fields_for_type(uint8_t signature_type, const uint8_t f
   return 0;
 }
 
+int openpgp_v4_build_uid_cert_sig_fields(const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN], uint32_t creation_time, uint8_t *out, size_t out_capacity, size_t *out_len) {
+  size_t sig_fields_len;
+
+  if (!fingerprint || !out || !out_len ||
+      out_capacity < OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN) {
+    return -1;
+  }
+
+  if (openpgp_v4_build_sig_fields_for_type(
+          0x13,
+          fingerprint,
+          creation_time,
+          out,
+          out_capacity,
+          &sig_fields_len) != 0 ||
+      sig_fields_len != OPENPGP_V4_SIG_FIELDS_LEN) {
+    return -1;
+  }
+
+  /*
+   * UID self-certification adds a hashed Key Flags subpacket:
+   *
+   *   02 1B 03
+   *
+   * where 0x03 advertises certify + sign.
+   */
+  out[4] = 0x00;
+  out[5] = 0x20;
+
+  out[OPENPGP_V4_SIG_FIELDS_LEN] = 0x02;
+  out[OPENPGP_V4_SIG_FIELDS_LEN + 1] = 0x1b;
+  out[OPENPGP_V4_SIG_FIELDS_LEN + 2] = 0x03;
+
+  *out_len = OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN;
+  return 0;
+}
+
 int openpgp_v4_build_certification_data(const uint8_t *primary_key_body, size_t primary_key_body_len, const uint8_t *user_id, size_t user_id_len, uint8_t *out, size_t out_capacity, size_t *out_len) {
   size_t p = 0;
   uint32_t uid_len32;
@@ -371,7 +408,8 @@ int openpgp_v4_build_signature_packet(const uint8_t *sig_fields, size_t sig_fiel
     return -1;
   }
 
-  if (sig_fields_len != OPENPGP_V4_SIG_FIELDS_LEN) {
+  if (sig_fields_len != OPENPGP_V4_SIG_FIELDS_LEN &&
+      sig_fields_len != OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN) {
     return -1;
   }
 

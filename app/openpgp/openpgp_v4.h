@@ -7,6 +7,7 @@
 #define OPENPGP_SHA256_LEN 32
 #define OPENPGP_V4_FINGERPRINT_LEN 20
 #define OPENPGP_V4_SIG_FIELDS_LEN 35
+#define OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN 38
 #define OPENPGP_RAW_ECDSA_LEN 64
 #define OPENPGP_V4_SECP256K1_PUBLIC_KEY_BODY_LEN 79
 
@@ -15,6 +16,8 @@ int openpgp_v4_build_public_key_body(const uint8_t *point, size_t point_len, uin
 int openpgp_v4_build_sig_fields(const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN], uint32_t creation_time, uint8_t *out, size_t out_capacity, size_t *out_len);
 
 int openpgp_v4_build_sig_fields_for_type(uint8_t signature_type, const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN], uint32_t creation_time, uint8_t *out, size_t out_capacity, size_t *out_len);
+
+int openpgp_v4_build_uid_cert_sig_fields(const uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN], uint32_t creation_time, uint8_t *out, size_t out_capacity, size_t *out_len);
 
 int openpgp_v4_build_certification_data(const uint8_t *primary_key_body, size_t primary_key_body_len, const uint8_t *user_id, size_t user_id_len, uint8_t *out, size_t out_capacity, size_t *out_len);
 

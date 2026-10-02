@@ -18,14 +18,14 @@
 
 #define OPENPGP_UID_CERT_SIGNATURE_TYPE 0x13
 
-#define CORE_OPENPGP_SIGNATURE_PACKET_MAX_LEN 119
-#define CORE_OPENPGP_IDENTITY_MAX_LEN 458
+#define CORE_OPENPGP_SIGNATURE_PACKET_MAX_LEN 122
+#define CORE_OPENPGP_IDENTITY_MAX_LEN 461
 #define CORE_OPENPGP_UTC_TIME_LEN 23
 #define CORE_OPENPGP_UTC_TIME_BUF_LEN (CORE_OPENPGP_UTC_TIME_LEN + 1)
 #define CORE_OPENPGP_CANONICAL_MESSAGE_MAX_LEN (OPENPGP_MESSAGE_MAX_LEN * 2)
 
 typedef struct {
-    uint8_t sig_fields[OPENPGP_V4_SIG_FIELDS_LEN];
+    uint8_t sig_fields[OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN];
     uint8_t digest[OPENPGP_SHA256_LEN];
 } core_openpgp_uid_certification_t;
 
@@ -76,7 +76,7 @@ static const uint32_t OPENPGP_EIP1581_PATH[OPENPGP_EIP1581_PATH_LEN] = {
 
 #define OPENPGP_UID_CERT_ISSUER_FINGERPRINT_OFFSET 9
 #define OPENPGP_UID_CERT_ISSUER_KEY_ID_OFFSET \
-    (OPENPGP_V4_SIG_FIELDS_LEN + 4)
+    (OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN + 4)
 
 static app_err_t core_openpgp_prepare_key(uint8_t *path, uint16_t path_len, uint32_t creation_time, uint8_t *primary_key_body, size_t primary_key_body_capacity, size_t *primary_key_body_len, uint8_t fingerprint[OPENPGP_V4_FINGERPRINT_LEN]) {
 
@@ -167,11 +167,11 @@ static app_err_t core_openpgp_prepare_uid_certification(core_openpgp_identity_t 
         return ERR_CRYPTO;
     }
 
-    if (openpgp_v4_build_sig_fields_for_type(OPENPGP_UID_CERT_SIGNATURE_TYPE, fingerprint, creation_time, certification->sig_fields, sizeof(certification->sig_fields), &sig_fields_len) != 0) {
+    if (openpgp_v4_build_uid_cert_sig_fields(fingerprint, creation_time, certification->sig_fields, sizeof(certification->sig_fields), &sig_fields_len) != 0) {
         return ERR_CRYPTO;
     }
 
-    if (sig_fields_len != OPENPGP_V4_SIG_FIELDS_LEN) {
+    if (sig_fields_len != OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN) {
         return ERR_CRYPTO;
     }
 
@@ -778,14 +778,17 @@ static int core_openpgp_validate_identity_binding(const openpgp_cert_target_t *t
     if (target->self_cert_body_len <
             OPENPGP_UID_CERT_ISSUER_KEY_ID_OFFSET + 8 ||
         signature_body[4] != 0x00 ||
-        signature_body[5] != 0x1d ||
+        signature_body[5] != 0x20 ||
         signature_body[6] != 0x16 ||
         signature_body[7] != 0x21 ||
         signature_body[8] != 0x04 ||
-        signature_body[OPENPGP_V4_SIG_FIELDS_LEN] != 0x00 ||
-        signature_body[OPENPGP_V4_SIG_FIELDS_LEN + 1] != 0x0a ||
-        signature_body[OPENPGP_V4_SIG_FIELDS_LEN + 2] != 0x09 ||
-        signature_body[OPENPGP_V4_SIG_FIELDS_LEN + 3] != 0x10) {
+        signature_body[OPENPGP_V4_SIG_FIELDS_LEN] != 0x02 ||
+        signature_body[OPENPGP_V4_SIG_FIELDS_LEN + 1] != 0x1b ||
+        signature_body[OPENPGP_V4_SIG_FIELDS_LEN + 2] != 0x03 ||
+        signature_body[OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN] != 0x00 ||
+        signature_body[OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN + 1] != 0x0a ||
+        signature_body[OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN + 2] != 0x09 ||
+        signature_body[OPENPGP_V4_UID_CERT_SIG_FIELDS_LEN + 3] != 0x10) {
         return -1;
     }
 
