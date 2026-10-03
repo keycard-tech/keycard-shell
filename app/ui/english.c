@@ -5,6 +5,7 @@ const char *const i18n_english_strings[] = {
     "Scan QR",
     "Connect software wallet",
     "Addresses",
+    "Extras",
     "Settings",
     "Information",
 
@@ -336,4 +337,15 @@ const char *const i18n_english_strings[] = {
     "Multisig deleted",
     "The descriptor was removed",
     "Multisig address",
+
+    // OpenPGP identity
+    "UID",
+    "Creation time",
+    "Fingerprint",
+    "Create OpenPGP identity",
+    "Approve this UID, creation time, and fingerprint?",
+    "OpenPGP message",
+    "Signature time",
+    "Sign OpenPGP message",
+    "OpenPGP",
 };

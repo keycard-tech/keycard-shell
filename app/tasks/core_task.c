@@ -1,6 +1,7 @@
 #include "common.h"
 #include "core/core.h"
 #include "core/core_multisig.h"
+#include "core/core_openpgp.h"
 #include "core/card.h"
 #include "core/settings.h"
 #include "keycard/keycard.h"
@@ -13,6 +14,9 @@ static inline void core_action_run(i18n_str_id_t menu) {
   // Top Level
   case MENU_QRCODE:
     core_qr_run();
+    break;
+  case MENU_OPENPGP:
+    core_openpgp_run();
     break;
   case MENU_CONNECT:
     core_connect_wallet();

@@ -143,6 +143,7 @@ struct cmd_paged_text {
   const char* title;
   const char* text;
   uint32_t len;
+  ui_info_opt_t options;
 };
 
 struct cmd_brightness {
