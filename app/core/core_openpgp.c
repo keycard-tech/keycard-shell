@@ -63,14 +63,14 @@ typedef struct {
     uint8_t raw_signature[OPENPGP_RAW_ECDSA_LEN];
 } core_openpgp_message_t;
 
-/* Shell-owned path: m/43'/60'/1581'/5261136'/0; the host never supplies it. */
-#define OPENPGP_EIP1581_PATH_LEN 5
+/* Shell-owned path: m/43'/5261136'/0'/0/0; the host never supplies it. */
+#define OPENPGP_KEY_PATH_LEN 5
 
-static const uint32_t OPENPGP_EIP1581_PATH[OPENPGP_EIP1581_PATH_LEN] = {
+static const uint32_t OPENPGP_KEY_PATH[OPENPGP_KEY_PATH_LEN] = {
     0x8000002b,
-    0x8000003c,
-    0x8000062d,
     0x80504750,
+    0x80000000,
+    0x00000000,
     0x00000000,
 };
 
@@ -1017,10 +1017,10 @@ static app_err_t core_openpgp_qr_run(uint8_t *path, uint16_t path_len) {
 
 app_err_t core_openpgp_run(void) {
 
-    uint8_t path[OPENPGP_EIP1581_PATH_LEN * sizeof(uint32_t)];
+    uint8_t path[OPENPGP_KEY_PATH_LEN * sizeof(uint32_t)];
 
-    for (size_t i = 0; i < OPENPGP_EIP1581_PATH_LEN; i++) {
-        uint32_t v = OPENPGP_EIP1581_PATH[i];
+    for (size_t i = 0; i < OPENPGP_KEY_PATH_LEN; i++) {
+        uint32_t v = OPENPGP_KEY_PATH[i];
 
         path[i * 4] = (uint8_t)(v >> 24);
         path[i * 4 + 1] = (uint8_t)(v >> 16);
