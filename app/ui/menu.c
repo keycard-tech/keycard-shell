@@ -85,11 +85,18 @@ const menu_t menu_settings = {
   }
 };
 
+const menu_t menu_extras = {
+  1, {
+    {MENU_OPENPGP, NULL},
+  }
+};
+
 const menu_t menu_mainmenu = {
-  5, {
+  6, {
     {MENU_QRCODE, NULL},
     {MENU_CONNECT, NULL},
     {MENU_ADDRESSES, &menu_addresses},
+    {MENU_EXTRAS, &menu_extras},
     {MENU_SETTINGS, &menu_settings},
     {MENU_INFO, &menu_info},
   }
