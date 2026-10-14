@@ -640,41 +640,52 @@ app_err_t keycard_read_signature(uint8_t* data, uint16_t data_len, uint8_t* dige
     return ERR_DATA;
   }
 
-  if (tlv_read_fixed_primitive(0x80, 65, data, out_sig) != TLV_INVALID) {
+  if (tlv_read_fixed_primitive_bounded(0x80, 65, data, data_len, out_sig) != TLV_INVALID) {
     return ERR_OK;
   }
 
   uint16_t len;
   uint16_t tag;
-  uint16_t off = tlv_read_tag(data, &tag);
+  uint16_t read = tlv_read_tag_bounded(data, data_len, &tag);
 
-  if (tag != 0xa0 || off > data_len) {
+  if (read == TLV_INVALID || tag != 0xa0) {
     return ERR_DATA;
   }
 
-  if (off >= data_len) {
-    return ERR_DATA;
-  }
-  off += tlv_read_length(&data[off], &len);
-  if (off > data_len) {
-    return ERR_DATA;
-  }
+  uint16_t off = read;
 
   if (off >= data_len) {
     return ERR_DATA;
   }
-  off += tlv_read_tag(&data[off], &tag);
-  if (tag != 0x80 || off > data_len) {
+
+  read = tlv_read_length_bounded(&data[off], data_len - off, &len);
+  if (read == TLV_INVALID) {
     return ERR_DATA;
   }
+
+  off += read;
 
   if (off >= data_len) {
     return ERR_DATA;
   }
-  off += tlv_read_length(&data[off], &len);
-  if (off > data_len) {
+
+  read = tlv_read_tag_bounded(&data[off], data_len - off, &tag);
+  if (read == TLV_INVALID || tag != 0x80) {
     return ERR_DATA;
   }
+
+  off += read;
+
+  if (off >= data_len) {
+    return ERR_DATA;
+  }
+
+  read = tlv_read_length_bounded(&data[off], data_len - off, &len);
+  if (read == TLV_INVALID) {
+    return ERR_DATA;
+  }
+
+  off += read;
 
   if (len > data_len - off || 72 > data_len - off - len) {
     return ERR_DATA;

@@ -36,6 +36,7 @@
  * @return the length, in bytes of the read tag
  */
 uint16_t tlv_read_tag(uint8_t *buf, uint16_t *out_tag);
+uint16_t tlv_read_tag_bounded(uint8_t *buf, uint16_t buf_len, uint16_t *out_tag);
 
 /**
  * Reads the TLV length in the buffer and stores it in the out_len parameter.
@@ -45,6 +46,7 @@ uint16_t tlv_read_tag(uint8_t *buf, uint16_t *out_tag);
  * @return the length, in bytes of the read length
  */
 uint16_t tlv_read_length(uint8_t *buf, uint16_t *out_len);
+uint16_t tlv_read_length_bounded(uint8_t *buf, uint16_t buf_len, uint16_t *out_len);
 
 /**
  * Reads the TLV data in the buffer and stores it in the out parameter.
@@ -56,6 +58,7 @@ uint16_t tlv_read_length(uint8_t *buf, uint16_t *out_len);
  * @return the length, in bytes of the read length or TLV_INVALID if invalid
  */
 uint16_t tlv_read_fixed_primitive(uint16_t tag, uint16_t len, uint8_t *buf, uint8_t *out);
+uint16_t tlv_read_fixed_primitive_bounded(uint16_t tag, uint16_t len, uint8_t *buf, uint16_t buf_len, uint8_t *out);
 
 /**
  * Reads the TLV data in the buffer and stores it in the out parameter.
@@ -68,6 +71,7 @@ uint16_t tlv_read_fixed_primitive(uint16_t tag, uint16_t len, uint8_t *buf, uint
  * @return the length, in bytes of the read length or TLV_INVALID if invalid
  */
 uint16_t tlv_read_primitive(uint16_t tag, uint16_t max_len, uint8_t *buf, uint8_t *out, uint16_t *len);
+uint16_t tlv_read_primitive_bounded(uint16_t tag, uint16_t max_len, uint8_t *buf, uint16_t buf_len, uint8_t *out, uint16_t *len);
 
 /**
  * Writes the given TLV tag in the given buffer.
