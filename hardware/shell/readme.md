@@ -2,6 +2,7 @@ This directory contains the full open-source design for Keycard Shell. It includ
 
 ## Versions
 - `serial_run` corresponds to the design of Keycard Shell launched officially in January 2026
+  - units from the first production (December 2025) use main board PCB V3.7, see [`serial_run/ELECTRONIC/readme.md`](serial_run/ELECTRONIC/readme.md)
 - `pilot_run` ⚠️ deprecated 
 - `prototype_v2` ⚠️ deprecated
 
