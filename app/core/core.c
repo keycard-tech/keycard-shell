@@ -37,6 +37,10 @@ const uint32_t BTC_MULTISIG_PURPOSE = 0x80000030;
 const uint32_t BTC_MAINNET_COIN = 0x80000000;
 const uint32_t BTC_TESTNET_COIN = 0x80000001;
 
+/* coininfo network ids, per BCR-2020-007 */
+#define COIN_NETWORK_MAINNET 0
+#define COIN_NETWORK_TESTNET 1
+
 const uint32_t BIP44_ETH_PATH[] = { ETH_PURPOSE, ETH_COIN, 0x80000000 };
 
 const uint32_t BIP44_BTC_LEGACY_PATH[] = { BTC_LEGACY_PURPOSE, BTC_MAINNET_COIN, 0x80000000 };
@@ -423,13 +427,24 @@ static inline void set_device_name(struct zcbor_string* card_name) {
   card_name->len = strlen(name);
 }
 
+/* BCR-2020-007 clients assume a mainnet bitcoin key when use-info is absent, so it is set for
+ * every exported key. coin-type must match the coin component of the origin path, so it is read
+ * from there; paths with no coin component (m/45') are mainnet only. */
+static inline void set_hd_key_use_info(struct hd_key* key, const uint32_t* path, uint32_t path_len) {
+  struct coininfo* use_info = &key->hd_key_use_info.hd_key_use_info;
+
+  use_info->coininfo_coin_type = path_len > 1 ? (path[1] & 0x7fffffff) : (BTC_MAINNET_COIN & 0x7fffffff);
+  use_info->coininfo_network = use_info->coininfo_coin_type == (BTC_TESTNET_COIN & 0x7fffffff) ? COIN_NETWORK_TESTNET : COIN_NETWORK_MAINNET;
+  key->hd_key_use_info_present = 1;
+}
+
 static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, const uint32_t* path, uint32_t path_len, uint32_t account, const char* source) {
   key->hd_key_is_private = 0;
   key->hd_key_key_data.len = PUBKEY_COMPRESSED_LEN;
   key->hd_key_key_data.value = pub;
   key->hd_key_chain_code.len = CHAINCODE_LEN;
   key->hd_key_chain_code.value = chain;
-  key->hd_key_use_info_present = 0;
+  set_hd_key_use_info(key, path, path_len);
   key->hd_key_origin.crypto_keypath_depth_present = 1;
   key->hd_key_origin.crypto_keypath_depth.crypto_keypath_depth = path_len;
   key->hd_key_origin.crypto_keypath_source_fingerprint_present = 1;
@@ -493,7 +508,10 @@ static void core_display_public_eip4527(uint32_t account, const char* account_ty
     return;
   }
 
-  cbor_encode_hd_key(g_core.data.key.cbor_key, CBOR_KEY_MAX_LEN, &key, &g_core.data.key.cbor_len);
+  if (cbor_encode_hd_key(g_core.data.key.cbor_key, CBOR_KEY_MAX_LEN, &key, &g_core.data.key.cbor_len) != ZCBOR_SUCCESS) {
+    ui_card_transport_error();
+    return;
+  }
   ui_display_ur_qr(NULL, g_core.data.key.cbor_key, g_core.data.key.cbor_len, CRYPTO_HDKEY);
 }
 
@@ -505,19 +523,27 @@ static void core_display_public_eip4527(uint32_t account, const char* account_ty
   } \
   account.crypto_account_output_descriptors_crypto_output_m[__NUM__].crypto_output_choice =  __TYPE__; \
   keys_off += PUBKEY_LEN + CHAINCODE_LEN
-static void core_display_public_bitcoin(const uint32_t* segwit, const uint32_t* nested_segwit, const uint32_t* legacy, uint32_t account_idx) {
+static void core_display_public_bitcoin(bool testnet, uint32_t account_idx) {
   struct crypto_account account;
+
+  const uint32_t* segwit = testnet ? BIP44_BTC_TESTNET_NATIVE_SEGWIT_PATH : BIP44_BTC_NATIVE_SEGWIT_PATH;
+  const uint32_t* nested_segwit = testnet ? BIP44_BTC_TESTNET_NESTED_SEGWIT_PATH : BIP44_BTC_NESTED_SEGWIT_PATH;
+  const uint32_t* legacy = testnet ? BIP44_BTC_TESTNET_LEGACY_PATH : BIP44_BTC_LEGACY_PATH;
+  const uint32_t* taproot = testnet ? BIP44_BTC_TESTNET_TAPROOT_PATH : BIP44_BTC_TAPROOT_PATH;
 
   size_t keys_off = 0;
 
   CORE_BITCOIN_EXPORT(0, crypto_output_witness_public_key_hash_m_c, segwit, 3, account_idx);
   CORE_BITCOIN_EXPORT(1, crypto_output_script_hash_wpkh_m_c, nested_segwit, 3, account_idx);
   CORE_BITCOIN_EXPORT(2, crypto_output_public_key_hash_m_c, legacy, 3, account_idx);
-  CORE_BITCOIN_EXPORT(3, crypto_output_taproot_m_c, BIP44_BTC_TAPROOT_PATH, 3, account_idx);
+  CORE_BITCOIN_EXPORT(3, crypto_output_taproot_m_c, taproot, 3, account_idx);
 
   account.crypto_account_output_descriptors_crypto_output_m_count = 4;
   account.crypto_account_master_fingerprint = g_core.master_fingerprint;
-  cbor_encode_crypto_account(&g_mem_heap[keys_off], MEM_HEAP_SIZE, &account, &g_core.data.key.cbor_len);
+  if (cbor_encode_crypto_account(&g_mem_heap[keys_off], MEM_HEAP_SIZE - keys_off, &account, &g_core.data.key.cbor_len) != ZCBOR_SUCCESS) {
+    ui_card_transport_error();
+    return;
+  }
   ui_display_ur_qr(NULL, &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_ACCOUNT);
 }
 
@@ -532,7 +558,10 @@ static void core_display_public_bitcoin_multisig(uint32_t account_idx) {
 
   account.crypto_account_output_descriptors_crypto_output_m_count = 3;
   account.crypto_account_master_fingerprint = g_core.master_fingerprint;
-  cbor_encode_crypto_account(&g_mem_heap[keys_off], MEM_HEAP_SIZE, &account, &g_core.data.key.cbor_len);
+  if (cbor_encode_crypto_account(&g_mem_heap[keys_off], MEM_HEAP_SIZE - keys_off, &account, &g_core.data.key.cbor_len) != ZCBOR_SUCCESS) {
+    ui_card_transport_error();
+    return;
+  }
   ui_display_ur_qr(NULL, &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_ACCOUNT);
 }
 
@@ -573,7 +602,10 @@ void core_display_public_multicoin() {
   accounts.crypto_multi_accounts_keys_tagged_hd_key_m_count = 5;
   accounts.crypto_multi_accounts_master_fingerprint = g_core.master_fingerprint;
 
-  cbor_encode_crypto_multi_accounts(&g_mem_heap[keys_off], MEM_HEAP_SIZE, &accounts, &g_core.data.key.cbor_len);
+  if (cbor_encode_crypto_multi_accounts(&g_mem_heap[keys_off], MEM_HEAP_SIZE - keys_off, &accounts, &g_core.data.key.cbor_len) != ZCBOR_SUCCESS) {
+    ui_card_transport_error();
+    return;
+  }
   ui_display_ur_qr(NULL, &g_mem_heap[keys_off], g_core.data.key.cbor_len, CRYPTO_MULTI_ACCOUNTS);
 }
 
@@ -818,14 +850,14 @@ void core_connect_wallet() {
       break;
     case MENU_CONNECT_BITCOIN_ALT:
     case MENU_CONNECT_BITCOIN:
-      core_display_public_bitcoin(BIP44_BTC_NATIVE_SEGWIT_PATH, BIP44_BTC_NESTED_SEGWIT_PATH, BIP44_BTC_LEGACY_PATH, account);
+      core_display_public_bitcoin(false, account);
       break;
     case MENU_CONNECT_BITCOIN_MULTISIG_ALT:
     case MENU_CONNECT_BITCOIN_MULTISIG:
       core_display_public_bitcoin_multisig(account);
       break;
     case MENU_CONNECT_BITCOIN_TESTNET:
-      core_display_public_bitcoin(BIP44_BTC_TESTNET_NATIVE_SEGWIT_PATH, BIP44_BTC_TESTNET_NESTED_SEGWIT_PATH, BIP44_BTC_TESTNET_LEGACY_PATH, account);
+      core_display_public_bitcoin(true, account);
       break;
     case MENU_CONNECT_MULTICOIN:
       core_display_public_multicoin();
