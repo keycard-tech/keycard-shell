@@ -4,6 +4,9 @@
 #include "common.h"
 #include "dialog.h"
 #include "theme.h"
+#include "crypto/bip39.h"
+#include "crypto/slip39.h"
+#include "crypto/memzero.h"
 #include "crypto/util.h"
 #include "keypad/keypad.h"
 #include "ui/ui_internal.h"
@@ -20,7 +23,7 @@
 
 #define WORD_MAX_LEN 8
 
-#define KEYBOARD_MNEMONIC_INITIAL_MASK 0x37FFFFF
+#define MNEMONIC_SUGGESTION_SLOTS 3
 
 #define KEYBOARD_ROW0_LEN 9
 #define KEYBOARD_ROW1_LEN 9
@@ -55,12 +58,13 @@
 #define KEYBOARD_ALPHA_CASE_IDX 28
 #define KEYBOARD_ALPHA_SPACE_IDX 29
 
-#define KEYBOARD_MNEMONIC_SUGGESTION1_IDX 26
-#define KEYBOARD_MNEMONIC_SUGGESTION2_IDX 27
-#define KEYBOARD_MNEMONIC_SUGGESTION3_IDX 28
+#define KEYBOARD_LETTERS ('z' - 'a' + 1)
+#define KEYBOARD_LETTER_MASK ((1U << KEYBOARD_LETTERS) - 1)
+
+#define KEYBOARD_MNEMONIC_SUGGESTION_IDX KEYBOARD_ROW2_LIMIT
 
 #define KEYBOARD_CHAR(k, c) ((k->layout == KEYBOARD_UPPERCASE ? 'A' : 'a') + c)
-#define KEYBOARD_ENABLED(k, c) ((k->keymask & (1 << c)) >> c)
+#define KEYBOARD_ENABLED(k, c) ((k->keymask & (1 << (c))) >> (c))
 
 #define KEYBOARD_LINE_WIDTH(__LEN__) ((__LEN__ * (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN)) + TH_KEYBOARD_KEY_MARGIN)
 
@@ -103,6 +107,8 @@ const secret_spec_t SECRET_SPEC[] = {
     {PUK_INPUT_TITLE, PUK_CREATE_TITLE, PUK_LABEL_REPEAT, PUK_LEN},
     {PIN_INPUT_TITLE, DURESS_CREATE_TITLE, DURESS_LABEL_REPEAT, PIN_LEN},
 };
+
+static const uint16_t NO_SUGGESTIONS[MNEMONIC_SUGGESTION_SLOTS] = {MNEMONIC_INDEX_EMPTY, MNEMONIC_INDEX_EMPTY, MNEMONIC_INDEX_EMPTY};
 
 static app_err_t input_render_secret(uint16_t yOff, int len, int pos, icon_t full, icon_t current) {
   uint16_t start_x = (SCREEN_WIDTH - ((len * (TH_NAV_ICONS)->yAdvance) + (TH_PIN_DIGIT_MARGIN * (len - 1)))) / 2;
@@ -324,7 +330,7 @@ static inline void input_keyboard_render_suggestion(uint16_t x, uint16_t y, uint
   y += TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN; \
 }
 
-static void input_keyboard_render_alpha(keyboard_state_t* keyboard, uint16_t suggestion_idx) {
+static void input_keyboard_render_alpha(keyboard_state_t* keyboard, const uint16_t* suggestions) {
   uint8_t i = 0;
   uint16_t x;
   uint16_t y = TH_KEYBOARD_TOP + ((keyboard->layout == KEYBOARD_MNEMONIC) ? (TH_KEYBOARD_KEY_SIZE + TH_KEYBOARD_KEY_MARGIN) : 0);
@@ -337,11 +343,10 @@ static void input_keyboard_render_alpha(keyboard_state_t* keyboard, uint16_t sug
     y = TH_KEYBOARD_TOP;
     x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN)) / 2;
 
-    input_keyboard_render_suggestion(x, y, suggestion_idx, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION1_IDX));
-    x += TH_KEYBOARD_KEY_SUGGESTION_SIZE + TH_KEYBOARD_KEY_MARGIN;
-    input_keyboard_render_suggestion(x, y, suggestion_idx + 1, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION2_IDX));
-    x += TH_KEYBOARD_KEY_SUGGESTION_SIZE + TH_KEYBOARD_KEY_MARGIN;
-    input_keyboard_render_suggestion(x, y, suggestion_idx + 2, keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION3_IDX));
+    for (uint8_t slot = 0; slot < MNEMONIC_SUGGESTION_SLOTS; slot++) {
+      input_keyboard_render_suggestion(x, y, suggestions[slot], keyboard->idx == i++, KEYBOARD_ENABLED(keyboard, KEYBOARD_MNEMONIC_SUGGESTION_IDX + slot));
+      x += TH_KEYBOARD_KEY_SUGGESTION_SIZE + TH_KEYBOARD_KEY_MARGIN;
+    }
   } else {
     x = (SCREEN_WIDTH - KEYBOARD_LINE_WIDTH(KEYBOARD_ROW0_LEN)) / 2;
     input_keyboard_render_key(KEYBOARD_NUM_SYM, x, y, keyboard->idx == i++, true);
@@ -404,13 +409,13 @@ static void input_keyboard_blank() {
 
 static void input_keyboard_navigate_up(keyboard_state_t* keyboard) {
   if (keyboard->idx >= KEYBOARD_ROW2_LIMIT) {
-    keyboard->idx = KEYBOARD_ROW1_LIMIT + ((keyboard->idx - KEYBOARD_ROW2_LIMIT) * ((keyboard->layout == KEYBOARD_MNEMONIC) ? 3 : 1));
+    keyboard->idx = KEYBOARD_ROW1_LIMIT + ((keyboard->idx - KEYBOARD_ROW2_LIMIT) * ((keyboard->layout == KEYBOARD_MNEMONIC) ? MNEMONIC_SUGGESTION_SLOTS : 1));
   } else if (keyboard->idx >= KEYBOARD_ROW1_LIMIT) {
     keyboard->idx -= KEYBOARD_ROW1_LEN;
   } else if (keyboard->idx >= KEYBOARD_ROW0_LIMIT) {
     keyboard->idx -= KEYBOARD_ROW0_LEN;
   } else {
-    keyboard->idx = KEYBOARD_ROW2_LIMIT + ((keyboard->layout == KEYBOARD_MNEMONIC) ? (keyboard->idx / 3) : APP_MIN(keyboard->idx, (KEYBOARD_ROW_EXTRA_LEN - 1)));
+    keyboard->idx = KEYBOARD_ROW2_LIMIT + ((keyboard->layout == KEYBOARD_MNEMONIC) ? (keyboard->idx / MNEMONIC_SUGGESTION_SLOTS) : APP_MIN(keyboard->idx, (KEYBOARD_ROW_EXTRA_LEN - 1)));
   }
 }
 
@@ -420,9 +425,9 @@ static void input_keyboard_navigate_down(keyboard_state_t* keyboard) {
   } else if (keyboard->idx < KEYBOARD_ROW1_LIMIT) {
     keyboard->idx = APP_MIN(keyboard->idx + KEYBOARD_ROW1_LEN, (KEYBOARD_ROW2_LIMIT - 1));
   } else if (keyboard->idx < KEYBOARD_ROW2_LIMIT) {
-    keyboard->idx = KEYBOARD_ROW2_LIMIT + ((keyboard->layout == KEYBOARD_MNEMONIC) ? ((keyboard->idx - KEYBOARD_ROW1_LIMIT) / 3) : APP_MIN((keyboard->idx - KEYBOARD_ROW1_LIMIT), (KEYBOARD_ROW_EXTRA_LEN - 1)));
+    keyboard->idx = KEYBOARD_ROW2_LIMIT + ((keyboard->layout == KEYBOARD_MNEMONIC) ? ((keyboard->idx - KEYBOARD_ROW1_LIMIT) / MNEMONIC_SUGGESTION_SLOTS) : APP_MIN((keyboard->idx - KEYBOARD_ROW1_LIMIT), (KEYBOARD_ROW_EXTRA_LEN - 1)));
   } else {
-    keyboard->idx = (keyboard->idx - KEYBOARD_ROW2_LIMIT) * ((keyboard->layout == KEYBOARD_MNEMONIC) ? 3 : 1);
+    keyboard->idx = (keyboard->idx - KEYBOARD_ROW2_LIMIT) * ((keyboard->layout == KEYBOARD_MNEMONIC) ? MNEMONIC_SUGGESTION_SLOTS : 1);
   }
 }
 
@@ -580,7 +585,7 @@ static char input_keyboard_navigate_alpha(keyboard_state_t* keyboard) {
   case KEYPAD_KEY_CONFIRM:
     if (g_ui_ctx.keypad.last_key_long) {
       ret = KEY_RETURN;
-    } else if ((keyboard->layout == KEYBOARD_MNEMONIC) && (keyboard->idx >= KEYBOARD_MNEMONIC_SUGGESTION1_IDX)) {
+    } else if ((keyboard->layout == KEYBOARD_MNEMONIC) && (keyboard->idx >= KEYBOARD_MNEMONIC_SUGGESTION_IDX)) {
       ret = KEY_ACK;
     } else {
       switch(keyboard->idx) {
@@ -735,7 +740,7 @@ static char input_keyboard_navigate_extra(keyboard_state_t* keyboard) {
   return ret;
 }
 
-static char input_keyboard(keyboard_state_t* keyboard, uint16_t suggestion_idx) {
+static char input_keyboard(keyboard_state_t* keyboard, const uint16_t* suggestions) {
   char c = KEY_NONE;
 
   while(c == KEY_NONE) {
@@ -746,7 +751,7 @@ static char input_keyboard(keyboard_state_t* keyboard, uint16_t suggestion_idx) 
       input_keyboard_render_extra(keyboard);
       c = input_keyboard_navigate_extra(keyboard);
     } else {
-      input_keyboard_render_alpha(keyboard, suggestion_idx);
+      input_keyboard_render_alpha(keyboard, suggestions);
       c = input_keyboard_navigate_alpha(keyboard);
     }
   }
@@ -855,7 +860,7 @@ static inline void input_render_editable_text_field(const char* str, const char*
 static void input_mnemonic_render(const char* word, int len, uint16_t idx) {
   int suggestion_len;
 
-  if (idx != UINT16_MAX) {
+  if (idx != MNEMONIC_INDEX_EMPTY) {
     word = g_ui_cmd.params.mnemo.wordlist[idx];
     suggestion_len = strlen(word) - len;
   } else {
@@ -865,58 +870,73 @@ static void input_mnemonic_render(const char* word, int len, uint16_t idx) {
   input_render_editable_text_field(word, LSTR(PROMPT_MNEMONIC), len, suggestion_len);
 }
 
-static void input_mnemonic_lookup(char* word, int len, uint16_t* idx, uint32_t* keymask, uint16_t *more_res) {
-  *more_res = 0;
-  *keymask = 0;
-
-  if (len == 0) {
-    *keymask = KEYBOARD_MNEMONIC_INITIAL_MASK;
-    *idx = UINT16_MAX;
-    return;
+static inline bool input_mnemonic_is_candidate(const uint8_t* candidates, uint16_t idx) {
+  if (idx >= g_ui_cmd.params.mnemo.wordlist_len) {
+    return false;
   }
+
+  return (candidates == NULL) || (candidates[idx / 8] & (1 << (idx % 8)));
+}
+
+static inline void input_mnemonic_clear_suggestions(uint16_t* suggestions) {
+  for (uint8_t slot = 0; slot < MNEMONIC_SUGGESTION_SLOTS; slot++) {
+    suggestions[slot] = MNEMONIC_INDEX_EMPTY;
+  }
+}
+
+static void input_mnemonic_lookup(const char* word, int len, const uint8_t* candidates, uint32_t* keymask, uint16_t* suggestions) {
+  const char* const* wordlist = g_ui_cmd.params.mnemo.wordlist;
+  const uint16_t wordlist_len = g_ui_cmd.params.mnemo.wordlist_len;
+
+  *keymask = 0;
+  input_mnemonic_clear_suggestions(suggestions);
 
   uint16_t i = 0;
+  uint16_t matches = 0;
 
-  while (i < g_ui_cmd.params.mnemo.wordlist_len) {
-    int cmp = strncmp(word, g_ui_cmd.params.mnemo.wordlist[i], len);
-
-    if (cmp == 0) {
-      *idx = i;
-
-      *keymask |= 1 << (('z' - 'a') + 1);
-
-      if (g_ui_cmd.params.mnemo.wordlist[i][len] != '\0') {
-        *keymask |= (1 << (g_ui_cmd.params.mnemo.wordlist[i][len] - 'a'));
-      }
-
-      while(++i < g_ui_cmd.params.mnemo.wordlist_len) {
-        if (strncmp(word, g_ui_cmd.params.mnemo.wordlist[i], len) != 0) {
-          return;
-        }
-
-        if (g_ui_cmd.params.mnemo.wordlist[i][len] != '\0') {
-          *keymask |= (1 << (g_ui_cmd.params.mnemo.wordlist[i][len] - 'a'));
-        }
-
-        (*more_res)++;
-
-        uint8_t tmp = (*more_res + ('z' - 'a') + 1);
-        // on ARM, the if is redundant but technically without it we enter undefined behavior territory
-        if (tmp < (sizeof(uint32_t) * 8)) {
-          *keymask |= 1 << tmp;
-        }
-      }
-      return;
-    } else if (cmp < 0) {
-      *idx = UINT16_MAX;
-      return;
-    } else {
-      i++;
-    }
+  while ((i < wordlist_len) && (strncmp(wordlist[i], word, len) < 0)) {
+    i++;
   }
 
-  *idx = UINT16_MAX;
-  return;
+  while ((i < wordlist_len) && (strncmp(wordlist[i], word, len) == 0)) {
+    if (input_mnemonic_is_candidate(candidates, i)) {
+      if (matches < MNEMONIC_SUGGESTION_SLOTS) {
+        suggestions[matches] = i;
+        *keymask |= 1 << (KEYBOARD_MNEMONIC_SUGGESTION_IDX + matches);
+      }
+
+      matches++;
+
+      if (wordlist[i][len] != '\0') {
+        *keymask |= 1 << (wordlist[i][len] - 'a');
+      }
+    }
+
+    i++;
+  }
+
+  if ((len == 0) && (matches != 1)) {
+    input_mnemonic_clear_suggestions(suggestions);
+    *keymask &= KEYBOARD_LETTER_MASK;
+  }
+}
+
+static const uint8_t* input_mnemonic_candidates(uint32_t word_num, uint8_t* mnemo_candidates) {
+  if (word_num != (g_ui_cmd.params.mnemo.len - 1)) {
+    return NULL;
+  }
+
+  uint32_t count;
+
+  if (g_ui_cmd.params.mnemo.wordlist == BIP39_WORDLIST_ENGLISH) {
+    count = mnemonic_last_word_mask(g_ui_cmd.params.mnemo.indexes, g_ui_cmd.params.mnemo.len, mnemo_candidates);
+  } else if (g_ui_cmd.params.mnemo.wordlist == SLIP39_WORDLIST) {
+    count = slip39_last_word_mask(g_ui_cmd.params.mnemo.indexes, g_ui_cmd.params.mnemo.len, mnemo_candidates);
+  } else {
+    return NULL;
+  }
+
+  return count ? mnemo_candidates : NULL;
 }
 
 static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
@@ -926,44 +946,61 @@ static app_err_t input_mnemonic_get_word(int i, uint16_t* idx) {
   char word[WORD_MAX_LEN];
   int len = 0;
   keyboard_state_t keyboard;
-  keyboard.keymask = KEYBOARD_MNEMONIC_INITIAL_MASK;
   keyboard.idx = 0;
   keyboard.layout = KEYBOARD_MNEMONIC;
-  uint16_t more_res = 0;
-  bool valid = (*idx != UINT16_MAX);
+  uint16_t suggestions[MNEMONIC_SUGGESTION_SLOTS];
+  uint8_t mnemo_candidates[BIP39_WORD_COUNT / 8];
 
-  input_nav_hints(len, true, valid);
+  const uint8_t* candidates = input_mnemonic_candidates(i, mnemo_candidates);
+
+  input_mnemonic_lookup(word, len, candidates, &keyboard.keymask, suggestions);
+
+  if ((suggestions[0] == MNEMONIC_INDEX_EMPTY) && input_mnemonic_is_candidate(candidates, *idx)) {
+    suggestions[0] = *idx;
+  }
+
+  input_nav_hints(len, true, suggestions[0] != MNEMONIC_INDEX_EMPTY);
+
+  app_err_t err = ERR_CANCEL;
 
   while(1) {
-    input_mnemonic_render(word, len, *idx);
-    char c = input_keyboard(&keyboard, *idx);
+    input_mnemonic_render(word, len, suggestions[0]);
+    char c = input_keyboard(&keyboard, suggestions);
 
     if (c == KEY_RETURN) {
-      if (valid) {
-        return ERR_OK;
+      if (suggestions[0] != MNEMONIC_INDEX_EMPTY) {
+        *idx = suggestions[0];
+        err = ERR_OK;
+        break;
       }
-    } else if (c == KEY_ACK) {
-      uint16_t idx_off = (keyboard.idx - KEYBOARD_MNEMONIC_SUGGESTION1_IDX);
-      if (KEYBOARD_ENABLED((&keyboard), keyboard.idx)) {
-        *idx += idx_off;
-        return ERR_OK;
+    } else if ((c == KEY_ACK) && (keyboard.idx < (KEYBOARD_MNEMONIC_SUGGESTION_IDX + MNEMONIC_SUGGESTION_SLOTS))) {
+      uint16_t suggestion = suggestions[keyboard.idx - KEYBOARD_MNEMONIC_SUGGESTION_IDX];
+
+      if (suggestion != MNEMONIC_INDEX_EMPTY) {
+        *idx = suggestion;
+        err = ERR_OK;
+        break;
       }
     } else if (c == KEY_BACKSPACE) {
       if (len > 0) {
         len--;
-        *idx = 0;
-        input_mnemonic_lookup(word, len, idx, &keyboard.keymask, &more_res);
+        input_mnemonic_lookup(word, len, candidates, &keyboard.keymask, suggestions);
       }
     } else if (c == KEY_ESCAPE) {
-      return ERR_CANCEL;
+      break;
     } else if ((len < WORD_MAX_LEN) && KEYBOARD_ENABLED((&keyboard), keyboard.idx)) {
       word[len++] = c;
-      input_mnemonic_lookup(word, len, idx, &keyboard.keymask, &more_res);
+      input_mnemonic_lookup(word, len, candidates, &keyboard.keymask, suggestions);
     }
 
-    valid = (*idx != UINT16_MAX);
-    input_nav_hints(len, true, valid);
+    input_nav_hints(len, true, suggestions[0] != MNEMONIC_INDEX_EMPTY);
   }
+
+  memzero(word, sizeof(word));
+  memzero(mnemo_candidates, sizeof(mnemo_candidates));
+  memzero(suggestions, sizeof(suggestions));
+
+  return err;
 }
 
 app_err_t input_mnemonic() {
@@ -1066,7 +1103,7 @@ app_err_t input_string() {
 
   while(1) {
     input_render_editable_text_field(g_ui_cmd.params.input_string.out, g_ui_cmd.params.input_string.prompt, len, 0);
-    char c = input_keyboard(&keyboard, UINT16_MAX);
+    char c = input_keyboard(&keyboard, NO_SUGGESTIONS);
 
     if (c == KEY_RETURN) {
       if (valid) {

@@ -25,11 +25,20 @@
 #define __BIP39_H__
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define BIP39_MAX_MNEMONIC_LEN 24
 #define BIP39_WORD_COUNT 2048
 #define BIP39_PBKDF2_ROUNDS 2048
+
+#define MNEMONIC_INDEX_EMPTY UINT16_MAX
+
+static inline void mnemonic_indexes_reset(uint16_t* indexes, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    indexes[i] = MNEMONIC_INDEX_EMPTY;
+  }
+}
 
 extern const char *const BIP39_WORDLIST_ENGLISH[BIP39_WORD_COUNT];
 
@@ -40,6 +49,7 @@ void mnemonic_from_indexes( char* mnemo, const uint16_t *indexes, int len);
 
 int mnemonic_check(const uint16_t *mnemonic, int len);
 int mnemonic_to_bits(const uint16_t *mnemonic, int n, uint8_t *bits);
+uint32_t mnemonic_last_word_mask(const uint16_t *indexes, int len, uint8_t *mask);
 bool mnemonic_from_seedqr_standard(uint16_t* mnemonic, uint32_t* out_len, const char* digits, int len);
 
 // passphrase must be at most 256 characters otherwise it would be truncated

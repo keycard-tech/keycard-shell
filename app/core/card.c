@@ -158,7 +158,7 @@ void card_verify_mnemonic() {
   uint8_t seed[64];
   
   memset(passphrase, 0x00, KEYCARD_BIP39_PASS_MAX_LEN);
-  memset(indexes, 0xff, sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN);
+  mnemonic_indexes_reset(indexes, BIP39_MAX_MNEMONIC_LEN);
   
   core_evt_t err;
 
@@ -176,26 +176,22 @@ void card_verify_mnemonic() {
     }
   }
 
-  if (err != CORE_EVT_UI_OK) {
-    memzero(shards, sizeof(shards));
-    memzero(slip39_ems, sizeof(slip39_ems));
-    return;
+  if (err == CORE_EVT_UI_OK) {
+    size_t seed_len;
+
+    if (len == SLIP39_MNEMO_LEN) {
+      slip39_decrypt(slip39_ems, 16, passphrase, shards[0].extendable, shards[0].iteration_exponent, shards[0].identifier, seed);
+      seed_len = 16;
+    } else {
+      mnemonic_indexes_to_seed(indexes, len, passphrase, seed);
+      seed_len = 64;
+    }
+
+    verify_fingerprint_result(seed, seed_len);
   }
 
-  size_t seed_len;
-
-  if (len == SLIP39_MNEMO_LEN) {
-    slip39_decrypt(slip39_ems, 16, passphrase, shards[0].extendable, shards[0].iteration_exponent, shards[0].identifier, seed);
-    seed_len = 16;    
-  } else {
-    mnemonic_indexes_to_seed(indexes, len, passphrase, seed); 
-    seed_len = 64;
-  }
-
-  verify_fingerprint_result(seed, seed_len);
-  
   memzero(seed, sizeof(seed));
-  memset(indexes, 0xff, sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN);
+  memzero(indexes, sizeof(indexes));
   memzero(passphrase, KEYCARD_BIP39_PASS_MAX_LEN);
   memzero(shards, sizeof(shards));
   memzero(slip39_ems, sizeof(slip39_ems));

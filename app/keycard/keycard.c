@@ -362,7 +362,7 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
   char passphrase[KEYCARD_BIP39_PASS_MAX_LEN];
 
   memset(passphrase, 0x00, KEYCARD_BIP39_PASS_MAX_LEN);
-  memset(indexes, 0xff, sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN);
+  mnemonic_indexes_reset(indexes, BIP39_MAX_MNEMONIC_LEN);
 
   bool has_pass;
   i18n_str_id_t mode_selected = ui_read_mnemonic_len(&len, &has_pass);
@@ -414,7 +414,7 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
     err = ERR_CANCEL;
   }
 
-  memset(indexes, 0xff, sizeof(uint16_t) * BIP39_MAX_MNEMONIC_LEN);
+  memzero(indexes, sizeof(indexes));
   memzero(shards, sizeof(shards));
   memzero(passphrase, KEYCARD_BIP39_PASS_MAX_LEN);
   return err;

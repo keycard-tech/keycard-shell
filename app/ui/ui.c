@@ -476,7 +476,7 @@ core_evt_t ui_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t in
     } else if (shards[0].group_threshold != 1) {
       ui_info(ICON_INFO_ERROR, LSTR(INFO_SLIP39_UNSUPPORTED_MSG), LSTR(INFO_SLIP39_UNSUPPORTED_SUB), 0);
     } else {
-      memset(&indexes[3], 0xff, sizeof(uint16_t) * (SLIP39_MNEMO_LEN - 3));
+      mnemonic_indexes_reset(&indexes[3], SLIP39_MNEMO_LEN - 3);
 
       shard_count = shards[0].member_threshold;
       shard_idx++;

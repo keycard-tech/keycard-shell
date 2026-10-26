@@ -80,6 +80,7 @@ static inline size_t slip39_mnemonic_length(size_t secret_len) {
 void slip39_encrypt(const uint8_t *input, uint32_t input_length, const char *passphrase, uint8_t ext, uint8_t iteration_exponent, uint16_t identifier, uint8_t *output);
 void slip39_decrypt(const uint8_t *input, uint32_t input_length, const char *passphrase, uint8_t ext, uint8_t iteration_exponent, uint16_t identifier, uint8_t *output);
 
+uint32_t slip39_last_word_mask(const uint16_t* indexes, uint32_t len, uint8_t* mask);
 int slip39_encode_mnemonic(const slip39_shard_t* shard, uint16_t* destination, uint32_t destination_length);
 int slip39_decode_mnemonic(const uint16_t* mnemonic, uint32_t mnemonic_length, slip39_shard_t* shard);
 

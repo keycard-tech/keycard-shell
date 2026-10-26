@@ -39,25 +39,28 @@ static const uint8_t SLIP39_CUSTOMIZATION[] = {
     's', 'h', 'a', 'm', 'i', 'r', '_', 'e', 'x', 't', 'e', 'n', 'd', 'a', 'b', 'l', 'e'
 };
 
+static uint32_t rs1024_step(uint32_t chk, uint16_t value) {
+  uint32_t b = chk >> 20;
+  chk = ((chk & 0xFFFFF) << 10 ) ^ value;
+
+  for (unsigned int j = 0; j < 10; ++j, b >>= 1) {
+    chk ^= RS1024_GEN[j] * (b&1);
+  }
+
+  return chk;
+}
+
 static uint32_t rs1024_polymod(uint8_t ext, const uint16_t *values, uint32_t values_length) {
   uint32_t chk = 1;
 
   uint8_t customization_len = ext ? CUSTOMIZATION_EXTENDABLE_LEN : CUSTOMIZATION_NON_EXTENDABLE_LEN;
 
   for (uint32_t i = 0; i < customization_len; ++i) {
-    uint32_t b = chk >> 20;
-    chk = ((chk & 0xFFFFF) << 10 ) ^ SLIP39_CUSTOMIZATION[i];
-    for (unsigned int j = 0; j < 10; ++j, b >>= 1) {
-      chk ^= RS1024_GEN[j] * (b&1);
-    }
+    chk = rs1024_step(chk, SLIP39_CUSTOMIZATION[i]);
   }
 
   for (uint32_t i = 0; i < values_length; ++i) {
-    uint32_t b = chk >> 20;
-    chk = ((chk & 0xFFFFF) << 10 ) ^ values[i];
-    for (unsigned int j = 0; j < 10; ++j, b>>=1) {
-      chk ^= RS1024_GEN[j] * (b&1);
-    }
+    chk = rs1024_step(chk, values[i]);
   }
 
   return chk;
@@ -216,6 +219,24 @@ static int32_t slip39_data_for_words(const uint16_t *words, uint32_t wordsize, u
   }
 
   return byte;
+}
+
+uint32_t slip39_last_word_mask(const uint16_t *indexes, uint32_t len, uint8_t *mask) {
+  memset(mask, 0, SLIP39_WORDS_COUNT / 8);
+
+  if (len < MIN_MNEMONIC_LENGTH_WORDS) {
+    return 0;
+  }
+
+  const uint32_t checksum = rs1024_step(rs1024_polymod(indexes[1] & SLIP39_EXT, indexes, len - 1), 0) ^ 1;
+
+  if (checksum >= SLIP39_WORDS_COUNT) {
+    return 0;
+  }
+
+  mask[checksum / 8] = 1 << (checksum % 8);
+
+  return 1;
 }
 
 int slip39_encode_mnemonic(const slip39_shard_t *shard, uint16_t *destination, uint32_t destination_length) {

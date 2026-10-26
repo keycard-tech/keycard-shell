@@ -153,6 +153,36 @@ int mnemonic_check(const uint16_t *mnemonic, int len) {
   return mnemonic_check_bits(bits, words);
 }
 
+uint32_t mnemonic_last_word_mask(const uint16_t *indexes, int len, uint8_t *mask) {
+  if ((len < 12) || (len > BIP39_MAX_MNEMONIC_LEN) || (len % 3)) {
+    return 0;
+  }
+
+  const uint32_t checksum_bits = len / 3;
+  const uint32_t entropy_bytes = (len * 11 - checksum_bits) / 8;
+  const uint32_t count = 1U << (11 - checksum_bits);
+
+  memset(mask, 0, BIP39_WORD_COUNT / 8);
+
+  uint16_t words[BIP39_MAX_MNEMONIC_LEN];
+  uint8_t bits[32 + 1];
+  memcpy(words, indexes, sizeof(uint16_t) * (len - 1));
+
+  for (uint32_t tail = 0; tail < count; tail++) {
+    words[len - 1] = tail << checksum_bits;
+    mnemonic_to_bits(words, len, bits);
+    sha256_Raw(bits, entropy_bytes, bits);
+
+    const uint32_t index = (tail << checksum_bits) | (bits[0] >> (8 - checksum_bits));
+    mask[index / 8] |= 1 << (index % 8);
+  }
+
+  memzero(bits, sizeof(bits));
+  memzero(words, sizeof(words));
+
+  return count;
+}
+
 // passphrase must be at most 256 characters otherwise it would be truncated
 void mnemonic_to_seed(const char *mnemonic, const char *passphrase, uint8_t seed[512 / 8]) {
   int mnemoniclen = strlen(mnemonic);
