@@ -1,5 +1,12 @@
 # Keycard Shell Dev Firmware
 
+## 1.5.0 (2026-10-26)
+
+* [extra] added GapPGP support
+* [bip39] during mnemonic import, the last word is now only selectable among valid ones
+* [slip39] suggest last checksum word
+* [ui] show Keycard applet version in info screen
+
 ## 1.4.0 (2026-09-15)
 
 * [keycard] support Keycard v4
