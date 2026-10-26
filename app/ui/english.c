@@ -346,5 +346,5 @@ const char *const i18n_english_strings[] = {
     "OpenPGP message",
     "Signature time",
     "Sign OpenPGP message",
-    "OpenPGP",
+    "GapPGP",
 };
