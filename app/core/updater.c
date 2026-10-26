@@ -51,6 +51,24 @@ static char* append_fw_version(char* dst, const uint8_t* version) {
   return dst;
 }
 
+static char* append_app_version(char* dst, uint16_t version) {
+  uint8_t tmp[4];
+  uint8_t* digits = u32toa(version >> 8, tmp, 4);
+  size_t seg_len = strlen((char *) digits);
+  memcpy(dst, digits, seg_len);
+  dst += seg_len;
+
+  *(dst++) = '.';
+
+  digits = u32toa(version & 0xff, tmp, 4);
+  seg_len = strlen((char *) digits);
+  memcpy(dst, digits, seg_len);
+  dst += seg_len;
+
+  *dst = '\0';
+  return dst;
+}
+
 static char* append_db_version(char* dst, uint32_t version) {
   uint8_t tmp[11];
   uint8_t* digits = u32toa(version, tmp, 11);
@@ -79,6 +97,9 @@ void device_info() {
   char fw[MAX_INFO_SIZE];
   append_fw_version(fw, FW_VERSION);
 
+  char app[MAX_INFO_SIZE];
+  append_app_version(app, g_core.keycard.app_version);
+
   uint32_t db_ver;
   char db_buf[MAX_INFO_SIZE];
   const char* db;
@@ -96,7 +117,7 @@ void device_info() {
   char sn[MAX_INFO_SIZE];
   append_sn(sn, device_uid);
 
-  ui_devinfo(fw, db, sn);
+  ui_devinfo(fw, app, db, sn);
 }
 
 void device_elabel() {

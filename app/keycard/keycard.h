@@ -16,6 +16,7 @@ typedef struct {
   secure_channel_t ch;
   apdu_t apdu;
   char name[KEYCARD_NAME_MAX_LEN + 1];
+  uint16_t app_version;
 } keycard_t;
 
 void keycard_init(keycard_t* kc);

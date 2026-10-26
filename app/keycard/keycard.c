@@ -515,6 +515,8 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
     return ERR_DATA;
   }
 
+  kc->app_version = info.version;
+
   uint8_t init_keys;
   app_err_t err;
 

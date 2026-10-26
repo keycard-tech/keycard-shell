@@ -122,9 +122,10 @@ core_evt_t ui_wrong_auth(const char* msg, uint8_t retries) {
   return ui_info(ICON_INFO_ERROR, msg, remaining_attempts, 0);
 }
 
-core_evt_t ui_devinfo(const char* fw_ver, const char* db_ver, const char* sn) {
+core_evt_t ui_devinfo(const char* fw_ver, const char* app_ver, const char* db_ver, const char* sn) {
   g_ui_cmd.type = UI_CMD_DEVINFO;
   g_ui_cmd.params.devinfo.fw_version = fw_ver;
+  g_ui_cmd.params.devinfo.app_version = app_ver;
   g_ui_cmd.params.devinfo.db_version = db_ver;
   g_ui_cmd.params.devinfo.sn = sn;
 

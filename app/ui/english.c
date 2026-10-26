@@ -298,6 +298,7 @@ const char *const i18n_english_strings[] = {
     // Device info
     "Device information",
     "Firmware version",
+    "Keycard applet",
     "Database version",
     "Serial number",
     "Brand: Keycard\nModel: Shell\nInput: 5V DC, 1A\nManufacturer: Status Research and Development, Baarerstrasse 10, 6302 Zug, Switzerland\nMade in China\nSerial number: ",

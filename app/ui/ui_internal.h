@@ -156,6 +156,7 @@ struct cmd_progress {
 
 struct cmd_devinfo {
   const char* fw_version;
+  const char* app_version;
   const char* db_version;
   const char* sn;
 };

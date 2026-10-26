@@ -35,7 +35,7 @@ core_evt_t ui_info(info_icon_t icon, const char* msg, const char* subtext, ui_in
 core_evt_t ui_prompt(const char* title, const char* msg, ui_info_opt_t opts);
 core_evt_t ui_display_paged_text(const char* title, const char* text, uint32_t len);
 core_evt_t ui_wrong_auth(const char* msg, uint8_t retries);
-core_evt_t ui_devinfo(const char* fw_ver, const char* db_ver, const char* sn);
+core_evt_t ui_devinfo(const char* fw_ver, const char* app_ver, const char* db_ver, const char* sn);
 core_evt_t ui_dbinfo(const char* db_ver);
 
 void ui_card_inserted();
