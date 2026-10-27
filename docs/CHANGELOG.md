@@ -6,6 +6,7 @@
 * [bip39] during mnemonic import, the last word is now only selectable among valid ones
 * [slip39] suggest last checksum word
 * [ui] show Keycard applet version in info screen
+* [btc] fix test network pairing QR
 
 ## 1.4.0 (2026-09-15)
 
