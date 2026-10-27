@@ -31,10 +31,18 @@ static char* append_fw_version(char* dst, const uint8_t* version) {
     *(dst++) = '.';
   }
 
+  --dst;
+
+  if (FW_VARIANT_OF(version[3]) == FW_VARIANT_BTC) {
+    *(dst++) = '-';
+    *(dst++) = 'b';
+    *(dst++) = 't';
+    *(dst++) = 'c';
+  }
+
   uint8_t beta = FW_BETA_OF(version[3]);
 
   if (beta != 0x00) {
-    --dst;
     *(dst++) = '+';
     *(dst++) = 'b';
     *(dst++) = 'e';
@@ -45,10 +53,9 @@ static char* append_fw_version(char* dst, const uint8_t* version) {
     size_t seg_len = strlen((char *) digits);
     memcpy(dst, digits, seg_len);
     dst += seg_len;
-    *(dst++) = '.';
   }
 
-  *(--dst) = '\0';
+  *(dst) = '\0';
 
   return dst;
 }
@@ -229,11 +236,7 @@ static app_err_t updater_confirm_fw_upgrade() {
     return ERR_CANCEL;
   }
 
-  const char* prompt = LSTR(FW_UPGRADE_CONFIRM);
-  size_t len = strlen(prompt);
-
   char info[MAX_INFO_SIZE];
-  memcpy(info, prompt, len);
 
   append_fw_version(info, ver_buf);
 
