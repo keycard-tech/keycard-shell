@@ -51,18 +51,22 @@ void ui_task_entry(void* pvParameters) {
     case UI_CMD_MENU:
       g_ui_cmd.result = menu_run();
       break;
+#ifndef BITCOIN_ONLY
     case UI_CMD_DISPLAY_ETH_TX:
       g_ui_cmd.result = dialog_confirm_eth_tx();
       break;
+#endif
     case UI_CMD_DISPLAY_BTC_TX:
       g_ui_cmd.result = dialog_confirm_btc_tx();
       break;
     case UI_CMD_DISPLAY_MSG:
       g_ui_cmd.result = dialog_confirm_msg();
       break;
+#ifndef BITCOIN_ONLY
     case UI_CMD_DISPLAY_EIP712:
       g_ui_cmd.result = dialog_confirm_eip712();
       break;
+#endif
     case UI_CMD_DISPLAY_QR:
       g_ui_cmd.result = qrout_display_ur();
       hal_pwm_set_dutycycle(PWM_BACKLIGHT, g_settings.lcd_brightness);

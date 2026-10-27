@@ -40,9 +40,13 @@ const menu_t menu_info = {
 };
 
 const menu_t menu_connect_others = {
+#ifdef BITCOIN_ONLY
+  3, {
+#else
   5, {
       {MENU_CONNECT_LEDGER_LIVE, NULL},
       {MENU_CONNECT_LEDGER_LEGACY, NULL},
+#endif
       {MENU_CONNECT_BITCOIN_ALT, NULL},
       {MENU_CONNECT_BITCOIN_MULTISIG_ALT, NULL},
       {MENU_CONNECT_BITCOIN_TESTNET, NULL},
@@ -50,8 +54,12 @@ const menu_t menu_connect_others = {
 };
 
 const menu_t menu_connect = {
+#ifdef BITCOIN_ONLY
+  4, {
+#else
   5, {
     {MENU_CONNECT_EIP4527, NULL},
+#endif
     {MENU_CONNECT_BITCOIN, NULL},
     {MENU_CONNECT_BITCOIN_MULTISIG, NULL},
     {MENU_CONNECT_MULTICOIN, NULL},
@@ -70,8 +78,12 @@ const menu_t menu_multisig = {
 };
 
 const menu_t menu_addresses = {
+#ifdef BITCOIN_ONLY
+  3, {
+#else
   4, {
     {MENU_ETHEREUM, NULL},
+#endif
     {MENU_BITCOIN, NULL},
     {MENU_MULTISIG, &menu_multisig},
     {MENU_ADDRESS_VERIFY, NULL},

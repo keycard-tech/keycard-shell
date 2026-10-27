@@ -31,7 +31,9 @@ static char* append_fw_version(char* dst, const uint8_t* version) {
     *(dst++) = '.';
   }
 
-  if (version[3] != 0x00) {
+  uint8_t beta = FW_BETA_OF(version[3]);
+
+  if (beta != 0x00) {
     --dst;
     *(dst++) = '+';
     *(dst++) = 'b';
@@ -39,7 +41,7 @@ static char* append_fw_version(char* dst, const uint8_t* version) {
     *(dst++) = 't';
     *(dst++) = 'a';
 
-    digits = u32toa(version[3], tmp, 4);
+    digits = u32toa(beta, tmp, 4);
     size_t seg_len = strlen((char *) digits);
     memcpy(dst, digits, seg_len);
     dst += seg_len;
