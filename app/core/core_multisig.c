@@ -19,7 +19,7 @@
 #define MULTISIG_SER_MAX 768
 
 static app_err_t multisig_session_open(multisig_crypto_t* m) {
-  SC_BUF(path_bytes, MULTISIG_EIP1581_PATH_LEN * 4);
+  SC_BUF(path_bytes, MULTISIG_EIP1581_PATH_BYTES);
   uint8_t root[MULTISIG_ROOT_LEN];
 
   for (int i = 0; i < MULTISIG_EIP1581_PATH_LEN; i++) {
@@ -30,7 +30,7 @@ static app_err_t multisig_session_open(multisig_crypto_t* m) {
     path_bytes[i * 4 + 3] = v & 0xff;
   }
 
-  app_err_t err = core_export_private(&g_core.keycard, path_bytes, sizeof(path_bytes), root);
+  app_err_t err = core_export_private(&g_core.keycard, path_bytes, MULTISIG_EIP1581_PATH_BYTES, root);
   if (err != ERR_OK) {
     memzero(root, sizeof(root));
     return err;

@@ -17,6 +17,7 @@
  */
 extern const uint32_t MULTISIG_EIP1581_PATH[];
 #define MULTISIG_EIP1581_PATH_LEN 5
+#define MULTISIG_EIP1581_PATH_BYTES (MULTISIG_EIP1581_PATH_LEN * 4)
 
 /*
  * Per-card multisig key material. All fields are secret / derived and must
