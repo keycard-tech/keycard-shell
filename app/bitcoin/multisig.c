@@ -39,7 +39,7 @@ static bool _parse_path(const char* s, uint32_t* path, uint8_t* path_len) {
     bool hardened = false;
     size_t tok_len = j - i;
 
-    if (tok_len > 0 && s[j - 1] == '\'') {
+    if (tok_len > 0 && (s[j - 1] == '\'' || s[j - 1] == 'h')) {
       hardened = true;
       tok_len--;
     }
