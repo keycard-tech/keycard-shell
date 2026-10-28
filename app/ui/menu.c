@@ -23,17 +23,18 @@ const menu_t menu_keycard = {
 const menu_t menu_device = {
   6, {
     {MENU_DEV_AUTH, NULL},
-    {MENU_UPDATE, NULL},
     {MENU_BRIGHTNESS, NULL},
     {MENU_SET_OFF_TIME, NULL},
     {MENU_USB, NULL},
     {MENU_INSTRUCTIONS, NULL},
+    {MENU_FACTORY_RESET, NULL},
   }
 };
 
 const menu_t menu_info = {
-  3, {
+  4, {
     {MENU_HELP, NULL},
+    {MENU_UPDATE, NULL},
     {MENU_SW_INFO, NULL},
     {MENU_ELABEL, NULL},
   }

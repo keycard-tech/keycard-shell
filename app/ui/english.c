@@ -47,6 +47,7 @@ const char *const i18n_english_strings[] = {
     "Auto-off time",
     "USB-data",
     "Instructions",
+    "Factory reset",
 
     // Info menu
     "Help",
@@ -177,6 +178,12 @@ const char *const i18n_english_strings[] = {
     "Factory reset will permanently erase all keys on your card.\nEnsure you back up your seed phrase. The device will restart after resetting.",
     "Keycard reset complete",
     "The key pair has been erased",
+
+    // Shell factory reset
+    "Factory reset will permanently erase the data stored on Shell: pairings, multisig wallets, eth db and settings.\nKeys on your card are not affected. The device will restart after resetting.",
+    "Factory reset complete",
+    "All data stored on Shell has been erased",
+    "Factory reset failed",
 
     // Info messages
     "Keycard disconnected",

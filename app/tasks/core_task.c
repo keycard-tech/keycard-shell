@@ -72,9 +72,6 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_DEV_AUTH:
     device_auth_run();
     break;
-  case MENU_UPDATE:
-    device_update_sw();
-    break;
   case MENU_BRIGHTNESS:
     settings_lcd_brightness();
     break;
@@ -87,7 +84,13 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_INSTRUCTIONS:
     settings_help_onoff();
     break;
+  case MENU_FACTORY_RESET:
+    settings_factory_reset();
+    break;
   // Info
+  case MENU_UPDATE:
+    device_update_sw();
+    break;
   case MENU_SW_INFO:
     device_info();
     break;

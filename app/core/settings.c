@@ -113,6 +113,22 @@ void settings_set_off_time() {
   hal_inactivity_timer_set(g_settings.shutdown_timeout);
 }
 
+void settings_factory_reset() {
+  if (ui_prompt(LSTR(MENU_FACTORY_RESET), LSTR(SHELL_RESET_WARNING), (UI_INFO_CANCELLABLE | UI_INFO_DANGEROUS)) != CORE_EVT_UI_OK) {
+    return;
+  }
+
+  if (fs_format() != ERR_OK) {
+    ui_info(ICON_INFO_ERROR, LSTR(SHELL_RESET_FAIL_MSG), LSTR(INFO_TRY_AGAIN), 0);
+    return;
+  }
+
+  ui_info(ICON_INFO_SUCCESS, LSTR(SHELL_RESET_OK_MSG), LSTR(SHELL_RESET_OK_SUB), 0);
+
+  // pwr_reboot() commits the in-RAM settings, which would write an entry back to the filesystem just erased.
+  hal_reboot();
+}
+
 void settings_usb_onoff() {
   i18n_str_id_t selected = g_settings.enable_usb ? MENU_ON : MENU_OFF;
 

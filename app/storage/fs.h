@@ -24,6 +24,7 @@ fs_entry_t* fs_find(fs_predicate_t predicate, void* ctx);
 app_err_t fs_write(fs_entry_t* first_entry, size_t total_length);
 app_err_t fs_erase(fs_entry_t* entry);
 app_err_t fs_erase_all(fs_predicate_t predicate, void* ctx);
+app_err_t fs_format();
 void fs_iterate(fs_predicate_t predicate, void* ctx);
 
 #endif

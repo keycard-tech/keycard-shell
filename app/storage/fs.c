@@ -311,3 +311,21 @@ app_err_t fs_erase_all(fs_predicate_t predicate, void* ctx) {
 
   return erase_ctx.err;
 }
+
+app_err_t fs_format() {
+  if (hal_flash_begin_program() != HAL_SUCCESS) {
+    return ERR_HW;
+  }
+
+  app_err_t err = ERR_OK;
+
+  for (uint32_t i = 0; i < HAL_FLASH_DATA_BLOCK_COUNT; i++) {
+    if (hal_flash_erase(HAL_FLASH_ADDR_TO_BLOCK((uint32_t) _fs_get_page(i))) != HAL_SUCCESS) {
+      err = ERR_HW;
+    }
+  }
+
+  hal_flash_end_program();
+
+  return err;
+}

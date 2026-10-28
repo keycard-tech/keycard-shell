@@ -27,6 +27,7 @@ void settings_commit();
 
 void settings_lcd_brightness();
 void settings_set_off_time();
+void settings_factory_reset();
 void settings_usb_onoff();
 void settings_help_onoff();
 
