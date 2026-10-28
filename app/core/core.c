@@ -296,9 +296,12 @@ TEST_APP_ACCESSIBLE app_err_t core_usb_get_app_config(apdu_t* cmd) {
   ecdsa_get_public_key33(&secp256k1, key, &data[7 + HAL_DEVICE_UID_LEN]);
   memzero(key, 32);
 
-  data[7 + HAL_DEVICE_UID_LEN + 33] = 0x90;
-  data[8 + HAL_DEVICE_UID_LEN + 33] = 0x00;
-  cmd->lr = 9 + HAL_DEVICE_UID_LEN + 33;
+  data[7 + HAL_DEVICE_UID_LEN + 33] = FW_VARIANT_OF(FW_VERSION[3]);
+  data[8 + HAL_DEVICE_UID_LEN + 33] = FW_BETA_OF(FW_VERSION[3]);
+
+  data[9 + HAL_DEVICE_UID_LEN + 33] = 0x90;
+  data[10 + HAL_DEVICE_UID_LEN + 33] = 0x00;
+  cmd->lr = 11 + HAL_DEVICE_UID_LEN + 33;
 
   return ERR_OK;
 }
