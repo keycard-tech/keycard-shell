@@ -20,7 +20,7 @@ APP_DEF_TASK(ui, UI_STACK_SIZE);
 
 #define FW_MAJOR 1
 #define FW_MINOR 5
-#define FW_PATCH 0
+#define FW_PATCH 1
 
 // Beta version. 0 means release.
 // Although not customary, to keep downgrade protection simple betas of the next release

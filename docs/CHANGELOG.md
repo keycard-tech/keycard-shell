@@ -1,5 +1,11 @@
 # Keycard Shell Dev Firmware
 
+## 1.5.1 (2026-10-28)
+
+* [multisig] fix regression introduced in 1.5.0
+* [multisig] support `h` notation for hardened keys
+* [misc] add factory reset for Shell
+
 ## 1.5.0 (2026-10-26)
 
 * [extra] added GapPGP support
