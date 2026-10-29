@@ -17,6 +17,8 @@ ctest --preset host-tests
 ```
 
 Presets: `host-tests` (ASan + UBSan), `host-tests-nosan`, `host-tests-coverage` (gcov).
+`.github/workflows/host-tests.yml` runs the first two on every push and pull request that
+touches `app/` or `tests/`; it is independent of the firmware release workflow.
 
 The sanitizers are on by default. Leak detection is off: the firmware has no heap to leak,
 LeakSanitizer needs ptrace permissions that containers often deny, and the checks worth
@@ -61,6 +63,28 @@ uv run python tests/vectors/generate.py     # needs network; sources cached in v
 
 Generated headers are committed, so building the tests needs no network.
 
+## What these tests changed
+
+* `slip39_combine_shards()` validates each shard against the ones before it, through
+  `slip39_validate_shard_in_group()`, which existed but was never called. Share sets that
+  disagreed on identifier, extendability, iteration exponent, group count, group index, member
+  threshold or member index interpolated into a plausible master secret belonging to no one;
+  every un-recoverable share set in the SLIP-39 vectors is now rejected. `app/ui/ui.c`
+  re-implements the identifier and group-index check at share entry, so the shipped flow covered
+  two of the six fields. 176 bytes of text in `shellos.elf`.
+* `slip39.h` declared `slip39_comebine_groups`. The typo is gone; nothing had ever called it,
+  which is why it survived.
+
+## Behaviour these tests record
+
+Whether each of the following is *correct* is still open; the tests pin what the code does today
+so that changing it is a decision rather than an accident.
+
+* `base58_encode_check()` returns the length it wrote **including** the terminating NUL.
+* `compactsize_read()` writes `*err` only when it fails, leaving the caller's value untouched on
+  success.
+* `compactsize_read()` refuses any length above `MAX_SERIALIZE_SIZE` (0x02000000), so not every
+  well-formed compactsize encoding round-trips.
 ## What these tests deliberately do not cover
 
 * **The hardware crypto paths.** The firmware uses the PKA for EC, the HASH peripheral for
@@ -76,17 +100,3 @@ Generated headers are committed, so building the tests needs no network.
 * **`shellos-test.elf`.** The QA app in the top-level `test/` directory is a production
   artifact run by the factory on every unit; it is not a test harness and is not touched here.
 
-## Gaps pinned by these tests
-
-* `slip39_combine()` never calls `slip39_validate_shard_in_set()`, so shares that disagree on
-  set metadata (identifier, iteration exponent, group count, member threshold) combine into a
-  master secret nobody split. `app/ui/ui.c` re-implements the identifier and group-index
-  check at share entry, so those two fields are covered in the shipped flow and the rest are
-  not. `test_invalid_share_sets_are_rejected` pins the shape of the gap; the comment there
-  says what to change when it is fixed.
-* `slip39.h` declares `slip39_comebine_groups`; `slip39.c` defines `slip39_combine_groups`.
-  Nothing calls it, which is why the typo has never bitten. `test_slip39.c` carries the
-  correct declaration until the header is fixed.
-* `compactsize_read()` only writes `*err` when it fails, leaving it untouched on success.
-* `compactsize_read()` refuses any length above `MAX_SERIALIZE_SIZE` (0x02000000), so not
-  every well-formed compactsize is readable.

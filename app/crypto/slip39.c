@@ -433,6 +433,13 @@ int slip39_combine_shards(const slip39_shard_t shards[], uint8_t shard_count, sl
     return ERROR_NOT_ENOUGH_MEMBER_SHARDS;
   }
 
+  for (uint8_t i = 1; i < shard_count; i++) {
+    int err = slip39_validate_shard_in_group(&shards[i], shards, i);
+    if (err < 0) {
+      return err;
+    }
+  }
+
   uint8_t share_indexes[shard_count];
   const uint8_t* share_values[shard_count];
 

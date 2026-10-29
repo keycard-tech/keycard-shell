@@ -8,9 +8,6 @@
 #include "unity.h"
 #include "vectors/vectors_slip39.h"
 
-/* slip39.h declares this as slip39_comebine_groups; slip39.c defines it without the typo. */
-int slip39_combine_groups(slip39_group_t groups[], uint8_t group_count, uint8_t* secret, int secret_len);
-
 #define MAX_WORDS 64
 #define MAX_SHARDS SLIP39_VECTOR_MAX_SHARES
 
@@ -84,6 +81,15 @@ static int recover(const slip39_vector_t* vector, uint8_t* secret, size_t* secre
       return length;
     }
   } else {
+    /* The contract of slip39_combine_groups(): a group descriptor keeps no identifier or
+     * iteration exponent, so the caller validates the set across groups. */
+    for (uint32_t i = 1; i < vector->share_count; i++) {
+      int err = slip39_validate_shard_in_set(&shards[i], shards, i);
+      if (err < 0) {
+        return err;
+      }
+    }
+
     uint8_t group_count = 0;
     for (uint8_t group_index = 0; group_index < shards[0].group_count; group_index++) {
       slip39_shard_t group_shards[SLIP39_MAX_MEMBERS];
@@ -141,37 +147,8 @@ static void test_valid_share_sets_recover(void) {
   }
 }
 
-/* The set metadata slip39_validate_shard_in_set() compares, field by field. */
-static bool shares_disagree(const slip39_shard_t* set, uint32_t count) {
-  for (uint32_t i = 1; i < count; i++) {
-    if ((set[i].identifier != set[0].identifier) || (set[i].extendable != set[0].extendable) ||
-        (set[i].iteration_exponent != set[0].iteration_exponent) ||
-        (set[i].group_threshold != set[0].group_threshold) ||
-        (set[i].group_count != set[0].group_count) ||
-        (set[i].value_length != set[0].value_length) ||
-        (set[i].member_threshold != set[0].member_threshold)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/*
- * None of the invalid share sets in the SLIP-39 vectors may combine into a secret.
- *
- * They currently do whenever the shares merely disagree on set metadata: the combine path
- * never calls slip39_validate_shard_in_set(), which exists to make exactly that check, so it
- * interpolates over shares that were never split from one secret and returns a plausible
- * looking master secret. app/ui/ui.c re-implements part of the check at share entry time
- * (identifier and group index), so the shipped flow is covered for those two fields only.
- *
- * Asserting the shape of the gap rather than a list of names: every set that is accepted has
- * to be a metadata disagreement. A set accepted for any other reason -- a bad checksum, a
- * duplicate member index, too few shares -- is a different and worse defect.
- */
 static void test_invalid_share_sets_are_rejected(void) {
   hal_host_rng_seed(1);
-  unsigned int accepted = 0;
 
   for (size_t i = 0; i < SLIP39_VECTOR_COUNT; i++) {
     if (SLIP39_VECTORS[i].master_secret[0] != '\0') {
@@ -180,18 +157,9 @@ static void test_invalid_share_sets_are_rejected(void) {
 
     uint8_t secret[64] = {0};
     size_t secret_len = 0;
-    if (recover(&SLIP39_VECTORS[i], secret, &secret_len) < 0) {
-      continue;
-    }
-
-    accepted++;
-    TEST_ASSERT_TRUE_MESSAGE(shares_disagree(shards, SLIP39_VECTORS[i].share_count),
+    TEST_ASSERT_TRUE_MESSAGE(recover(&SLIP39_VECTORS[i], secret, &secret_len) < 0,
                              SLIP39_VECTORS[i].description);
   }
-
-  /* Once the combine path validates the set, this becomes TEST_ASSERT_EQUAL_UINT(0, accepted)
-   * and the shape check above can go away. */
-  TEST_ASSERT_TRUE_MESSAGE(accepted > 0, "gap closed: require every invalid set to be rejected");
 }
 
 static void test_validate_shard_in_set_catches_the_disagreement(void) {

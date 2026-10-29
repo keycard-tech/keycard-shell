@@ -1,0 +1,36 @@
+name: Native unit tests
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - '.github/workflows/host-tests.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'tests/**'
+
+jobs:
+  host-tests:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [host-tests, host-tests-nosan]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure
+        working-directory: tests
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        working-directory: tests
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        working-directory: tests
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure

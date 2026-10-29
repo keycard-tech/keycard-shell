@@ -91,8 +91,12 @@ int slip39_validate_shard_in_group(const slip39_shard_t* shard, const slip39_sha
 
 int slip39_generate(uint8_t threshold, const uint8_t* ms, uint32_t ms_len, uint8_t* ems, slip39_shard_t shards[], uint8_t shard_count);
 
+/* Interpolates the member shards of one group, validating each shard against the ones before
+ * it. A multi-group caller has to validate the whole shard set with
+ * slip39_validate_shard_in_set() first: slip39_combine_groups() cannot, because
+ * slip39_group_t carries no identifier, extendability or iteration exponent. */
 int slip39_combine_shards(const slip39_shard_t shards[], uint8_t shard_count, slip39_group_t* group);
-int slip39_comebine_groups(slip39_group_t groups[], uint8_t group_count, uint8_t* secret, int secret_len);
+int slip39_combine_groups(slip39_group_t groups[], uint8_t group_count, uint8_t* secret, int secret_len);
 
 int slip39_combine(const slip39_shard_t shards[], uint8_t shard_count, uint8_t* secret, int secret_len);
 
