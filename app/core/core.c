@@ -1,6 +1,8 @@
 #include "app_tasks.h"
 #include "core.h"
+#include "bitcoin/taproot.h"
 #include "crypto/address.h"
+#include "crypto/addr_uri.h"
 #include "crypto/base58.h"
 #include "crypto/bip32.h"
 #include "crypto/ripemd160.h"
@@ -19,6 +21,9 @@
 
 #define BIP44_ACCOUNT_IDX 2
 #define CRYPTO_MULTIACCOUNT_SN_LEN 40
+#define ADDR_TARGET_MAX_LEN BTC_TAPROOT_WITPROG_LEN
+/* base16_decode() counts the hex characters to read, not the bytes it yields */
+#define ETH_ADDR_HEX_LEN (2 * ADDRESS_LENGTH)
 
 #define USB_MORE_DATA_TIMEOUT 100
 
@@ -681,40 +686,78 @@ void core_addresses_bitcoin() {
   core_addresses(LSTR(QR_ADDRESS_BTC_TITLE), BTC_NATIVE_SEGWIT_PURPOSE, BTC_MAINNET_COIN, core_btc_addr_encoder);
 }
 
-static void core_eth_addr_hash(const uint8_t* pub, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
+typedef bool (*core_addr_hash_t)(const uint8_t* pub, uint8_t* out);
+
+typedef bool (*core_addr_decoder_t)(const char* addr, uint8_t* out);
+
+typedef struct {
+  addr_uri_scheme_t scheme;
+  core_addr_decoder_t decode;
+  uint32_t purpose;
+  uint32_t coin;
+  core_addr_hash_t hash;
+  size_t target_len;
+} core_addr_type_t;
+
+static bool core_eth_addr_hash(const uint8_t* pub, uint8_t* out) {
   ethereum_address(pub, out);
+  return true;
 }
 
-static bool core_eth_addr_decoder(const char* addr, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
-  if (strnlen(addr, MAX_ADDR_LEN) != 42 || addr[0] != '0' || addr[1] != 'x') {
+static bool core_eth_addr_decoder(const char* addr, uint8_t* out) {
+  if (strnlen(addr, MAX_ADDR_LEN) != (ETH_ADDR_HEX_LEN + 2) || addr[0] != '0' || ((addr[1] | 0x20) != 'x')) {
     return false;
   }
-  return base16_decode(addr + 2, out, RIPEMD160_DIGEST_LENGTH);
+
+  return base16_decode(&addr[2], out, ETH_ADDR_HEX_LEN) && ethereum_address_checksum_verify(&addr[2], out);
 }
 
-static void core_btc_addr_hash(const uint8_t* pub, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
+static bool core_btc_addr_hash(const uint8_t* pub, uint8_t* out) {
   hash160(pub, PUBKEY_COMPRESSED_LEN, out);
+  return true;
 }
 
-static bool core_btc_segwit_addr_decoder(const char* addr, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
+static bool core_btc_nested_addr_hash(const uint8_t* pub, uint8_t* out) {
+  uint8_t redeem[2 + RIPEMD160_DIGEST_LENGTH];
+
+  redeem[0] = 0;
+  redeem[1] = RIPEMD160_DIGEST_LENGTH;
+  hash160(pub, PUBKEY_COMPRESSED_LEN, &redeem[2]);
+  hash160(redeem, sizeof(redeem), out);
+  return true;
+}
+
+static bool core_btc_taproot_addr_hash(const uint8_t* pub, uint8_t* out) {
+  return bitcoin_taproot_output_key(pub, out);
+}
+
+static bool core_btc_program_decoder(const char* addr, int witver, size_t prog_len, uint8_t* out) {
   int ver;
   size_t len;
   uint8_t prog[40];
 
   if (!segwit_addr_decode(&ver, prog, &len, BTC_BECH32_HRP, addr) ||
-      (ver != BTC_SEGWIT_VER) || (len != RIPEMD160_DIGEST_LENGTH)) {
+      (ver != witver) || (len != prog_len)) {
     return false;
   }
 
-  memcpy(out, prog, RIPEMD160_DIGEST_LENGTH);
+  memcpy(out, prog, prog_len);
   return true;
 }
 
-static bool core_btc_legacy_addr_decoder(const char* addr, uint8_t out[RIPEMD160_DIGEST_LENGTH]) {
+static bool core_btc_p2wpkh_decoder(const char* addr, uint8_t* out) {
+  return core_btc_program_decoder(addr, BTC_SEGWIT_VER, RIPEMD160_DIGEST_LENGTH, out);
+}
+
+static bool core_btc_p2tr_decoder(const char* addr, uint8_t* out) {
+  return core_btc_program_decoder(addr, BTC_TAPROOT_WITVER, BTC_TAPROOT_WITPROG_LEN, out);
+}
+
+static bool core_btc_base58_decoder(const char* addr, uint8_t prefix, uint8_t* out) {
   uint8_t raw[1 + RIPEMD160_DIGEST_LENGTH];
 
   if ((base58_decode_check(addr, raw, sizeof(raw)) != (int) sizeof(raw)) ||
-      (raw[0] != BTC_P2PKH_ADDR_PREFIX)) {
+      (raw[0] != prefix)) {
     return false;
   }
 
@@ -722,69 +765,108 @@ static bool core_btc_legacy_addr_decoder(const char* addr, uint8_t out[RIPEMD160
   return true;
 }
 
+static bool core_btc_p2pkh_decoder(const char* addr, uint8_t* out) {
+  return core_btc_base58_decoder(addr, BTC_P2PKH_ADDR_PREFIX, out);
+}
+
+static bool core_btc_p2sh_decoder(const char* addr, uint8_t* out) {
+  return core_btc_base58_decoder(addr, BTC_P2SH_ADDR_PREFIX, out);
+}
+
+/*
+ * A '3...' address is read as the BIP49 account of this device; multisig P2SH
+ * is verified through its descriptor, where the script is known.
+ */
+static const core_addr_type_t ADDR_TYPES[] = {
+  {ADDR_URI_ETHEREUM, core_eth_addr_decoder,   ETH_PURPOSE,               ETH_COIN,         core_eth_addr_hash,         ADDRESS_LENGTH},
+  {ADDR_URI_BITCOIN,  core_btc_p2wpkh_decoder, BTC_NATIVE_SEGWIT_PURPOSE, BTC_MAINNET_COIN, core_btc_addr_hash,         RIPEMD160_DIGEST_LENGTH},
+  {ADDR_URI_BITCOIN,  core_btc_p2tr_decoder,   BTC_TAPROOT_PURPOSE,       BTC_MAINNET_COIN, core_btc_taproot_addr_hash, BTC_TAPROOT_WITPROG_LEN},
+  {ADDR_URI_BITCOIN,  core_btc_p2pkh_decoder,  BTC_LEGACY_PURPOSE,        BTC_MAINNET_COIN, core_btc_addr_hash,         RIPEMD160_DIGEST_LENGTH},
+  {ADDR_URI_BITCOIN,  core_btc_p2sh_decoder,   BTC_NESTED_SEGWIT_PURPOSE, BTC_MAINNET_COIN, core_btc_nested_addr_hash,  RIPEMD160_DIGEST_LENGTH},
+};
+
 typedef struct {
   bip32_ctx_t ctx;
-  bip32_addr_hash_t hash;
+  core_addr_hash_t hash;
   const uint8_t* target;
+  size_t target_len;
+  uint32_t change;
 } core_bip32_verify_ctx_t;
 
 static app_err_t core_bip32_verify_match(void* v, uint32_t change, uint32_t index, bool* match) {
   core_bip32_verify_ctx_t* s = (core_bip32_verify_ctx_t*) v;
-  uint8_t raw[RIPEMD160_DIGEST_LENGTH];
+  uint8_t raw[ADDR_TARGET_MAX_LEN];
 
   *match = false;
 
-  if (index == 0 && bip32_ctx_derive_change(&s->ctx, change) != 0) {
-    return ERR_CRYPTO;
+  if (s->change != change) {
+    if (bip32_ctx_derive_change(&s->ctx, change) != 0) {
+      return ERR_CRYPTO;
+    }
+    s->change = change;
   }
   if (bip32_ctx_derive_leaf(&s->ctx, index) != 0) {
     return ERR_CRYPTO;
   }
+  if (!s->hash(s->ctx.leaf_pub, raw)) {
+    return ERR_CRYPTO;
+  }
 
-  s->hash(s->ctx.leaf_pub, raw);
-  *match = (memcmp(raw, s->target, RIPEMD160_DIGEST_LENGTH) == 0);
+  *match = (memcmp(raw, s->target, s->target_len) == 0);
   return ERR_OK;
+}
+
+static const core_addr_type_t* core_addr_type_find(const addr_uri_t* uri, uint8_t* target) {
+  for (size_t i = 0; i < sizeof(ADDR_TYPES) / sizeof(*ADDR_TYPES); i++) {
+    if ((uri->scheme != ADDR_URI_NONE) && (uri->scheme != ADDR_TYPES[i].scheme)) {
+      continue;
+    }
+    if (ADDR_TYPES[i].decode(uri->address, target)) {
+      return &ADDR_TYPES[i];
+    }
+  }
+
+  return NULL;
 }
 
 void core_addresses_verify() {
   data_t qr;
-  uint8_t target[RIPEMD160_DIGEST_LENGTH];
+  addr_uri_t uri;
+  uint8_t target[ADDR_TARGET_MAX_LEN];
   core_bip32_verify_ctx_t ctx;
-  bip32_addr_hash_t hash;
-  uint32_t purpose, coin;
 
   if (ui_qrscan(NO_UR, &qr) != CORE_EVT_UI_OK) {
     return;
   }
 
-  const char* addr = (const char*) qr.data;
+  const core_addr_type_t* type = NULL;
 
-  if (core_eth_addr_decoder(addr, target)) {
-    purpose = ETH_PURPOSE;
-    coin = ETH_COIN;
-    hash = core_eth_addr_hash;
-  } else if (core_btc_segwit_addr_decoder(addr, target)) {
-    purpose = BTC_NATIVE_SEGWIT_PURPOSE;
-    coin = BTC_MAINNET_COIN;
-    hash = core_btc_addr_hash;
-  } else if (core_btc_legacy_addr_decoder(addr, target)) {
-    purpose = BTC_LEGACY_PURPOSE;
-    coin = BTC_MAINNET_COIN;
-    hash = core_btc_addr_hash;
-  } else {
+  if (address_uri_parse((const char*) qr.data, qr.len, &uri)) {
+    type = core_addr_type_find(&uri, target);
+  }
+
+  if (type == NULL) {
     ui_info(ICON_INFO_ERROR, LSTR(ADDRESS_VERIFY_INVALID_MSG), LSTR(ADDRESS_VERIFY_INVALID_SUB), 0);
     return;
   }
 
-  if (core_bip32_ctx_export(&ctx.ctx, purpose, coin, 0) != ERR_OK) {
+  if (core_bip32_ctx_export(&ctx.ctx, type->purpose, type->coin, 0) != ERR_OK) {
     ui_card_transport_error();
     return;
   }
-  ctx.hash = hash;
+  if (bip32_ctx_derive_change(&ctx.ctx, 0) != 0) {
+    return;
+  }
+  ctx.hash = type->hash;
   ctx.target = target;
+  ctx.target_len = type->target_len;
+  ctx.change = 0;
+
+  uint32_t first_index = (uri.index == ADDR_URI_INDEX_NONE) ? 0 : uri.index;
+  uint32_t last_index = (uri.index == ADDR_URI_INDEX_NONE) ? UI_VERIFY_MAX_INDEX : uri.index;
 
   bool found;
-  if (ui_verify_address(core_bip32_verify_match, &ctx, &found) == CORE_EVT_UI_OK) {
+  if (ui_verify_address(core_bip32_verify_match, &ctx, first_index, last_index, &found) == CORE_EVT_UI_OK) {
     if (found) {
       ui_info(ICON_INFO_SUCCESS, LSTR(ADDRESS_VERIFY_FOUND_MSG), LSTR(ADDRESS_VERIFY_FOUND_SUB), 0);
     } else {

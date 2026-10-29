@@ -57,4 +57,17 @@ static inline size_t bitcoin_segwit_address(const uint8_t* data, size_t data_len
 void ethereum_address(const uint8_t* pub_key, uint8_t* addr);
 void ethereum_address_checksum(const uint8_t *addr, char *address);
 
+/*
+ * EIP-55: mixed case commits to a checksum, uniform case commits to none.
+ * @param hex the address as 40 hex characters, without the 0x prefix
+ */
+bool ethereum_address_checksum_verify(const char* hex, const uint8_t* addr);
+
+/*
+ * Compare against a canonically encoded address, tolerating the all-uppercase
+ * bech32 rendering of BIP173/BIP350. Case carries information in every other
+ * address form: base58 encodes data in it and mixed-case bech32 is invalid.
+ */
+bool bitcoin_address_eq(const char* expected, const char* candidate);
+
 #endif

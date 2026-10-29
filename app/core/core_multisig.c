@@ -1,11 +1,13 @@
 #include "core_multisig.h"
 
+#include <ctype.h>
 #include <string.h>
 
 #include "bitcoin/multisig.h"
 #include "bitcoin/multisig_crypto.h"
 #include "common.h"
 #include "core.h"
+#include "crypto/addr_uri.h"
 #include "crypto/memzero.h"
 #include "mem.h"
 #include "storage/multisig_store.h"
@@ -258,7 +260,7 @@ static app_err_t multisig_verify_match(void* v, uint32_t change, uint32_t index,
     return ERR_CRYPTO;
   }
 
-  *match = (strcmp(addr, s->target) == 0);
+  *match = bitcoin_address_eq(addr, s->target);
   return ERR_OK;
 }
 
@@ -282,17 +284,17 @@ void core_multisig_verify() {
     return;
   }
 
-  char target[MAX_ADDR_LEN];
-  size_t len = strnlen((const char*) qr.data, MAX_ADDR_LEN);
-  if (len == 0 || len >= MAX_ADDR_LEN) {
+  addr_uri_t uri;
+  if (!address_uri_parse((const char*) qr.data, qr.len, &uri)) {
     ui_info(ICON_INFO_ERROR, LSTR(ADDRESS_VERIFY_INVALID_MSG), LSTR(ADDRESS_VERIFY_INVALID_SUB), 0);
     multisig_crypto_wipe(&m);
     return;
   }
-  memcpy(target, qr.data, len + 1);
+
+  char head = tolower((unsigned char) uri.address[0]);
 
   /* Multisig descriptors resolve to P2SH ('3...') or P2WSH ('bc1...') addresses. */
-  if ((target[0] != '3') && !(target[0] == 'b' && target[1] == 'c')) {
+  if ((head != '3') && ((head != 'b') || (tolower((unsigned char) uri.address[1]) != 'c'))) {
     ui_info(ICON_INFO_ERROR, LSTR(ADDRESS_VERIFY_INVALID_MSG), LSTR(ADDRESS_VERIFY_INVALID_SUB), 0);
     multisig_crypto_wipe(&m);
     return;
@@ -300,10 +302,13 @@ void core_multisig_verify() {
 
   multisig_verify_ctx_t ctx;
   ctx.desc = desc;
-  ctx.target = target;
+  ctx.target = uri.address;
+
+  uint32_t first_index = (uri.index == ADDR_URI_INDEX_NONE) ? 0 : uri.index;
+  uint32_t last_index = (uri.index == ADDR_URI_INDEX_NONE) ? UI_VERIFY_MAX_INDEX : uri.index;
 
   bool found;
-  if (ui_verify_address(multisig_verify_match, &ctx, &found) == CORE_EVT_UI_OK) {
+  if (ui_verify_address(multisig_verify_match, &ctx, first_index, last_index, &found) == CORE_EVT_UI_OK) {
     if (found) {
       ui_info(ICON_INFO_SUCCESS, LSTR(ADDRESS_VERIFY_FOUND_MSG), LSTR(ADDRESS_VERIFY_FOUND_SUB), 0);
     } else {

@@ -18,7 +18,8 @@ uint8_t* u32toa(uint32_t value, uint8_t* buf, uint32_t len);
 uint8_t* u64toa(uint64_t value, uint8_t* buf, uint32_t len);
 
 size_t strnlen(const char *s, size_t maxlen);
-bool base16_decode(const char* s, uint8_t* out, size_t s_len);
+/* decode consumes hex_len characters and yields hex_len / 2 bytes; encode takes a byte count */
+bool base16_decode(const char* s, uint8_t* out, size_t hex_len);
 void base16_encode(const uint8_t* data, char* out, size_t len);
 bool atoi256BE(const char* str, size_t len, uint8_t out[32]);
 

@@ -64,18 +64,18 @@ static inline uint8_t base16_hexlet_decode(char c) {
   return 0xff;
 }
 
-bool base16_decode(const char* s, uint8_t* out, size_t s_len) {
-  if (s_len & 1) {
+bool base16_decode(const char* s, uint8_t* out, size_t hex_len) {
+  if (hex_len & 1) {
     out[0] = base16_hexlet_decode(s[0]);
 
     if (out[0] == 0xff) {
       return false;
     }
 
-    return base16_decode(&s[1], &out[1], s_len - 1);
+    return base16_decode(&s[1], &out[1], hex_len - 1);
   }
 
-  const char *s_end = &s[s_len];
+  const char *s_end = &s[hex_len];
 
   while(s < s_end) {
     uint8_t nh = base16_hexlet_decode(*(s++));

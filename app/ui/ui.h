@@ -90,8 +90,10 @@ core_evt_t ui_settings_brightness(uint8_t* brightness);
 core_evt_t ui_keycard_not_genuine();
 core_evt_t ui_keycard_no_pairing_slots();
 
+#define UI_VERIFY_MAX_INDEX 2048
+
 typedef app_err_t (*ui_verify_match_fn_t)(void* ctx, uint32_t change, uint32_t index, bool* match);
-core_evt_t ui_verify_address(ui_verify_match_fn_t match, void* ctx, bool* found);
+core_evt_t ui_verify_address(ui_verify_match_fn_t match, void* ctx, uint32_t first_index, uint32_t last_index, bool* found);
 
 void ui_update_progress(const char* title, uint8_t progress);
 

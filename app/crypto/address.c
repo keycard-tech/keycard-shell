@@ -21,6 +21,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <ctype.h>
 #include <string.h>
 #include "address.h"
 #include "sha3.h"
@@ -83,6 +84,50 @@ size_t bitcoin_legacy_address(const uint8_t data[RIPEMD160_DIGEST_LENGTH], uint8
   raw[0] = prefix;
   memcpy(&raw[1], data, RIPEMD160_DIGEST_LENGTH);
   return base58_encode_check(raw, RIPEMD160_DIGEST_LENGTH + 1, out, MAX_ADDR_LEN);
+}
+
+bool bitcoin_address_eq(const char* expected, const char* candidate) {
+  if (strcmp(expected, candidate) == 0) {
+    return true;
+  }
+
+  if (strncmp(expected, BTC_BECH32_HRP, strlen(BTC_BECH32_HRP)) != 0) {
+    return false;
+  }
+
+  size_t i = 0;
+
+  while (candidate[i] != '\0') {
+    if (islower((unsigned char)candidate[i])) {
+      return false;
+    }
+
+    if (tolower((unsigned char)candidate[i]) != expected[i]) {
+      return false;
+    }
+
+    i++;
+  }
+
+  return expected[i] == '\0';
+}
+
+bool ethereum_address_checksum_verify(const char* hex, const uint8_t* addr) {
+  char checksummed[41];
+  bool upper = false;
+  bool lower = false;
+
+  for (int i = 0; i < 40; i++) {
+    upper |= isupper((unsigned char)hex[i]) != 0;
+    lower |= islower((unsigned char)hex[i]) != 0;
+  }
+
+  if (!upper || !lower) {
+    return true;
+  }
+
+  ethereum_address_checksum(addr, checksummed);
+  return memcmp(hex, checksummed, 40) == 0;
 }
 
 void ethereum_address(const uint8_t* pub_key, uint8_t* addr) {

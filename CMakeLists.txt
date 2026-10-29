@@ -154,6 +154,7 @@ set(APP_SOURCES
     app/ethereum/eth_db.c
     app/crypto/aes/lookup_tables.c
     app/crypto/address.c
+    app/crypto/addr_uri.c
     app/crypto/aes.c
     app/crypto/aes_ccm.c
     app/crypto/base32.c
@@ -199,6 +200,7 @@ set(APP_SOURCES
     app/bitcoin/multisig_crypto.c
     app/bitcoin/psbt.c
     app/bitcoin/psbt_tx.c
+    app/bitcoin/taproot.c
     app/freertos_support.c
     app/main.c
     app/mem.c

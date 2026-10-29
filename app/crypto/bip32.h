@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "crypto/ripemd160.h"
 
 #define BIP32_PUBKEY_LEN 65     /* uncompressed (0x04 || x || y) */
 #define BIP32_CHAINCODE_LEN 32
@@ -25,8 +24,6 @@ typedef struct {
   uint8_t change_chain[BIP32_CHAINCODE_LEN];
   uint8_t leaf_pub[BIP32_PUBKEY_LEN];
 } bip32_ctx_t;
-
-typedef void (*bip32_addr_hash_t)(const uint8_t* pub, uint8_t out[RIPEMD160_DIGEST_LENGTH]);
 
 /**
  * Initialise a derivation context from an already exported account extended

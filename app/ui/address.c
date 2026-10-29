@@ -4,7 +4,6 @@
 #include "ui/theme.h"
 #include "ui/ui_internal.h"
 
-#define BIP32_VERIFY_MAX_INDEX 2048
 #define BIP32_VERIFY_PROGRESS_STEP 100
 
 app_err_t ui_verify_address_search() {
@@ -33,13 +32,13 @@ app_err_t ui_verify_address_search() {
 
   dialog_nav_hints(ICON_NAV_CANCEL, ICON_NONE);
 
-  const uint32_t total = 2 * (BIP32_VERIFY_MAX_INDEX + 1);
+  const uint32_t total = 2 * (va->last_index - va->first_index + 1);
   uint32_t checked = 0;
 
   *found = false;
 
   for (uint32_t change = 0; change < 2; change++) {
-    for (uint32_t index = 0; index <= BIP32_VERIFY_MAX_INDEX; index++) {
+    for (uint32_t index = va->first_index; index <= va->last_index; index++) {
       bool match = false;
 
       if (va->match(va->ctx, change, index, &match) != ERR_OK) {

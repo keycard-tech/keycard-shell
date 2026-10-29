@@ -646,10 +646,12 @@ void ui_update_progress(const char* title, uint8_t progress) {
   return ui_signal();
 }
 
-core_evt_t ui_verify_address(ui_verify_match_fn_t match, void* ctx, bool* found) {
+core_evt_t ui_verify_address(ui_verify_match_fn_t match, void* ctx, uint32_t first_index, uint32_t last_index, bool* found) {
   g_ui_cmd.type = UI_CMD_VERIFY_ADDRESS;
   g_ui_cmd.params.verify_address.match = match;
   g_ui_cmd.params.verify_address.ctx = ctx;
+  g_ui_cmd.params.verify_address.first_index = first_index;
+  g_ui_cmd.params.verify_address.last_index = last_index;
   g_ui_cmd.params.verify_address.found = found;
 
   return ui_signal_wait(0);

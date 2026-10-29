@@ -164,6 +164,8 @@ struct cmd_devinfo {
 struct cmd_verify_address {
   ui_verify_match_fn_t match;
   void* ctx;
+  uint32_t first_index;
+  uint32_t last_index;
   bool* found;
 };
 

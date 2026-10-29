@@ -172,7 +172,7 @@ app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
       if (out->key_count >= MULTISIG_MAX_KEYS) return ERR_FULL;
       multisig_key_t* k = &out->keys[out->key_count];
 
-      if (strlen(key) != 8 || !base16_decode(key, k->fingerprint, MULTISIG_FP_LEN)) {
+      if ((strlen(key) != (2 * MULTISIG_FP_LEN)) || !base16_decode(key, k->fingerprint, 2 * MULTISIG_FP_LEN)) {
         return ERR_DATA;
       }
       if (base58_decode_check(value, k->xpub, MULTISIG_XPUB_LEN) != MULTISIG_XPUB_LEN) {
@@ -190,7 +190,6 @@ app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
     }
   }
 
-  /* consistency check at the end */
   if (out->n == 0 || out->key_count != out->n || out->m == 0 || out->m > out->n) {
     return ERR_DATA;
   }
