@@ -7,7 +7,7 @@
 #define READERR() \
   {if (err)       \
     *err = PSBT_COMPACT_READ_ERROR; \
-  return -1;}
+  return 0;}
 
 uint32_t compactsize_peek_length(uint8_t chsize) {
   if (chsize < 253) {
@@ -49,23 +49,23 @@ inline static void serialize_uint64(uint8_t *dest, uint64_t data) {
   memcpy(dest, &data, sizeof(uint64_t));
 }
 
-inline static uint8_t deserialize_uint8(uint8_t *src) {
+inline static uint8_t deserialize_uint8(const uint8_t *src) {
   return *src;
 }
 
-inline static uint16_t deserialize_uint16(uint8_t *src) {
+inline static uint16_t deserialize_uint16(const uint8_t *src) {
   uint16_t data;
   memcpy(&data, src, sizeof(uint16_t));
   return data;
 }
 
-inline static uint32_t deserialize_uint32(uint8_t *src) {
+inline static uint32_t deserialize_uint32(const uint8_t *src) {
   uint32_t data;
   memcpy(&data, src, sizeof(uint32_t));
   return data;
 }
 
-inline static uint64_t deserialize_uint64(uint8_t *src) {
+inline static uint64_t deserialize_uint64(const uint8_t *src) {
   uint64_t data;
   memcpy(&data, src, sizeof(uint64_t));
   return data;
@@ -87,8 +87,8 @@ void compactsize_write(uint8_t *dest, uint64_t size)
   }
 }
 
-uint64_t compactsize_read(uint8_t *data, psbt_result_t *err) {
-  uint8_t *p = data;
+uint64_t compactsize_read(const uint8_t *data, psbt_result_t *err) {
+  const uint8_t *p = data;
   uint8_t chsize = deserialize_uint8(p++);
   uint64_t ret_size = 0;
 
@@ -115,6 +115,10 @@ uint64_t compactsize_read(uint8_t *data, psbt_result_t *err) {
 
   if (ret_size > (uint64_t) MAX_SERIALIZE_SIZE) {
     READERR();
+  }
+
+  if (err) {
+    *err = PSBT_OK;
   }
 
   return ret_size;

@@ -31,4 +31,14 @@ static const compactsize_vector_t COMPACTSIZE_VECTORS[] = {
 
 #define COMPACTSIZE_VECTOR_COUNT (sizeof(COMPACTSIZE_VECTORS) / sizeof(COMPACTSIZE_VECTORS[0]))
 
+/* Encodings rejected because a shorter one represents the same value -- the rule Bitcoin Core's
+ * ReadCompactSize() applies. These rows are built from that rule, not fetched from a document. */
+static const char* const COMPACTSIZE_NONCANONICAL[] = {
+  "fdfc00",
+  "feffff0000",
+  "ffffffffff00000000"
+};
+
+#define COMPACTSIZE_NONCANONICAL_COUNT (sizeof(COMPACTSIZE_NONCANONICAL) / sizeof(COMPACTSIZE_NONCANONICAL[0]))
+
 #endif

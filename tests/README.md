@@ -71,20 +71,35 @@ Generated headers are committed, so building the tests needs no network.
   threshold or member index interpolated into a plausible master secret belonging to no one;
   every un-recoverable share set in the SLIP-39 vectors is now rejected. `app/ui/ui.c`
   re-implements the identifier and group-index check at share entry, so the shipped flow covered
-  two of the six fields. 176 bytes of text in `shellos.elf`.
+  two of the six fields.
+* `compactsize_read()` writes `*err` on every outcome, and a rejected read yields **0** instead
+  of `-1`. Both callers that check the status happened to initialize it to `PSBT_OK`, and a
+  caller that ignores it -- `compactsize_read(p, NULL)` in `core_btc.c` -- got a length of
+  0xFFFFFFFFFFFFFFFF out of a failed read.
+* `base58_encode_check()` returns the string length, not the length including the terminator
+  `b58enc()` reports. No caller read the value, so this is a trap removed rather than a bug
+  fixed.
+* `btc_generate_txid()` (`core_btc.c`) walks the transaction with bounds and status checks and
+  returns whether it could parse, instead of hashing bytes it never verified. The comment there
+  claimed the transaction had been parsed already, which is an invariant nothing enforced: a
+  failed `compactsize_read` was discarded through a `NULL` error argument, truncated from 64 to
+  32 bits, and used as a loop bound and as a `sha256_Update` length. An unparseable prevtx is
+  now `ERR_DATA` in `core_btc_validate()`, so the transaction is refused rather than signed over
+  a txid computed from garbage.
 * `slip39.h` declared `slip39_comebine_groups`. The typo is gone; nothing had ever called it,
   which is why it survived.
 
-## Behaviour these tests record
+## Behaviour this test records
 
-Whether each of the following is *correct* is still open; the tests pin what the code does today
-so that changing it is a decision rather than an accident.
+Whether the following is *correct* is open; the test pins what the code does today so changing it
+is a decision rather than an accident.
 
-* `base58_encode_check()` returns the length it wrote **including** the terminating NUL.
-* `compactsize_read()` writes `*err` only when it fails, leaving the caller's value untouched on
-  success.
-* `compactsize_read()` refuses any length above `MAX_SERIALIZE_SIZE` (0x02000000), so not every
-  well-formed compactsize encoding round-trips.
+* `compactsize_read()` rejects any decoded length above `MAX_SERIALIZE_SIZE` (0x02000000,
+  Bitcoin Core's `MAX_SIZE`), so not every well-formed encoding round-trips. It is 256 times
+  `MEM_HEAP_SIZE` and larger than the whole 640 KB of RAM, so it cannot be the bound that
+  protects this device: both PSBT parsers already check every read length against
+  `data + src_size`. See the discussion in the commit that introduced this section.
+
 ## What these tests deliberately do not cover
 
 * **The hardware crypto paths.** The firmware uses the PKA for EC, the HASH peripheral for

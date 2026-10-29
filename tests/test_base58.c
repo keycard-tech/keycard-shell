@@ -51,8 +51,7 @@ static void test_encode_check(void) {
     TEST_ASSERT_TRUE(payload_len < sizeof(payload));
 
     int len = base58_encode_check(payload, payload_len, encoded, sizeof(encoded));
-    /* b58enc() reports the length it wrote including the terminator. */
-    TEST_ASSERT_EQUAL_INT(strlen(BASE58_VECTORS[i].encoded) + 1, len);
+    TEST_ASSERT_EQUAL_INT(strlen(BASE58_VECTORS[i].encoded), len);
     TEST_ASSERT_EQUAL_STRING(BASE58_VECTORS[i].encoded, encoded);
   }
 }

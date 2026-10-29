@@ -683,6 +683,13 @@ def compactsize_encode(value: int) -> str:
     return hexs(b"\xff" + value.to_bytes(8, "little"))
 
 
+def compactsize_forced(value: int, width: int) -> str:
+    """Encodes value with the prefix of a wider class than it needs, which is what makes an
+    encoding non-canonical."""
+    prefix = {2: b"\xfd", 4: b"\xfe", 8: b"\xff"}[width]
+    return hexs(prefix + value.to_bytes(width, "little"))
+
+
 def compactsize_vectors() -> str:
     values = [
         0,
@@ -701,6 +708,16 @@ def compactsize_vectors() -> str:
     body = ",\n".join(
         "  {0x%xULL, %s, %s}" % (value, cstr(encoding), "true" if value <= 0x02000000 else "false")
         for value, encoding in cases
+    )
+
+    # The value is the one a shorter encoding covers, forced into the next width class.
+    noncanonical = ",\n".join(
+        "  " + cstr(encoding)
+        for encoding in [
+            compactsize_forced(252, 2),
+            compactsize_forced(0xFFFF, 4),
+            compactsize_forced(0xFFFFFFFF, 8),
+        ]
     )
     return f"""#ifndef VECTORS_COMPACTSIZE_H
 #define VECTORS_COMPACTSIZE_H
@@ -724,6 +741,14 @@ static const compactsize_vector_t COMPACTSIZE_VECTORS[] = {{
 }};
 
 #define COMPACTSIZE_VECTOR_COUNT (sizeof(COMPACTSIZE_VECTORS) / sizeof(COMPACTSIZE_VECTORS[0]))
+
+/* Encodings rejected because a shorter one represents the same value -- the rule Bitcoin Core's
+ * ReadCompactSize() applies. These rows are built from that rule, not fetched from a document. */
+static const char* const COMPACTSIZE_NONCANONICAL[] = {{
+{noncanonical}
+}};
+
+#define COMPACTSIZE_NONCANONICAL_COUNT (sizeof(COMPACTSIZE_NONCANONICAL) / sizeof(COMPACTSIZE_NONCANONICAL[0]))
 
 #endif
 """

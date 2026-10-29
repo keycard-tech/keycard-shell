@@ -197,7 +197,7 @@ int base58_encode_check(const uint8_t *data, int datalen, char *str, int strsize
   size_t res = strsize;
   bool success = b58enc(str, &res, buf, datalen + 4);
   memzero(buf, sizeof(buf));
-  return success ? res : 0;
+  return success ? (int) (res - 1) : 0;
 }
 
 int base58_decode_check(const char *str, uint8_t *data, int datalen) {
