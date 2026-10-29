@@ -1,0 +1,92 @@
+# Host tests
+
+Native unit tests for the parts of the firmware that do not need silicon. They compile the
+real sources from `app/`; the only difference is the platform seam (`host/host_stm32.h` and
+`host/hal_host.c` in place of the STM32 HAL).
+
+This directory is a **separate CMake project**. Nothing here participates in the firmware
+build, and the firmware build must stay buildable with no `tests/` at all.
+
+## Running
+
+```sh
+cd tests
+cmake --preset host-tests
+cmake --build --preset host-tests
+ctest --preset host-tests
+```
+
+Presets: `host-tests` (ASan + UBSan), `host-tests-nosan`, `host-tests-coverage` (gcov).
+
+The sanitizers are on by default. Leak detection is off: the firmware has no heap to leak,
+LeakSanitizer needs ptrace permissions that containers often deny, and the checks worth
+having here are buffer overflows and undefined behaviour.
+
+## Layout
+
+| Path | Contents |
+| --- | --- |
+| `CMakeLists.txt` | One static library per app area (`app_crypto`, `app_bitcoin`) plus `shellos_test()` |
+| `host/host_stm32.h` | Host platform definition: geometry and typedefs, no register access |
+| `host/hal_host.c` | Deterministic `hal_rng_next()`; anything needing silicon is deliberately left undefined |
+| `host/host_data.c` | Constants that live in `app/mem.c` on the target (section attributes the host assembler rejects) |
+| `framework/` | `TEST_ASSERT_HEX` and hex helpers over Unity |
+| `unity/` | Vendored Unity 2.6.1 (MIT, see `unity/LICENSE.txt`) |
+| `vectors/` | Generated known-answer vectors and the generator that produces them |
+| `test_*.c` | One test binary per module |
+
+Adding a module means adding its `.c` files to a library in `CMakeLists.txt` and a
+`shellos_test(...)` line. If the linker then asks for a `hal_*` symbol, that module reaches
+hardware: stub it in `host/hal_host.c` only if a test can meaningfully drive it, otherwise
+the test belongs on the device.
+
+## Where the expected values come from
+
+Tests compare against values the code did not produce. `vectors/generate.py` writes every
+`vectors_*.h` and each header records its source:
+
+* **spec** — fetched from the upstream document or word list (BIP-32/39/173/350, SLIP-39,
+  RFC 4231, RFC 5869, Bitcoin Core's `base58.cpp`), pinned by SHA-256 in the header.
+* **reference** — computed by an independent implementation (CPython `hashlib`/`hmac`/`zlib`,
+  `pycryptodome`, `coincurve`, `eth_utils`).
+
+The generator self-checks what it parses: the RFC 4231 and RFC 5869 cases are recomputed with
+CPython `hmac`, the BIP-39 seeds with `hashlib.pbkdf2_hmac`, and each corrupted BIP-39
+mnemonic is verified to fail the checksum before it is emitted. A malformed vector therefore
+fails the generator, not the test.
+
+```sh
+uv run python tests/vectors/generate.py     # needs network; sources cached in vectors/.cache
+```
+
+Generated headers are committed, so building the tests needs no network.
+
+## What these tests deliberately do not cover
+
+* **The hardware crypto paths.** The firmware uses the PKA for EC, the HASH peripheral for
+  SHA-256 and the AES accelerator. The host build takes the `SOFT_SHA256`/`SOFT_CRC32`
+  fallbacks, so those implementations are covered and the peripheral ones are not. A
+  differential test between the two (same vectors, host and device) is the next layer.
+* **Elliptic curve math at all.** `SOFT_ECDSA` is inert: `ecdsa.h` hides `ecdsa_curve` under
+  it, `secp256k1.c` compiles its curve constants out, and `ecdsa_soft.c` is written against
+  Trezor's older API including a `hasher.h` that is not vendored — it compiles to zero
+  symbols. Anything needing point multiplication (`bip32.c`, `taproot.c`, signing, SCv2 ECDH)
+  cannot run here yet.
+* **Flash, USB, camera, smartcard, display, FreeRTOS scheduling.** All HAL.
+* **`shellos-test.elf`.** The QA app in the top-level `test/` directory is a production
+  artifact run by the factory on every unit; it is not a test harness and is not touched here.
+
+## Gaps pinned by these tests
+
+* `slip39_combine()` never calls `slip39_validate_shard_in_set()`, so shares that disagree on
+  set metadata (identifier, iteration exponent, group count, member threshold) combine into a
+  master secret nobody split. `app/ui/ui.c` re-implements the identifier and group-index
+  check at share entry, so those two fields are covered in the shipped flow and the rest are
+  not. `test_invalid_share_sets_are_rejected` pins the shape of the gap; the comment there
+  says what to change when it is fixed.
+* `slip39.h` declares `slip39_comebine_groups`; `slip39.c` defines `slip39_combine_groups`.
+  Nothing calls it, which is why the typo has never bitten. `test_slip39.c` carries the
+  correct declaration until the header is fixed.
+* `compactsize_read()` only writes `*err` when it fails, leaving it untouched on success.
+* `compactsize_read()` refuses any length above `MAX_SERIALIZE_SIZE` (0x02000000), so not
+  every well-formed compactsize is readable.

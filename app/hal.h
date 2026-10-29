@@ -12,6 +12,9 @@
 
 #ifdef STM32_HAL
 #include "stm32.h" // IWYU pragma: export
+#elif defined(HOST_TEST)
+// Host build of the platform seam, used only by the native test binaries under tests/.
+#include "host_stm32.h"
 #else
 #error "Unsupported platform"
 #endif

@@ -13,3 +13,6 @@ uv.lock
 .mypy_cache
 # ARM GCC Toolchain (auto-downloaded)
 toolchain/
+# native test build and downloaded vector sources
+tests/build*/
+tests/vectors/.cache/

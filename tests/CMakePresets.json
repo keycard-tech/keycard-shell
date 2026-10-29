@@ -1,0 +1,68 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 23,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "host-tests",
+            "displayName": "Native unit tests",
+            "description": "Host compiler, no cross toolchain and no linker script",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "host-tests-nosan",
+            "displayName": "Native unit tests without sanitizers",
+            "inherits": "host-tests",
+            "binaryDir": "${sourceDir}/build-nosan",
+            "cacheVariables": {
+                "HOST_TESTS_SANITIZERS": "OFF"
+            }
+        },
+        {
+            "name": "host-tests-coverage",
+            "displayName": "Native unit tests with coverage",
+            "inherits": "host-tests-nosan",
+            "binaryDir": "${sourceDir}/build-coverage",
+            "cacheVariables": {
+                "HOST_TESTS_COVERAGE": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "host-tests",
+            "configurePreset": "host-tests"
+        },
+        {
+            "name": "host-tests-nosan",
+            "configurePreset": "host-tests-nosan"
+        },
+        {
+            "name": "host-tests-coverage",
+            "configurePreset": "host-tests-coverage"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "host-tests",
+            "configurePreset": "host-tests",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "host-tests-nosan",
+            "configurePreset": "host-tests-nosan",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ]
+}

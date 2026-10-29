@@ -73,22 +73,32 @@ extern const uint8_t FW_VERSION[4];
 #define APP_DEF_EXTERN_TASK(__NAME__) \
   extern TaskHandle_t APP_TASK(__NAME__)
 
+/* REV keeps the target codegen to one instruction instead of trusting how a compiler
+ * lowers a byteswap; off-target the instruction does not exist. */
 static inline uint32_t rev32(uint32_t value) {
+#ifdef __ARM_ARCH
   __asm__ volatile (
       "REV %0, %0  \n"
       : "+r" (value)
       :
   );
   return value;
+#else
+  return __builtin_bswap32(value);
+#endif
 }
 
 static inline uint32_t rev16(uint16_t value) {
+#ifdef __ARM_ARCH
   __asm__ volatile (
       "REV16 %0, %0  \n"
       : "+r" (value)
       :
   );
   return value;
+#else
+  return __builtin_bswap16(value);
+#endif
 }
 
 static inline void rev32_all(uint32_t* out, uint32_t* in, size_t len) {

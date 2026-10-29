@@ -21,6 +21,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <assert.h>
 #include "rand.h"
 #include "common.h"
 
