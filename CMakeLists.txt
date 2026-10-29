@@ -40,6 +40,10 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-usage")
 # Assembly flags
 set(CMAKE_ASM_FLAGS "${CMAKE_C_FLAGS} -x assembler-with-cpp")
 
+# The variant header is forced onto every C translation unit rather than included: a TU that
+# omitted it would silently compile the omni-variant code paths.
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -include ${CMAKE_SOURCE_DIR}/app/variant.h")
+
 # Include directories
 set(INCLUDE_DIRS
     # stm32/Core includes
@@ -372,6 +376,45 @@ add_custom_command(TARGET shellos.elf POST_BUILD
         -o shellos.bin
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     COMMENT "Signing firmware with firmware-sign.py"
+)
+
+# Bitcoin-only target: same sources minus the Ethereum translation units. Keeping Ethereum out of
+# the image rests on the BITCOIN_ONLY guards at the call sites; --gc-sections drops whatever is
+# compiled but unreachable, so a missed guard is not necessarily a link error.
+# app/ethereum/eth_db.c is kept: the token database and the USB protocol reporting its version
+# are handled separately.
+set(BITCOIN_MAIN_SOURCES ${APP_SOURCES})
+list(REMOVE_ITEM BITCOIN_MAIN_SOURCES
+    app/ethereum/eip712.c
+    app/ethereum/ethUstream.c
+    app/ethereum/ethUtils.c
+    app/ethereum/eth_data.c
+    app/core/core_eth.c
+)
+
+set(BITCOIN_C_FLAGS "-DBITCOIN_ONLY")
+set(BITCOIN_ASM_FLAGS "-DBITCOIN_ONLY")
+
+add_executable(shellos-btc.elf
+    ${ZCBOR_SOURCES}
+    ${FREERTOS_SOURCES}
+    ${BITCOIN_MAIN_SOURCES}
+    ${HAL_SOURCES}
+    ${CORE_SOURCES}
+)
+
+set_target_properties(shellos-btc.elf PROPERTIES
+    COMPILE_FLAGS "${BITCOIN_C_FLAGS}"
+    ASM_FLAGS "${BITCOIN_ASM_FLAGS}"
+)
+
+add_custom_command(TARGET shellos-btc.elf POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E env "OBJCOPY=${CMAKE_OBJCOPY}" uv run python ${CMAKE_SOURCE_DIR}/tools/firmware-sign.py
+        -s ${CMAKE_SOURCE_DIR}/deployment/fw-test-key.txt
+        -e shellos-btc.elf
+        -o shellos-btc.bin
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Signing bitcoin-only firmware with firmware-sign.py"
 )
 
 # Print configuration summary

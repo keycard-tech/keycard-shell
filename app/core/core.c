@@ -301,9 +301,12 @@ TEST_APP_ACCESSIBLE app_err_t core_usb_get_app_config(apdu_t* cmd) {
   ecdsa_get_public_key33(&secp256k1, key, &data[7 + HAL_DEVICE_UID_LEN]);
   memzero(key, 32);
 
-  data[7 + HAL_DEVICE_UID_LEN + 33] = 0x90;
-  data[8 + HAL_DEVICE_UID_LEN + 33] = 0x00;
-  cmd->lr = 9 + HAL_DEVICE_UID_LEN + 33;
+  data[7 + HAL_DEVICE_UID_LEN + 33] = FW_VARIANT_OF(FW_VERSION[3]);
+  data[8 + HAL_DEVICE_UID_LEN + 33] = FW_BETA_OF(FW_VERSION[3]);
+
+  data[9 + HAL_DEVICE_UID_LEN + 33] = 0x90;
+  data[10 + HAL_DEVICE_UID_LEN + 33] = 0x00;
+  cmd->lr = 11 + HAL_DEVICE_UID_LEN + 33;
 
   return ERR_OK;
 }
@@ -345,18 +348,22 @@ static app_err_t core_usb_command(keycard_t* kc, command_t* cmd) {
       case INS_GET_PUBLIC:
         err = core_usb_get_public(kc, apdu);
         break;
+#ifndef BITCOIN_ONLY
       case INS_SIGN_ETH_TX:
         err = core_eth_usb_sign_tx(kc, apdu);
         break;
       case INS_SIGN_ETH_MSG:
         err = core_eth_usb_sign_message(kc, apdu);
         break;
+#endif
       case INS_GET_APP_CONF:
         err = core_usb_get_app_config(apdu);
         break;
+#ifndef BITCOIN_ONLY
       case INS_SIGN_EIP_712:
         err = core_eth_usb_sign_eip712(kc, apdu);
         break;
+#endif
       case INS_SIGN_PSBT:
         err = core_btc_usb_sign_psbt(kc, cmd);
         break;
@@ -412,9 +419,11 @@ void core_qr_run() {
   }
 
   switch(tx_type) {
+#ifndef BITCOIN_ONLY
   case ETH_SIGN_REQUEST:
     core_eth_eip4527_run(&qr_request.eth_sign_request);
     break;
+#endif
   case CRYPTO_PSBT:
     core_btc_psbt_qr_run(&qr_request.crypto_psbt);
     break;
@@ -505,6 +514,7 @@ static app_err_t get_hd_key(struct hd_key* key, uint8_t* pub, uint8_t* chain, co
   return ERR_OK;
 }
 
+#ifndef BITCOIN_ONLY
 static void core_display_public_eip4527(uint32_t account, const char* account_type) {
   struct hd_key key;
 
@@ -519,6 +529,7 @@ static void core_display_public_eip4527(uint32_t account, const char* account_ty
   }
   ui_display_ur_qr(NULL, g_core.data.key.cbor_key, g_core.data.key.cbor_len, CRYPTO_HDKEY);
 }
+#endif
 
 // this macro can only be used in core_display_public_bitcoin_*()
 #define CORE_BITCOIN_EXPORT(__NUM__, __TYPE__, __PATH__, __PATH_LEN__, __ACCOUNT__) \
@@ -602,9 +613,12 @@ void core_display_public_multicoin() {
   CORE_MULTICOIN_EXPORT(1, BIP44_BTC_NESTED_SEGWIT_PATH, 0, NULL);
   CORE_MULTICOIN_EXPORT(2, BIP44_BTC_NATIVE_SEGWIT_PATH, 0, NULL);
   CORE_MULTICOIN_EXPORT(3, BIP44_BTC_TAPROOT_PATH, 0, NULL);
+#ifndef BITCOIN_ONLY
   CORE_MULTICOIN_EXPORT(4, BIP44_ETH_PATH, 0, EIP4527_STANDARD);
-
   accounts.crypto_multi_accounts_keys_tagged_hd_key_m_count = 5;
+#else
+  accounts.crypto_multi_accounts_keys_tagged_hd_key_m_count = 4;
+#endif
   accounts.crypto_multi_accounts_master_fingerprint = g_core.master_fingerprint;
 
   if (cbor_encode_crypto_multi_accounts(&g_mem_heap[keys_off], MEM_HEAP_SIZE - keys_off, &accounts, &g_core.data.key.cbor_len) != ZCBOR_SUCCESS) {
@@ -699,6 +713,7 @@ typedef struct {
   size_t target_len;
 } core_addr_type_t;
 
+#ifndef BITCOIN_ONLY
 static bool core_eth_addr_hash(const uint8_t* pub, uint8_t* out) {
   ethereum_address(pub, out);
   return true;
@@ -711,6 +726,7 @@ static bool core_eth_addr_decoder(const char* addr, uint8_t* out) {
 
   return base16_decode(&addr[2], out, ETH_ADDR_HEX_LEN) && ethereum_address_checksum_verify(&addr[2], out);
 }
+#endif
 
 static bool core_btc_addr_hash(const uint8_t* pub, uint8_t* out) {
   hash160(pub, PUBKEY_COMPRESSED_LEN, out);
@@ -778,7 +794,9 @@ static bool core_btc_p2sh_decoder(const char* addr, uint8_t* out) {
  * is verified through its descriptor, where the script is known.
  */
 static const core_addr_type_t ADDR_TYPES[] = {
+#ifndef BITCOIN_ONLY
   {ADDR_URI_ETHEREUM, core_eth_addr_decoder,   ETH_PURPOSE,               ETH_COIN,         core_eth_addr_hash,         ADDRESS_LENGTH},
+#endif
   {ADDR_URI_BITCOIN,  core_btc_p2wpkh_decoder, BTC_NATIVE_SEGWIT_PURPOSE, BTC_MAINNET_COIN, core_btc_addr_hash,         RIPEMD160_DIGEST_LENGTH},
   {ADDR_URI_BITCOIN,  core_btc_p2tr_decoder,   BTC_TAPROOT_PURPOSE,       BTC_MAINNET_COIN, core_btc_taproot_addr_hash, BTC_TAPROOT_WITPROG_LEN},
   {ADDR_URI_BITCOIN,  core_btc_p2pkh_decoder,  BTC_LEGACY_PURPOSE,        BTC_MAINNET_COIN, core_btc_addr_hash,         RIPEMD160_DIGEST_LENGTH},
@@ -906,12 +924,19 @@ void core_connect_wallet() {
     return;
   }
 
+#ifdef BITCOIN_ONLY
+  i18n_str_id_t selected = MENU_CONNECT_BITCOIN;
+#else
   i18n_str_id_t selected = MENU_CONNECT_EIP4527;
+#endif
 
   while (ui_menu(LSTR(MENU_CONNECT), &menu_connect, &selected, -1, 0, UI_MENU_NOCANCEL, 0, 0) == CORE_EVT_UI_OK) {
     uint32_t account = 0;
 
-    if ((selected == MENU_CONNECT_LEDGER_LIVE) ||
+    if (
+#ifndef BITCOIN_ONLY
+        (selected == MENU_CONNECT_LEDGER_LIVE) ||
+#endif
         (selected == MENU_CONNECT_BITCOIN_ALT) ||
         (selected == MENU_CONNECT_BITCOIN_MULTISIG_ALT) ||
         (selected == MENU_CONNECT_BITCOIN_TESTNET)) {
@@ -921,6 +946,7 @@ void core_connect_wallet() {
     }
 
     switch(selected) {
+#ifndef BITCOIN_ONLY
     case MENU_CONNECT_LEDGER_LIVE:
       core_display_public_eip4527(account, EIP4527_LEDGER_LIVE);
       break;
@@ -930,6 +956,7 @@ void core_connect_wallet() {
     case MENU_CONNECT_EIP4527:
       core_display_public_eip4527(account, EIP4527_STANDARD);
       break;
+#endif
     case MENU_CONNECT_BITCOIN_ALT:
     case MENU_CONNECT_BITCOIN:
       core_display_public_bitcoin(false, account);

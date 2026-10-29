@@ -68,6 +68,7 @@ jobs:
       - name: Copy signed binary
         run: |
           cp build/shellos.bin shellos-${{ steps.vars.outputs.release }}-reproduction.bin
+          cp build/shellos-btc.bin shellos-btc-${{ steps.vars.outputs.release }}-reproduction.bin
 
       - name: Copy bootloader binary
         run: |
@@ -78,9 +79,11 @@ jobs:
           set -e
           boot_bin="shellos-bootloader-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.version }}.bin"
           fw_bin="shellos-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.version }}.bin"
+          fw_btc_bin="shellos-btc-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.version }}.bin"
           # The firmware hash skips the signature bytes (bootloader-compatible), the
           # bootloader is unsigned, so a plain SHA256 is enough for it.
           fw_hash=$(uv run python tools/firmware-hash.py -b build/shellos.bin)
+          fw_btc_hash=$(uv run python tools/firmware-hash.py -b build/shellos-btc.bin)
           boot_hash=$(sha256sum "${boot_bin}" | cut -d' ' -f1)
           {
             echo "# Format: <sha256>  <filename>"
@@ -93,6 +96,7 @@ jobs:
             echo "# The bootloader is unsigned and uses a plain SHA256, which can be verified with:"
             echo "#   sha256sum -c --ignore-missing <this file>"
             echo "${fw_hash}  ${fw_bin}"
+            echo "${fw_btc_hash}  ${fw_btc_bin}"
             echo "${boot_hash}  ${boot_bin}"
           } > shellos-${{ steps.vars.outputs.release }}-sha256.txt
 
@@ -100,7 +104,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: shellos-${{ steps.vars.outputs.release }}-reproduction
-          path: shellos-${{ steps.vars.outputs.release }}-reproduction.bin
+          path: |
+            shellos-${{ steps.vars.outputs.release }}-reproduction.bin
+            shellos-btc-${{ steps.vars.outputs.release }}-reproduction.bin
 
       - name: Upload bootloader artifact
         uses: actions/upload-artifact@v4

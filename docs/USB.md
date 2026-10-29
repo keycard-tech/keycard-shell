@@ -75,6 +75,8 @@ Returns informations about the device. The format is as follow:
 * Database version: 4 bytes. It's integer value is a date in YYYYMMDD format.
 * Device UID: 16 bytes. Unique identifier of this Shell unit.
 * Public Key: 33 bytes. A public key that can be used for device verification purposes.
+* Variant: 1 byte. 0 is the multi-coin build, 1 is bitcoin-only, 2..7 are unassigned.
+* Beta: 1 byte. The beta number, 0 meaning a release.
 
 ### GET PUBLIC
 

@@ -25,9 +25,11 @@ static inline void core_action_run(i18n_str_id_t menu) {
     device_help();
     break;
   // Addresses
+#ifndef BITCOIN_ONLY
   case MENU_ETHEREUM:
     core_addresses_ethereum();
     break;
+#endif
   case MENU_BITCOIN:
     core_addresses_bitcoin();
     break;
