@@ -39,6 +39,7 @@ SOURCES = {
     "slip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-shamir-mnemonic/master/vectors.json",
     "rfc4231.txt": "https://www.rfc-editor.org/rfc/rfc4231.txt",
     "rfc5869.txt": "https://www.rfc-editor.org/rfc/rfc5869.txt",
+    "bip174.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0174.mediawiki",
 }
 
 
@@ -808,6 +809,280 @@ static const eth_address_vector_t ETH_ADDRESS_VECTORS[] = {{
 """
 
 
+# ---------------------------------------------------------------- psbt
+
+
+magic = b"\x70\x73\x62\x74\xff"
+
+
+def parse_bip174_cases() -> list[dict]:
+    """The three groups of cases in BIP-174's Test Vectors section."""
+    text = fetch("bip174.mediawiki")
+    start = text.index("==Test Vectors==")
+    body = text[start : text.index("==Rationale==")]
+
+    groups = {"invalid": "The following are invalid PSBTs:",
+              "valid": "The following are valid PSBTs:",
+              "signer": "Fails Signer checks"}
+    marks = sorted(((body.index(label), name) for name, label in groups.items()))
+
+    cases = []
+    for position, (offset, name) in enumerate(marks):
+        stop = marks[position + 1][0] if position + 1 < len(marks) else len(body)
+        chunk = body[offset:stop]
+        for block in chunk.split("* Case:")[1:]:
+            title = block.split("\n")[0].strip()
+            hex_match = re.search(r"Bytes in Hex:\s*<pre>(.*?)(?:</pre>|</pr>)", block, re.S)
+            cases.append(
+                {
+                    "group": name,
+                    "name": title,
+                    "hex": "".join(hex_match.group(1).split()),
+                }
+            )
+    return cases
+
+
+def read_compactsize(data: bytes, pos: int) -> tuple[int, int]:
+    """BIP-174 / Bitcoin Core ReadCompactSize, including the canonical encoding rule."""
+    flag = data[pos]
+    if flag < 0xFD:
+        return flag, pos + 1
+    width = {0xFD: 2, 0xFE: 4, 0xFF: 8}[flag]
+    value = int.from_bytes(data[pos + 1 : pos + 1 + width], "little")
+    if value < {0xFD: 0xFD, 0xFE: 0x10000, 0xFF: 0x100000000}[flag]:
+        raise ValueError("non-canonical compactsize")
+    return value, pos + 1 + width
+
+
+def parse_tx_counts(data: bytes) -> tuple[int, int]:
+    if len(data) < 6:
+        raise ValueError("truncated transaction")
+    # marker 0x00 + flag 0x01. A legacy transaction with no inputs starts the same way
+    # ("0 inputs, N outputs"), which is why the flag byte has to be checked; BIP-174 requires
+    # the unsigned tx in the non-witness serialization either way.
+    if data[4] == 0 and data[5] == 1:
+        raise ValueError("unsigned tx uses witness serialization")
+
+    pos = 4
+    inputs, pos = read_compactsize(data, pos)
+    for _ in range(inputs):
+        pos += 36
+        script_len, pos = read_compactsize(data, pos)
+        pos += script_len + 4
+    outputs, pos = read_compactsize(data, pos)
+    for _ in range(outputs):
+        pos += 8
+        script_len, pos = read_compactsize(data, pos)
+        pos += script_len
+    pos += 4
+    if pos != len(data):
+        raise ValueError("transaction does not end at locktime")
+    return inputs, outputs
+
+
+def parse_psbt(data: bytes) -> tuple[list, int, int]:
+    """Reference parse of a PSBT, returning the records as (scope, key, value) triples."""
+    if data[:5] != b"\x70\x73\x62\x74\xff":
+        raise ValueError("bad magic")
+
+    pos = 5
+    records: list[tuple[int, bytes, bytes]] = []
+
+    def read_map(scope: int) -> int:
+        nonlocal pos
+        while data[pos] != 0:
+            key_len, pos = read_compactsize(data, pos)
+            key = data[pos : pos + key_len]
+            pos += key_len
+            value_len, pos = read_compactsize(data, pos)
+            value = data[pos : pos + value_len]
+            if len(value) != value_len:
+                raise ValueError("value shorter than stated")
+            pos += value_len
+            records.append((scope, key, value))
+        return pos + 1
+
+    pos = read_map(0)
+    unsigned = next((value for scope, key, value in records if scope == 0 and key == b"\x00"), None)
+    if unsigned is None:
+        raise ValueError("no unsigned tx")
+
+    inputs, outputs = parse_tx_counts(unsigned)
+    for _ in range(inputs):
+        pos = read_map(1)
+    for _ in range(outputs):
+        pos = read_map(2)
+    if pos != len(data):
+        raise ValueError("trailing data after the last map")
+    return records, inputs, outputs
+
+
+def psbt_record_digest(records: list, inputs: int, outputs: int) -> str:
+    """The recipe test_psbt.c replays, per record in parse order: scope byte, key type byte,
+    little-endian length and bytes of the key after its type byte, then the same for the value.
+    Then the input, output and record counts, so the test can compare a mismatching structure
+    field by field before falling back to the digest."""
+    ctx = hashlib.sha256()
+    for scope, key, value in records:
+        ctx.update(bytes([scope, key[0]]))
+        ctx.update((len(key) - 1).to_bytes(4, "little"))
+        ctx.update(key[1:])
+        ctx.update(len(value).to_bytes(4, "little"))
+        ctx.update(value)
+    for count in (inputs, outputs, len(records)):
+        ctx.update(count.to_bytes(4, "little"))
+    return ctx.hexdigest()
+
+
+def psbt_constructed_cases() -> list[dict]:
+    """Cases BIP-174's own list does not have, built from its serialization grammar.
+
+    A transaction with no inputs and two outputs, used here because a PSBT whose input maps are
+    all absent exercises a parser's section bookkeeping without also being byte-ambiguous with
+    the witness serialization ("0 inputs, 1 output" is the same bytes as marker 0x00 flag 0x01).
+    """
+    tx = bytes.fromhex(
+        "02000000" "00" "02" + ("00" * 8 + "00") * 2 + "00000000"
+    )
+    keypair = bytes([1]) + bytes([0]) + bytes([len(tx)]) + tx
+    record = bytes([1 + 33]) + bytes([2]) + bytes(range(1, 34)) + bytes([4]) + bytes([0xAA] * 4)
+
+    empty_input_maps = magic + keypair + b"\x00" + record + b"\x00" + b"\x00"
+
+    return [
+        {
+            "group": "valid",
+            "name": "Constructed: no input maps, output maps with records",
+            "hex": hexs(empty_input_maps),
+        },
+        {
+            "group": "invalid",
+            "name": "Constructed: empty map after the output maps",
+            "hex": hexs(empty_input_maps + b"\x00"),
+        },
+        {
+            "group": "invalid",
+            "name": "Constructed: garbage after the last output map",
+            "hex": hexs(empty_input_maps + b"\x01\x02\x03"),
+        },
+    ]
+
+
+def psbt_vectors() -> str:
+    parses, rejected, field_invalid = [], [], []
+
+    for case in parse_bip174_cases() + psbt_constructed_cases():
+        data = bytes.fromhex(case["hex"])
+        try:
+            records, inputs, outputs = parse_psbt(data)
+            failure = None
+        except (ValueError, IndexError, KeyError) as error:
+            records, inputs, outputs, failure = [], 0, 0, str(error)
+
+        row = {
+            "name": case["name"],
+            "hex": hexs(data),
+            "inputs": inputs,
+            "outputs": outputs,
+            "records": len(records),
+            "digest": psbt_record_digest(records, inputs, outputs),
+        }
+
+        if case["group"] in ("valid", "signer"):
+            if failure:
+                raise SystemExit(f"reference could not parse a {case['group']} case: {row['name']}: {failure}")
+            parses.append((case["group"], row))
+        elif failure:
+            rejected.append(row)
+        else:
+            field_invalid.append(row)
+
+    def rows(group):
+        """group entries are (name, hex, inputs, outputs, records, digest) tuples."""
+        return ",\n".join(
+            "  {%s,\n   %s,\n   %d, %d, %d,\n   %s}"
+            % (
+                cstr(row["name"]),
+                cstr(row["hex"]),
+                row["inputs"],
+                row["outputs"],
+                row["records"],
+                cstr(row["digest"]),
+            )
+            for row in group
+        )
+
+    valid = rows([row for kind, row in parses if kind == "valid"])
+    signer = rows([row for kind, row in parses if kind == "signer"])
+
+    return f"""#ifndef VECTORS_PSBT_H
+#define VECTORS_PSBT_H
+
+/* spec: {provenance("bip174.mediawiki")}
+ *
+ * Every case from BIP-174's Test Vectors section, decoded from the document's own hex. The
+ * structure each parse must produce (inputs, outputs, records, digest) comes from the reference
+ * parser in generate.py, not from psbt.c: records are digested in parse order as
+ *   scope byte | key type byte | uint32_le key length | key | uint32_le value length | value
+ * followed by the uint32_le input, output and record counts.
+ *
+ * PSBT_VECTORS        must parse, and the signer may sign them.
+ * PSBT_SIGNER_REJECTS must parse, but a signer must refuse (BIP-174 "Fails Signer checks"; the
+ *                     refusal itself lives in core_btc.c, not in the parser).
+ * PSBT_REJECTED       must not parse. This is the subset the reference parser rejects, so the
+ *                     violation is in the serialization format itself: the magic, canonical
+ *                     compactsize encodings, key and value framing, the map separators and
+ *                     their count against the unsigned tx, the unsigned tx key being exactly
+ *                     its type byte, the unsigned tx in non-witness serialization, and nothing
+ *                     following the last output map.
+ * PSBT_FIELD_INVALID  are invalid because of the *contents* of known key types, or because a
+ *                     duplicated key or a filled scriptSig breaks a rule about what a field
+ *                     means. psbt.c is a structural parser and hands those to its caller, so
+ *                     this group records that division of labour rather than endorsing it.
+ */
+typedef struct {{
+  const char* name;
+  const char* psbt;
+  unsigned int inputs;
+  unsigned int outputs;
+  unsigned int records;
+  const char* digest;
+}} psbt_vector_t;
+
+typedef struct {{
+  const char* name;
+  const char* psbt;
+}} psbt_reject_vector_t;
+
+static const psbt_vector_t PSBT_VECTORS[] = {{
+{valid}
+}};
+
+#define PSBT_VECTOR_COUNT (sizeof(PSBT_VECTORS) / sizeof(PSBT_VECTORS[0]))
+
+static const psbt_vector_t PSBT_SIGNER_REJECTS[] = {{
+{signer}
+}};
+
+#define PSBT_SIGNER_REJECT_COUNT (sizeof(PSBT_SIGNER_REJECTS) / sizeof(PSBT_SIGNER_REJECTS[0]))
+
+static const psbt_reject_vector_t PSBT_REJECTED[] = {{
+{",\n".join("  {%s,\n   %s}" % (cstr(row["name"]), cstr(row["hex"])) for row in rejected)}
+}};
+
+#define PSBT_REJECTED_COUNT (sizeof(PSBT_REJECTED) / sizeof(PSBT_REJECTED[0]))
+
+static const psbt_vector_t PSBT_FIELD_INVALID[] = {{
+{rows(field_invalid)}
+}};
+
+#define PSBT_FIELD_INVALID_COUNT (sizeof(PSBT_FIELD_INVALID) / sizeof(PSBT_FIELD_INVALID[0]))
+
+#endif
+"""
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -819,6 +1094,7 @@ def main() -> None:
         "vectors_bech32.h": bech32_vectors(),
         "vectors_compactsize.h": compactsize_vectors(),
         "vectors_address.h": address_vectors(),
+        "vectors_psbt.h": psbt_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

@@ -88,6 +88,24 @@ Generated headers are committed, so building the tests needs no network.
   a txid computed from garbage.
 * `slip39.h` declared `slip39_comebine_groups`. The typo is gone; nothing had ever called it,
   which is why it survived.
+* `psbt_read()` no longer reads past the input. Two out-of-bounds reads of attacker-controlled
+  data, both found by the truncation sweep: the map loop allowed `write_pos == end` and then
+  tested `*write_pos`, and `psbt_read_record()` peeked a compactsize before checking that its
+  first byte was there.
+* `psbt_read()` consumed each section separator where it saw it, so `PSBT_ST_FINALIZED` now
+  means "the whole input was consumed". Before, the last separator was checked twice and
+  anything after it was ignored: a PSBT with garbage appended, or with an extra empty map,
+  parsed as valid. Choosing the next state from the map counts also lets a section with zero
+  maps exist, which BIP-174 allows and the old chain of `*_NEW` states did not -- it rejected
+  the spec's own "PSBT with 0 inputs" vector, and with no input maps but non-empty output maps
+  it would have handed the output records to the caller tagged as belonging to an input.
+* `psbt_read()` rejects a global unsigned tx whose key is longer than its type byte. Without
+  that field there is no input and output count to read the maps against, and the records that
+  follow land in the wrong maps.
+* `psbt_btc_tx_parse()` treated *any* zero after the version as the witness marker, so a legacy
+  transaction with no inputs had every field after the version shifted. Only the flag BIP-144
+  defines (`0x01`) makes it a marker. The constant moved to `psbt_tx.h`, where `psbt.c` can also
+  use it to enforce BIP-174's rule that the unsigned tx is not in the witness serialization.
 
 ## Behaviour this test records
 

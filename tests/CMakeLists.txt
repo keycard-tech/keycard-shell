@@ -90,6 +90,8 @@ target_compile_options(app_crypto PRIVATE ${SHELLOS_COMMON_FLAGS})
 
 add_library(app_bitcoin STATIC
     ${SHELLOS_ROOT}/app/bitcoin/compactsize.c
+    ${SHELLOS_ROOT}/app/bitcoin/psbt.c
+    ${SHELLOS_ROOT}/app/bitcoin/psbt_tx.c
 )
 target_include_directories(app_bitcoin PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_bitcoin PRIVATE ${SHELLOS_COMMON_FLAGS})
@@ -123,3 +125,4 @@ shellos_test(slip39 LIBS app_crypto)
 shellos_test(base58 LIBS app_crypto)
 shellos_test(bech32 LIBS app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)
+shellos_test(psbt LIBS app_bitcoin app_crypto)

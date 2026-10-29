@@ -686,7 +686,7 @@ static inline bool core_btc_is_valid_witness_script(uint8_t* script, size_t scri
 }
 
 static inline bool btc_is_segwit(uint8_t* tx) {
-  return tx[4] == 0;
+  return (tx[4] == 0) && (tx[5] == SEGREGATED_WITNESS_FLAG);
 }
 
 static bool btc_txid_read_size(SHA256_CTX* ctx, const uint8_t** cursor, const uint8_t* end, uint64_t* size) {
@@ -762,7 +762,12 @@ static bool btc_generate_txid(uint8_t* tx, size_t tx_len, uint8_t out[SHA256_DIG
       BTC_TXID_TAKE(&ctx, p, end, script_len); /* scriptPubKey */
     }
 
-    BTC_TXID_TAKE(&ctx, p, end, sizeof(uint32_t)); /* locktime, and the end of the transaction */
+    if (tx_len < sizeof(uint32_t)) {
+      return false;
+    }
+
+    const uint8_t* locktime = end - sizeof(uint32_t);
+    sha256_Update(&ctx, locktime, sizeof(uint32_t));
   } else {
     sha256_Update(&ctx, tx, tx_len);
   }

@@ -2,8 +2,6 @@
 #include "compactsize.h"
 #include <string.h>
 
-#define SEGREGATED_WITNESS_FLAG 0x1
-
 #define ASSERT_SPACE(s)							\
   if (p+(s) > data + data_size) {		\
     return PSBT_READ_ERROR; \
@@ -132,12 +130,10 @@ psbt_result_t psbt_btc_tx_parse(uint8_t *data, uint32_t data_size, void *user_da
 
   ASSERT_SPACE(1);
 
-  if (*p == 0) {
-    p++;
-    ASSERT_SPACE(1);
-    flag = *p;
-    p++;
-    ASSERT_SPACE(1);
+  ASSERT_SPACE(2);
+  if ((p[0] == 0) && (p[1] == SEGREGATED_WITNESS_FLAG)) {
+    flag = p[1];
+    p += 2;
   }
 
   size_len = compactsize_peek_length(*p);

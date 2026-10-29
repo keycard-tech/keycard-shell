@@ -47,12 +47,14 @@ char* test_hex(const uint8_t* data, size_t len) {
   return buf;
 }
 
-void test_assert_hex_(const char* file, int line, const uint8_t* actual, size_t actual_len, const char* expected_hex) {
+void test_assert_hex_(const char* file, int line, const uint8_t* actual, size_t actual_len,
+                      const char* expected_hex, const char* message) {
   uint8_t expected[2048];
   size_t expected_len = test_unhex(expected_hex, expected, sizeof(expected));
 
   UnityAssertEqualNumber((UNITY_INT)expected_len, (UNITY_INT)actual_len,
-                         "length differs from vector", (UNITY_LINE_TYPE)line, UNITY_DISPLAY_STYLE_UINT32);
+                         message ? message : "length differs from vector", (UNITY_LINE_TYPE)line,
+                         UNITY_DISPLAY_STYLE_UINT32);
   if (expected_len != actual_len) {
     fprintf(stderr, "\nexpected %s\nactual   %s\n", expected_hex, test_hex(actual, actual_len));
     return;

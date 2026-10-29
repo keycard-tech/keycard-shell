@@ -16,3 +16,6 @@ toolchain/
 # native test build and downloaded vector sources
 tests/build*/
 tests/vectors/.cache/
+
+# working notes, not shipped
+plans/

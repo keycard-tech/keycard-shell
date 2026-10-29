@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define SEGREGATED_WITNESS_FLAG 0x1
+
 typedef enum {
   PSBT_OK,
   PSBT_COMPACT_READ_ERROR,

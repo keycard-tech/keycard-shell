@@ -111,27 +111,32 @@ static psbt_result_t psbt_read_header(psbt_t *tx) {
 
 static psbt_result_t psbt_read_record(psbt_t *tx, size_t src_size, psbt_record_t *rec) {
   psbt_result_t res = PSBT_OK;
+  uint8_t *end = tx->data + src_size;
   uint64_t size;
   uint32_t size_len;
 
+  if (tx->write_pos >= end) {
+    return PSBT_READ_ERROR;
+  }
+
   size_len = compactsize_peek_length(*tx->write_pos);
-  ASSERT_SPACE(size_len);
+  if (tx->write_pos + size_len > end) {
+    return PSBT_READ_ERROR;
+  }
+
   size = compactsize_read(tx->write_pos, &res);
+  if (res != PSBT_OK) {
+    return res;
+  }
   if (size == 0) {
     return PSBT_READ_ERROR;
   }
 
   tx->write_pos += size_len;
 
-  if (res != PSBT_OK) {
-    return res;
-  }
-
-  if (tx->write_pos + size > tx->data + src_size) {
+  if (tx->write_pos + size > end) {
     return PSBT_READ_ERROR;
   }
-
-  ASSERT_SPACE(size);
 
   rec->key_size = size - 1; // don't include type in key size
   rec->type = *tx->write_pos;
@@ -153,25 +158,28 @@ static psbt_result_t psbt_read_record(psbt_t *tx, size_t src_size, psbt_record_t
     return PSBT_INVALID_STATE;
   }
 
+  if (tx->write_pos >= end) {
+    return PSBT_READ_ERROR;
+  }
+
   size_len = compactsize_peek_length(*tx->write_pos);
+  if (tx->write_pos + size_len > end) {
+    return PSBT_READ_ERROR;
+  }
 
-  ASSERT_SPACE(size_len);
   size = compactsize_read(tx->write_pos, &res);
-
   if (res != PSBT_OK) {
     return res;
   }
 
   tx->write_pos += size_len;
 
-  if (tx->write_pos + size > tx->data + src_size) {
+  if (tx->write_pos + size > end) {
     return PSBT_READ_ERROR;
   }
 
   rec->val_size = size;
   rec->val = tx->write_pos;
-
-  ASSERT_SPACE(size);
   tx->write_pos += size;
 
   return PSBT_OK;
@@ -200,6 +208,14 @@ static void tx_counter(psbt_txelem_t *elem) {
   default:
     return;
   }
+}
+
+static enum psbt_state psbt_next_section(const psbt_tx_counter_t* counter, enum psbt_state section) {
+  if ((section == PSBT_ST_INPUTS) && (counter->inputs > 0)) {
+    return PSBT_ST_INPUTS;
+  }
+
+  return (counter->outputs > 0) ? PSBT_ST_OUTPUTS : PSBT_ST_FINALIZED;
 }
 
 psbt_result_t psbt_read(const uint8_t *src, size_t src_size, psbt_t *tx, psbt_elem_handler_t *elem_handler, void* user_data) {
@@ -242,7 +258,7 @@ psbt_result_t psbt_read(const uint8_t *src, size_t src_size, psbt_t *tx, psbt_el
 
   end = tx->data + src_size;
 
-  while (tx->state != PSBT_ST_FINALIZED && tx->write_pos <= end) {
+  while (tx->state != PSBT_ST_FINALIZED && tx->write_pos < end) {
     switch(tx->state) {
     case PSBT_ST_INIT:
       res = psbt_read_header(tx);
@@ -254,24 +270,23 @@ psbt_result_t psbt_read(const uint8_t *src, size_t src_size, psbt_t *tx, psbt_el
     case PSBT_ST_INPUTS:
     case PSBT_ST_OUTPUTS:
       if (*tx->write_pos == 0) {
+        tx->write_pos++;
+
         switch (tx->state) {
         case PSBT_ST_GLOBAL:
-          tx->state = PSBT_ST_INPUTS_NEW;
+          tx->state = psbt_next_section(&counter, PSBT_ST_INPUTS);
           break;
         case PSBT_ST_INPUTS:
           if (++kvs >= counter.inputs) {
-            tx->state = PSBT_ST_OUTPUTS_NEW;
             kvs = 0;
+            tx->state = psbt_next_section(&counter, PSBT_ST_OUTPUTS);
           } else {
-            tx->state = PSBT_ST_INPUTS_NEW;
+            tx->state = PSBT_ST_INPUTS;
           }
           break;
         case PSBT_ST_OUTPUTS:
-          if (++kvs >= counter.outputs) {
-            tx->state = PSBT_ST_FINALIZED;
-          } else {
-            tx->state = PSBT_ST_OUTPUTS_NEW;
-          }
+          kvs++;
+          tx->state = (kvs >= counter.outputs) ? PSBT_ST_FINALIZED : PSBT_ST_OUTPUTS;
           break;
         default:
           return PSBT_READ_ERROR;
@@ -284,7 +299,16 @@ psbt_result_t psbt_read(const uint8_t *src, size_t src_size, psbt_t *tx, psbt_el
         }
 
         if (tx->state == PSBT_ST_GLOBAL && rec.type == PSBT_GLOBAL_UNSIGNED_TX) {
+          if (rec.key_size != 0) {
+            return PSBT_READ_ERROR;
+          }
+
           // parse transaction for number of inputs/outputs
+          if ((rec.val_size >= 6) && (rec.val[4] == 0) &&
+              (rec.val[5] == SEGREGATED_WITNESS_FLAG)) {
+            return PSBT_READ_ERROR;
+          }
+
           res = psbt_btc_tx_parse(rec.val, rec.val_size, (void*) &counter, tx_counter);
 
           if (res != PSBT_OK) {
@@ -301,34 +325,17 @@ psbt_result_t psbt_read(const uint8_t *src, size_t src_size, psbt_t *tx, psbt_el
         }
       }
       break;
-    case PSBT_ST_OUTPUTS_NEW:
-      if (*tx->write_pos != 0) {
-        return PSBT_READ_ERROR;
-      }
-      tx->write_pos++;
-      tx->state = PSBT_ST_OUTPUTS;
-      break;
     case PSBT_ST_INPUTS_NEW:
-      if (*tx->write_pos != 0) {
-        return PSBT_READ_ERROR;
-      }
-      tx->write_pos++;
-      tx->state = PSBT_ST_INPUTS;
-      break;
+    case PSBT_ST_OUTPUTS_NEW:
+      return PSBT_INVALID_STATE;
     case PSBT_ST_FINALIZED:
       return PSBT_READ_ERROR;
     }
   }
 
-  ASSERT_SPACE(1);
-
-  if (tx->state != PSBT_ST_FINALIZED) {
-    return PSBT_INVALID_STATE;
-  } else if (*tx->write_pos != 0) {
+  if ((tx->state != PSBT_ST_FINALIZED) || (tx->write_pos != end)) {
     return PSBT_READ_ERROR;
   }
-
-  tx->write_pos++;
 
   return PSBT_OK;
 }
