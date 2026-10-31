@@ -21,7 +21,7 @@ APP_DEF_TASK(ui, UI_STACK_SIZE);
 
 #define FW_MAJOR 1
 #define FW_MINOR 5
-#define FW_PATCH 1
+#define FW_PATCH 2
 
 // Beta version. 0 means release. The upper three bits carry the build variant, so betas are 0..31.
 // Although not customary, to keep downgrade protection simple betas of the next release

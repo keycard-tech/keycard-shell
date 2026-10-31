@@ -1,5 +1,11 @@
 # Keycard Shell Dev Firmware
 
+## 1.5.2 (2026-10-31)
+
+* [btc] add address URI recognition
+* [btc] add experimental btc-only build
+* [misc] small fixes
+
 ## 1.5.1 (2026-10-28)
 
 * [multisig] fix regression introduced in 1.5.0
