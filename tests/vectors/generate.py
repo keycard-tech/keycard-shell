@@ -40,6 +40,8 @@ SOURCES = {
     "rfc4231.txt": "https://www.rfc-editor.org/rfc/rfc4231.txt",
     "rfc5869.txt": "https://www.rfc-editor.org/rfc/rfc5869.txt",
     "bip174.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0174.mediawiki",
+    "bc_bytewords.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/src/bc-bytewords.c",
+    "bc_bytewords_test.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/test/test.c",
 }
 
 
@@ -1083,6 +1085,164 @@ static const psbt_vector_t PSBT_FIELD_INVALID[] = {{
 """
 
 
+def bytewords_words() -> list[str]:
+    """Blockchain Commons' 256 words.
+
+    Bytewords minimal -- what app/ur/bytewords.c implements, and what a UR payload carries -- is
+    each word's first and last letter. The word list makes that pair unique per byte, which is
+    what lets a decoder work from the two letters alone.
+    """
+    raw = re.search(r'bytewords = "([a-z]+)"', fetch("bc_bytewords.c")).group(1)
+    assert len(raw) == 4 * 256, f"word list is {len(raw)} chars, expected 1024"
+    words = [raw[i:i + 4] for i in range(0, len(raw), 4)]
+    assert len({w[0] + w[3] for w in words}) == 256, "minimal codes are not unique"
+    return words
+
+
+def bytewords_minimal(words: list[str], payload: bytes) -> str:
+    body = "".join(words[b][0] + words[b][3] for b in payload)
+    checksum = zlib.crc32(payload) & 0xFFFFFFFF
+    return body + "".join(words[b][0] + words[b][3] for b in checksum.to_bytes(4, "big"))
+
+
+def bytewords_upstream_cases(words: list[str]) -> tuple[list[dict], list[tuple[str, bytes]]]:
+    """BC's own vectors, read out of the standard-form literals of its reference test.
+
+    Those literals carry the payload as words, so the bytes, the checksum and the encoding are all
+    upstream. Each one is re-derived from the word list here; a disagreement over a *good* vector
+    stops generation. BC's own bad-checksum literal is kept as a negative case.
+    """
+    src = fetch("bc_bytewords_test.c").replace('"\n    "', "")
+    index = {w: i for i, w in enumerate(words)}
+    cases, rejected, seen = [], [], set()
+
+    for literal in re.findall(r'"((?:[a-z]{4} ){3,}[a-z]{4})"', src):
+        got = literal.split(" ")
+        assert all(w in index for w in got), f"word outside the list: {got}"
+        payload = bytes(index[w] for w in got[:-4])
+        checksum = bytes(index[w] for w in got[-4:])
+        minimal = "".join(w[0] + w[3] for w in got)
+        assert bytewords_minimal(words, payload)[:-8] == minimal[:-8], "minimal form does not match"
+        if int.from_bytes(checksum, "big") == zlib.crc32(payload):
+            assert bytewords_minimal(words, payload) == minimal, "checksum letters do not match"
+
+        if int.from_bytes(checksum, "big") != zlib.crc32(payload):
+            rejected.append(("bc-bytewords literal with a corrupted checksum",
+                             minimal.encode("ascii")))
+            continue
+
+        if minimal not in seen:
+            seen.add(minimal)
+            cases.append({
+                "name": f"bc-bytewords vector, {len(payload)} bytes",
+                "payload": hexs(payload),
+                "encoded": minimal,
+            })
+
+    assert len(cases) == 2, f"expected BC's two vectors, found {len(cases)}"
+    assert len(rejected) == 1, f"expected BC's one bad-checksum literal, found {len(rejected)}"
+    return cases, rejected
+
+
+def bytewords_vectors() -> str:
+    words = bytewords_words()
+    cases, upstream_rejected = bytewords_upstream_cases(words)
+
+    for length in (1, 2, 3, 4, 5, 31, 32, 33, 64, 129):
+        payload = bytes((i * 7 + 11) & 0xFF for i in range(length))
+        cases.append({
+            "name": f"reference payload, {length} bytes",
+            "payload": hexs(payload),
+            "encoded": bytewords_minimal(words, payload),
+        })
+
+    encoded = cases[0]["encoded"]
+    flipped = "z" if encoded[0] != "z" else "q"
+    last = "z" if encoded[-1] != "z" else "q"
+    words_of = [encoded[i:i + 2] for i in range(0, len(encoded), 2)]
+    spaced, hyphenated = " ".join(words_of), "-".join(words_of)
+
+    invalid = [
+        ("empty", b""),
+        ("three words, no room for a checksum", encoded[:6].encode("ascii")),
+        ("odd number of letters", encoded[:7].encode("ascii")),
+        ("checksum of the empty payload", bytewords_minimal(words, b"").encode("ascii")),
+        ("payload reversed, checksum left where it was",
+         (bytewords_minimal(words, bytes.fromhex(cases[0]["payload"])[::-1])[:-8]
+          + encoded[-8:]).encode("ascii")),
+        ("first payload letter changed", (flipped + encoded[1:]).encode("ascii")),
+        ("last checksum letter changed", (encoded[:-1] + last).encode("ascii")),
+        ("standard style: spaces between the words", spaced.encode("ascii")),
+        ("uri style: hyphens between the words", hyphenated.encode("ascii")),
+        ("space between two words", (encoded[:2] + " " + encoded[2:]).encode("ascii")),
+        ("digit among the letters", ("1" + encoded[1:]).encode("ascii")),
+        ("nul byte among the letters", b"\x00" + encoded[2:].encode("ascii")),
+        ("byte above ascii among the letters", b"\x80" + encoded[2:].encode("ascii")),
+        ("0xff among the letters", b"\xff" + encoded[2:].encode("ascii")),
+        ("high byte in every position", bytes([0xC3] * len(encoded))),
+        ("letters that are not a word, in every position", b"Z" * len(encoded)),
+    ] + upstream_rejected
+
+    rows = ",\n".join(f"  {{ {cstr(c['name'])}, {cstr(c['payload'])}, {cstr(c['encoded'])} }}"
+                     for c in cases)
+    bad_rows = ",\n".join(f'  {{ {cstr(name)}, "{hexs(data)}" }}' for name, data in invalid)
+
+    return HEADER % (
+        provenance("bc_bytewords.c"),
+        provenance("bc_bytewords_test.c"),
+        "".join(w[0].upper() + w[3].upper() for w in words),
+        rows,
+        bad_rows,
+    )
+
+
+HEADER = """#ifndef VECTORS_BYTEWORDS_H
+#define VECTORS_BYTEWORDS_H
+
+/* spec: %s
+ * spec: %s
+ * reference: zlib.crc32 for the trailing four codes
+ *
+ * app/ur/bytewords.c implements bytewords minimal: two letters per byte with no separator, and
+ * the CRC32 of the payload appended as four more codes. The letters are a word's first and last,
+ * unique per byte, which is what makes a lone code decodable. Case is not significant to the
+ * decoder; this implementation writes uppercase, the reference below writes lowercase, so compare
+ * case-insensitively.
+ */
+
+/* Two letters per byte, uppercase: the whole vocabulary of the decoder, in byte order. */
+#define BYTEWORDS_MINIMAL "%s"
+
+typedef struct {
+  const char* name;
+  const char* payload;
+  const char* encoded;
+} bytewords_vector_t;
+
+static const bytewords_vector_t BYTEWORDS_VECTORS[] = {
+%s
+};
+
+#define BYTEWORDS_VECTOR_COUNT (sizeof(BYTEWORDS_VECTORS) / sizeof(BYTEWORDS_VECTORS[0]))
+
+/* Every row here has to answer 0, no decoded length. The encodings are hex because several carry
+ * bytes that are not letters: a decoder that indexes a table with letters scanned off a QR has to
+ * answer those without reading outside the table. */
+typedef struct {
+  const char* name;
+  const char* encoded;
+} bytewords_invalid_t;
+
+static const bytewords_invalid_t BYTEWORDS_INVALID[] = {
+%s
+};
+
+#define BYTEWORDS_INVALID_COUNT (sizeof(BYTEWORDS_INVALID) / sizeof(BYTEWORDS_INVALID[0]))
+
+#endif
+"""
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -1095,6 +1255,7 @@ def main() -> None:
         "vectors_compactsize.h": compactsize_vectors(),
         "vectors_address.h": address_vectors(),
         "vectors_psbt.h": psbt_vectors(),
+        "vectors_bytewords.h": bytewords_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

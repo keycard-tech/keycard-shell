@@ -28,7 +28,7 @@ having here are buffer overflows and undefined behaviour.
 
 | Path | Contents |
 | --- | --- |
-| `CMakeLists.txt` | One static library per app area (`app_crypto`, `app_bitcoin`) plus `shellos_test()` |
+| `CMakeLists.txt` | One static library per app area (`app_crypto`, `app_bitcoin`, `app_ur`) plus `shellos_test()` |
 | `host/host_stm32.h` | Host platform definition: geometry and typedefs, no register access |
 | `host/hal_host.c` | Deterministic `hal_rng_next()`; anything needing silicon is deliberately left undefined |
 | `host/host_data.c` | Constants that live in `app/mem.c` on the target (section attributes the host assembler rejects) |
@@ -48,14 +48,16 @@ Tests compare against values the code did not produce. `vectors/generate.py` wri
 `vectors_*.h` and each header records its source:
 
 * **spec** — fetched from the upstream document or word list (BIP-32/39/173/350, SLIP-39,
-  RFC 4231, RFC 5869, Bitcoin Core's `base58.cpp`), pinned by SHA-256 in the header.
+  RFC 4231, RFC 5869, Bitcoin Core's `base58.cpp`, Blockchain Commons' `bc-bytewords` word list
+  and its own test vectors), pinned by SHA-256 in the header.
 * **reference** — computed by an independent implementation (CPython `hashlib`/`hmac`/`zlib`,
   `pycryptodome`, `coincurve`, `eth_utils`).
 
 The generator self-checks what it parses: the RFC 4231 and RFC 5869 cases are recomputed with
-CPython `hmac`, the BIP-39 seeds with `hashlib.pbkdf2_hmac`, and each corrupted BIP-39
-mnemonic is verified to fail the checksum before it is emitted. A malformed vector therefore
-fails the generator, not the test.
+CPython `hmac`, the BIP-39 seeds with `hashlib.pbkdf2_hmac`, each corrupted BIP-39
+mnemonic is verified to fail the checksum, and every bytewords literal is re-encoded from the word
+list and compared to what upstream wrote. A malformed vector therefore fails the generator, not the
+test.
 
 ```sh
 uv run python tests/vectors/generate.py     # needs network; sources cached in vectors/.cache
@@ -63,54 +65,10 @@ uv run python tests/vectors/generate.py     # needs network; sources cached in v
 
 Generated headers are committed, so building the tests needs no network.
 
-## What these tests changed
+## Behaviour this records
 
-* `slip39_combine_shards()` validates each shard against the ones before it, through
-  `slip39_validate_shard_in_group()`, which existed but was never called. Share sets that
-  disagreed on identifier, extendability, iteration exponent, group count, group index, member
-  threshold or member index interpolated into a plausible master secret belonging to no one;
-  every un-recoverable share set in the SLIP-39 vectors is now rejected. `app/ui/ui.c`
-  re-implements the identifier and group-index check at share entry, so the shipped flow covered
-  two of the six fields.
-* `compactsize_read()` writes `*err` on every outcome, and a rejected read yields **0** instead
-  of `-1`. Both callers that check the status happened to initialize it to `PSBT_OK`, and a
-  caller that ignores it -- `compactsize_read(p, NULL)` in `core_btc.c` -- got a length of
-  0xFFFFFFFFFFFFFFFF out of a failed read.
-* `base58_encode_check()` returns the string length, not the length including the terminator
-  `b58enc()` reports. No caller read the value, so this is a trap removed rather than a bug
-  fixed.
-* `btc_generate_txid()` (`core_btc.c`) walks the transaction with bounds and status checks and
-  returns whether it could parse, instead of hashing bytes it never verified. The comment there
-  claimed the transaction had been parsed already, which is an invariant nothing enforced: a
-  failed `compactsize_read` was discarded through a `NULL` error argument, truncated from 64 to
-  32 bits, and used as a loop bound and as a `sha256_Update` length. An unparseable prevtx is
-  now `ERR_DATA` in `core_btc_validate()`, so the transaction is refused rather than signed over
-  a txid computed from garbage.
-* `slip39.h` declared `slip39_comebine_groups`. The typo is gone; nothing had ever called it,
-  which is why it survived.
-* `psbt_read()` no longer reads past the input. Two out-of-bounds reads of attacker-controlled
-  data, both found by the truncation sweep: the map loop allowed `write_pos == end` and then
-  tested `*write_pos`, and `psbt_read_record()` peeked a compactsize before checking that its
-  first byte was there.
-* `psbt_read()` consumed each section separator where it saw it, so `PSBT_ST_FINALIZED` now
-  means "the whole input was consumed". Before, the last separator was checked twice and
-  anything after it was ignored: a PSBT with garbage appended, or with an extra empty map,
-  parsed as valid. Choosing the next state from the map counts also lets a section with zero
-  maps exist, which BIP-174 allows and the old chain of `*_NEW` states did not -- it rejected
-  the spec's own "PSBT with 0 inputs" vector, and with no input maps but non-empty output maps
-  it would have handed the output records to the caller tagged as belonging to an input.
-* `psbt_read()` rejects a global unsigned tx whose key is longer than its type byte. Without
-  that field there is no input and output count to read the maps against, and the records that
-  follow land in the wrong maps.
-* `psbt_btc_tx_parse()` treated *any* zero after the version as the witness marker, so a legacy
-  transaction with no inputs had every field after the version shifted. Only the flag BIP-144
-  defines (`0x01`) makes it a marker. The constant moved to `psbt_tx.h`, where `psbt.c` can also
-  use it to enforce BIP-174's rule that the unsigned tx is not in the witness serialization.
-
-## Behaviour this test records
-
-Whether the following is *correct* is open; the test pins what the code does today so changing it
-is a decision rather than an accident.
+Whether the following is *correct* is open; these tests pin what the code does today, so changing
+it is a decision rather than an accident.
 
 * `compactsize_read()` rejects any decoded length above `MAX_SERIALIZE_SIZE` (0x02000000,
   Bitcoin Core's `MAX_SIZE`), so not every well-formed encoding round-trips. It is 256 times

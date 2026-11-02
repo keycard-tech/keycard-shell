@@ -1,9 +1,8 @@
 #include "bytewords.h"
 #include "common.h"
 #include "crypto/crc32.h"
-#include <ctype.h>
 
-const static uint8_t BW_DECODE_LUT[] = {
+static const uint8_t BW_DECODE_LUT[] = {
     0x04, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x02, 0x00,
     0x00, 0x00, 0x09, 0x07, 0x00, 0x00, 0x00, 0x03, 0x08, 0x00, 0x0e, 0x14, 0x00, 0x0b, 0x10, 0x00,
     0x12, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x0d, 0x00, 0x00,
@@ -48,7 +47,7 @@ const static uint8_t BW_DECODE_LUT[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0xfb, 0x00, 0x00, 0x00, 0xfa, 0xfc, 0x00, 0x00,
 };
 
-const static uint16_t BW_ENCODE_LUT[] = {
+static const uint16_t BW_ENCODE_LUT[] = {
     0x4541, 0x4441, 0x4f41, 0x5841, 0x4141, 0x4841, 0x4d41, 0x5441,
     0x5941, 0x5341, 0x4b42, 0x4442, 0x4e42, 0x5442, 0x4142, 0x5342,
     0x4542, 0x5942, 0x4742, 0x5742, 0x4242, 0x5a42, 0x4d43, 0x4843,
@@ -83,26 +82,41 @@ const static uint16_t BW_ENCODE_LUT[] = {
     0x4159, 0x5459, 0x535a, 0x4f5a, 0x545a, 0x435a, 0x455a, 0x4d5a,
 };
 
+#define BYTEWORDS_CHECKSUM_WORDS 4
+#define BW_DECODE_LUT_COUNT (sizeof(BW_DECODE_LUT) / sizeof(BW_DECODE_LUT[0]))
+
 static inline uint16_t bytewords_decode_hash(uint8_t i, uint8_t j) {
-  i = toupper(i) - 'A';
-  j = toupper(j) - 'A';
-  return (i*26) + j;
+  i = (i | 0x20) - 'a';
+  j = (j | 0x20) - 'a';
+
+  if ((i >= 26) | (j >= 26)) {
+    return BW_DECODE_LUT_COUNT;
+  }
+
+  return (i * 26) + j;
 }
 
-
 size_t bytewords_decode(const uint8_t* in, size_t in_len, uint8_t* out, size_t max_out) {
-  in_len /= 2;
-  size_t outlen = in_len - 4;
+  size_t words = in_len / 2;
 
-  if (outlen > max_out) {
+  if ((words <= BYTEWORDS_CHECKSUM_WORDS) ||
+      (words > max_out + BYTEWORDS_CHECKSUM_WORDS)) {
     return 0;
   }
+
+  size_t outlen = words - BYTEWORDS_CHECKSUM_WORDS;
 
   crc32_ctx_t crc32;
   crc32_init(&crc32);
 
-  while(in_len-- > 4) {
-    *out = BW_DECODE_LUT[bytewords_decode_hash(in[0], in[1])];
+  for (size_t i = 0; i < outlen; i++) {
+    uint16_t hash = bytewords_decode_hash(in[0], in[1]);
+
+    if (hash >= BW_DECODE_LUT_COUNT) {
+      return 0;
+    }
+
+    *out = BW_DECODE_LUT[hash];
     crc32_update_one(&crc32, *(out++));
     in += 2;
   }
@@ -110,15 +124,20 @@ size_t bytewords_decode(const uint8_t* in, size_t in_len, uint8_t* out, size_t m
   uint32_t checksum;
   crc32_finish(&crc32, &checksum);
 
-  uint32_t expectedChecksum;
-  uint8_t* _chk = (uint8_t *)&expectedChecksum;
+  uint32_t want = 0;
 
-  while(in_len-- < SIZE_MAX) {
-    *(_chk++) = BW_DECODE_LUT[bytewords_decode_hash(in[0], in[1])];
+  for (size_t i = 0; i < BYTEWORDS_CHECKSUM_WORDS; i++) {
+    uint16_t hash = bytewords_decode_hash(in[0], in[1]);
+
+    if (hash >= BW_DECODE_LUT_COUNT) {
+      return 0;
+    }
+
+    want = (want << 8) | BW_DECODE_LUT[hash];
     in += 2;
   }
 
-  return checksum == rev32(expectedChecksum) ? outlen : 0;
+  return checksum == want ? outlen : 0;
 }
 
 size_t bytewords_encode(const uint8_t* in, size_t in_len, uint8_t* out, size_t max_out) {

@@ -96,6 +96,13 @@ add_library(app_bitcoin STATIC
 target_include_directories(app_bitcoin PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_bitcoin PRIVATE ${SHELLOS_COMMON_FLAGS})
 
+add_library(app_ur STATIC
+    ${SHELLOS_ROOT}/app/ur/bytewords.c
+)
+target_include_directories(app_ur PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_ur PRIVATE ${SHELLOS_COMMON_FLAGS})
+target_link_libraries(app_ur PUBLIC app_crypto)
+
 # shellos_test(<name> LIBS <targets...>) builds tests/test_<name>.c and registers it with ctest.
 function(shellos_test name)
   cmake_parse_arguments(TEST "" "SRC" "LIBS" ${ARGN})
@@ -126,3 +133,4 @@ shellos_test(base58 LIBS app_crypto)
 shellos_test(bech32 LIBS app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)
 shellos_test(psbt LIBS app_bitcoin app_crypto)
+shellos_test(bytewords LIBS app_ur app_crypto)
