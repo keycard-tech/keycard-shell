@@ -17,6 +17,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import re
 import string
 import sys
@@ -2018,6 +2019,499 @@ static const psbt_ctx_case_t PSBT_CTX_CASES[] = {
 #endif
 """ % ("\n\n".join(arrays), "\n".join(rows))
 
+# ------------------------------------------------------- signature hashes (sighash.c)
+
+def sighash_parse_tx(hexs: str) -> dict:
+    """Version, inputs, outputs (as amount-and-script pairs) and locktime of a non-witness
+    transaction serialization."""
+    raw = bytes.fromhex(hexs)
+    pos = 4
+    n_in, pos = read_compactsize(raw, pos)
+    inputs = []
+    for _ in range(n_in):
+        txid = raw[pos:pos + 32]
+        index = int.from_bytes(raw[pos + 32:pos + 36], "little")
+        pos += 36
+        script_len, pos = read_compactsize(raw, pos)
+        script = raw[pos:pos + script_len]
+        pos += script_len
+        sequence = raw[pos:pos + 4]
+        pos += 4
+        inputs.append({"txid": txid, "index": index, "script": script, "sequence": sequence})
+    n_out, pos = read_compactsize(raw, pos)
+    outputs = []
+    for _ in range(n_out):
+        amount = raw[pos:pos + 8]
+        pos += 8
+        script_len, pos = read_compactsize(raw, pos)
+        outputs.append((amount, raw[pos:pos + script_len]))
+        pos += script_len
+    return {"version": raw[:4], "inputs": inputs, "outputs": outputs, "locktime": raw[pos:pos + 4]}
+
+
+# ---------------------------------------------------------------------------
+# The reference the two walkers are checked against.
+#
+#
+# sighash_chain_cases() reads mainnet spends and keeps one only if the signature in its 
+# scriptSig verifies over the digest computed below, so generation itself fails if this 
+# reference drifts.
+# ---------------------------------------------------------------------------
+
+SECP256K1_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+SECP256K1_G = (0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
+               0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8)
+WITNESS_V0 = 0x00000041
+
+
+def ec_add(p, q):
+    if p is None:
+        return q
+    if q is None:
+        return p
+    if p[0] == q[0] and (p[1] + q[1]) % SECP256K1_P == 0:
+        return None
+    if p == q:
+        slope = 3 * p[0] * p[0] * pow(2 * p[1], SECP256K1_P - 2, SECP256K1_P) % SECP256K1_P
+    else:
+        slope = (q[1] - p[1]) * pow((q[0] - p[0]) % SECP256K1_P, SECP256K1_P - 2, SECP256K1_P) % SECP256K1_P
+    x = (slope * slope - p[0] - q[0]) % SECP256K1_P
+    return x, (slope * (p[0] - x) - p[1]) % SECP256K1_P
+
+
+def ec_mul(k, point):
+    acc, doubling = None, point
+    while k:
+        if k & 1:
+            acc = ec_add(acc, doubling)
+        doubling = ec_add(doubling, doubling)
+        k >>= 1
+    return acc
+
+
+def compressed_pubkey(private: int) -> bytes:
+    x, y = ec_mul(private, SECP256K1_G)
+    return bytes([0x02 + (y & 1)]) + x.to_bytes(32, "big")
+
+
+def der_signature(raw: bytes) -> tuple[int, int]:
+    if raw[0] != 0x30 or raw[2] != 0x02:
+        raise ValueError("not a DER sequence")
+    r_length = raw[3]
+    r = int.from_bytes(raw[4:4 + r_length], "big")
+    tail = 4 + r_length
+    if raw[tail] != 0x02:
+        raise ValueError("DER signature without a second integer")
+    s_length = raw[tail + 1]
+    return r, int.from_bytes(raw[tail + 2:tail + 2 + s_length], "big")
+
+
+def ecdsa_verify(public: bytes, der: bytes, digest: bytes) -> bool:
+    """ECDSA on secp256k1, used only to tie a digest to a coin that was really spent."""
+    try:
+        r, s = der_signature(der)
+    except (ValueError, IndexError):
+        return False
+    if not (1 <= r < SECP256K1_N and 1 <= s < SECP256K1_N):
+        return False
+    x = int.from_bytes(public[1:], "big")
+    y = pow((x * x * x + 7) % SECP256K1_P, (SECP256K1_P + 1) // 4, SECP256K1_P)
+    if y % 2 != public[0] & 1:
+        y = SECP256K1_P - y
+    weight = pow(s, SECP256K1_N - 2, SECP256K1_N)
+    z = int.from_bytes(digest, "big")
+    point = ec_add(ec_mul(z * weight % SECP256K1_N, SECP256K1_G), ec_mul(r * weight % SECP256K1_N, (x, y)))
+    return point is not None and point[0] % SECP256K1_N == r
+
+
+def hash160(data: bytes) -> bytes:
+    return hashlib.new("ripemd160", hashlib.sha256(data).digest()).digest()
+
+
+def p2pkh_script(public: bytes) -> bytes:
+    return b"\x76\xa9\x14" + hash160(public) + b"\x88\xac"
+
+
+def legacy_digest(tx: dict, script_code: bytes, in_: int, hash_type: int) -> bytes:
+    """The pre-segwit signature hash, byte for byte as app/bitcoin/sighash.h documents it.
+
+    The hash type is written whole, so an implementation that masked it to its base type or to one
+    byte still produces a plausible-looking digest.
+    """
+    base = hash_type & 0x1F
+    anyone_can_pay = bool(hash_type & 0x80)
+    if base == 0x03 and in_ >= len(tx["outputs"]):
+        # The historical SIGHASH_SINGLE answer is the digest 0x...01; the device reports the case
+        # instead of signing it, so no vector here asks for it.
+        raise ValueError("SIGHASH_SINGLE with no output at the input's index")
+    inputs = [tx["inputs"][in_]] if anyone_can_pay else tx["inputs"]
+
+    stream = bytearray(tx["version"])
+    stream += csb(len(inputs))
+    for position, entry in enumerate(inputs):
+        sign_this = anyone_can_pay or position == in_
+        stream += entry["txid"] + entry["index"].to_bytes(4, "little")
+        # An input that is not being signed contributes an empty script, not the scriptCode with a
+        # zero length -- the length prefix belongs to whichever script is written.
+        stream += (csb(len(script_code)) + script_code) if sign_this else csb(0)
+        blank_sequence = not sign_this and base in (0x02, 0x03)
+        stream += b"\x00\x00\x00\x00" if blank_sequence else entry["sequence"]
+
+    if base == 0x02:
+        outputs = []
+    elif base == 0x03:
+        outputs = [tx["outputs"][position] if position == in_ else None
+                   for position in range(in_ + 1)]
+    else:
+        outputs = tx["outputs"]
+    stream += csb(len(outputs))
+    for entry in outputs:
+        if entry is None:
+            # SIGHASH_SINGLE blanks the outputs before the signed one to "no amount, no script",
+            # which is an amount of -1 and an empty script, not merely an empty script.
+            stream += (2 ** 64 - 1).to_bytes(8, "little") + csb(0)
+        else:
+            amount, script = entry
+            stream += amount + csb(len(script)) + script
+    stream += tx["locktime"] + (hash_type & 0xFFFFFFFF).to_bytes(4, "little")
+    return dsha256(bytes(stream))
+
+
+def witness_digest(tx: dict, script_code: bytes, in_: int, hash_type: int, amount: bytes) -> bytes:
+    """BIP-143's v0 digest. Unlike the legacy one it names no single input: prevouts, sequences and
+    outputs each get their own hash over the whole transaction."""
+    prevouts = b"".join(entry["txid"] + entry["index"].to_bytes(4, "little") for entry in tx["inputs"])
+    sequences = b"".join(entry["sequence"] for entry in tx["inputs"])
+    outputs = b"".join(amount + csb(len(script)) + script for amount, script in tx["outputs"])
+    stream = tx["version"]
+    stream += dsha256(prevouts)
+    stream += dsha256(sequences)
+    stream += tx["inputs"][in_]["txid"] + tx["inputs"][in_]["index"].to_bytes(4, "little")
+    stream += csb(len(script_code)) + script_code
+    stream += amount
+    stream += tx["inputs"][in_]["sequence"]
+    stream += dsha256(outputs)
+    stream += tx["locktime"]
+    stream += (hash_type & 0xFFFFFFFF).to_bytes(4, "little")
+    return dsha256(bytes(stream))
+
+
+def p2pkh_script_sig(script: bytes) -> tuple[bytes, bytes] | None:
+    """<push signature> <push public key>, and nothing else."""
+    if len(script) < 2 or not 0x41 <= script[0] <= 0x4E:
+        return None
+    signature = script[1:1 + script[0]]
+    key_length = script[1 + script[0]]
+    if key_length not in (0x21, 0x23, 0x41) or len(script) != 2 + script[0] + key_length:
+        return None
+    return signature, script[2 + script[0]:]
+
+
+def sighash_chain_cases() -> list:
+    """Legacy sighash digests anchored to coins that were really spent.
+
+    Each named transaction is fetched, its P2PKH input's scriptSig is split into signature and
+    public key, and the case is kept only if that signature verifies over the digest computed by
+    legacy_digest() above. That is what makes this an oracle rather than a restatement of the
+    walker: a digest here is the one a real coin was unlocked with. The scriptCode is rebuilt as the
+    P2PKH script of that public key, which is what the redeeming script's OP_HASH160 compares.
+
+    Both are single-input sighash-all spends, the shape mainnet actually offers: a multi-input
+    legacy spend of the same vintage is rare enough in one block that asking for one made
+    generation depend on luck. Multi-input shapes come from the sweep, against this same reference.
+    """
+    cases = []
+    for txid in CHAIN_ANCHORS:
+        raw = bytes.fromhex(fetch_api(f"tx_{txid}.hex", f"/api/tx/{txid}/hex"))
+        tx = sighash_parse_tx(raw.hex())
+        for index, entry in enumerate(tx["inputs"]):
+            parts = p2pkh_script_sig(entry["script"])
+            if parts is None:
+                continue
+            signature, public = parts
+            if len(public) != 33:
+                continue
+            script_code = p2pkh_script(public)
+            hash_type = signature[-1]
+            digest = legacy_digest(tx, script_code, index, hash_type)
+            if not ecdsa_verify(public, signature[:-1], digest):
+                raise SystemExit(f"{txid}: input {index}: the reference cannot reproduce a signature "
+                                 "mainnet accepted -- fix legacy_digest() before trusting anything else")
+            cases.append({
+                "name": f"chain spend in{index} of {len(tx['inputs'])}, ht 0x{hash_type:02x}",
+                "tx": raw,
+                "in": index,
+                "hash_type": hash_type,
+                "input_type": "BTC_INPUT_TYPE_LEGACY",
+                "script": script_code.hex(),
+                "redeem": "",
+                "witness_script": "",
+                "amount": "0000000000000000",
+                "digest": digest.hex(),
+            })
+            break
+    if len(cases) != len(CHAIN_ANCHORS):
+        raise SystemExit("a chain anchor is no longer a P2PKH spend; pick another txid")
+    return cases
+
+
+# Confirmed mainnet transactions, each spending a P2PKH output. Fetching by id is stable; the
+# verification inside sighash_chain_cases() is what keeps them meaningful.
+CHAIN_ANCHORS = [
+    "2bc250cc474c93675b7fd522838d56db85a9148f836ee2390365f106a3c9b387",
+    "78770f590b20ba7a7c5fdf532a20888c7ac4781491d8f843b3d22c84d00e6e6d",
+]
+
+
+def sweep_tx(n_inputs: int, n_outputs: int, out_script: bytes, locktime: int) -> bytes:
+    stream = bytearray((2).to_bytes(4, "little"))
+    stream += csb(n_inputs)
+    for i in range(n_inputs):
+        stream += bytes([(i * 7) & 0xFF]) * 32 + i.to_bytes(4, "little") + csb(0)
+        stream += (0xD0 + (i % 16)).to_bytes(4, "little")
+    stream += csb(n_outputs)
+    for i in range(n_outputs):
+        stream += (1000 + i).to_bytes(8, "little") + csb(len(out_script)) + out_script
+    stream += locktime.to_bytes(4, "little")
+    return bytes(stream)
+
+
+def sighash_sweep_cases() -> list:
+    """Shape coverage. The legacy hash visits the inputs three times and the witness hash once
+    each for prevouts, sequences and amounts, so a count written per iteration instead of once --
+    or an item written twice -- is invisible with a single input."""
+    public = compressed_pubkey(0x5C2F6B1E9D4A8731F0E6C2B5A7D94E1826C3F7A0B4D8E25C61F90347ABDE7C15)
+    script_code = p2pkh_script(public)
+    cases = []
+    for n_inputs, n_outputs in [(1, 1), (1, 2), (2, 1), (2, 3), (3, 2), (19, 3), (2, 19), (40, 40)]:
+        for hash_type in (0x01, 0x02, 0x03, 0x81, 0x82, 0x83):
+            index = 1 if n_inputs > 1 else 0
+            if (hash_type & 0x1F) == 0x03 and index >= n_outputs:
+                continue
+            raw = sweep_tx(n_inputs, n_outputs, bytes([0x00, 0x14]) + bytes(23), 0)
+            tx = sighash_parse_tx(raw.hex())
+            digest = legacy_digest(tx, script_code, index, hash_type)
+            cases.append({
+                "name": f"sweep {n_inputs}in {n_outputs}out ht 0x{hash_type:02x} in{index}",
+                "tx": raw,
+                "in": index,
+                "hash_type": hash_type,
+                "input_type": "BTC_INPUT_TYPE_LEGACY",
+                "script": script_code.hex(),
+                "redeem": "",
+                "witness_script": "",
+                "amount": "0000000000000000",
+                "digest": digest.hex(),
+            })
+    # Past 0xfc the length prefixes widen mid-transaction, for the scriptCode as much as for an
+    # output's scriptPubKey.
+    long_code = b"\x76\xa9\x14" + bytes(250) + b"\x88\xac"
+    raw = sweep_tx(2, 2, long_code, 0x76543210)
+    cases.append({
+        "name": "sweep oversized scriptCode and scriptPubKey",
+        "tx": raw,
+        "in": 0,
+        "hash_type": 0x01,
+        "input_type": "BTC_INPUT_TYPE_LEGACY",
+        "script": long_code.hex(),
+        "redeem": "",
+        "witness_script": "",
+        "amount": "0000000000000000",
+        "digest": legacy_digest(sighash_parse_tx(raw.hex()), long_code, 0, 0x01).hex(),
+    })
+    for n_inputs, n_outputs in [(1, 1), (2, 1), (1, 2), (3, 3), (40, 40)]:
+        for kind, script, redeem, witness_script, amount in (
+            ("P2WPKH", (bytes([0, 0x14]) + hash160(public)).hex(), "", "", "0100000000000000"),
+            ("P2WSH", "", "", script_code.hex(), "0200000000000000"),
+        ):
+            raw = sweep_tx(n_inputs, n_outputs, bytes([0x00, 0x14]) + bytes(23), 0)
+            tx = sighash_parse_tx(raw.hex())
+            digest = witness_digest(tx, script_code if kind == "P2WSH" else script_code,
+                                    0, WITNESS_V0, bytes.fromhex(amount))
+            cases.append({
+                "name": f"witness sweep {n_inputs}in {n_outputs}out {kind} in0",
+                "tx": raw,
+                "in": 0,
+                "hash_type": WITNESS_V0,
+                "input_type": f"BTC_INPUT_TYPE_{kind}",
+                "script": script,
+                "redeem": redeem,
+                "witness_script": witness_script,
+                "amount": amount,
+                "digest": digest.hex(),
+            })
+    return cases
+
+
+def sighash_bip143_cases() -> list:
+    """BIP-143's examples, each of which states the signature hash it produces.
+
+    Every digest in the document is preceded by the fields that went into it -- outpoint, scriptCode,
+    amount, nHashType -- sometimes as an indented listing, sometimes as a bare scriptCode line below
+    it (the OP_CODESEPARATOR examples write "see below" in the listing). So each sigHash line is
+    matched with the nearest preceding occurrence of each field, and the transaction is the most
+    recent unsigned one named before it.
+
+    The device derives a P2WPKH scriptCode from the witness program and hashes a P2WSH witness script
+    verbatim, so the vectors carry the records the device reads, not the scriptCode the document
+    prints. Which means these cases say nothing about the BIP's rule that a P2WSH scriptCode drops
+    everything up to the last executed OP_CODESEPARATOR: the stripped script is what is handed over.
+    """
+    lines = fetch("bip143.mediawiki").splitlines()
+
+    # Each example announces the transaction it signs, with the hex either on the same line or on
+    # the next one. Record both so a digest can be matched to the unsigned transaction above it.
+    marks = []
+    for n, line in enumerate(lines):
+        stripped = line.strip()
+        if "unsigned transaction" not in stripped:
+            continue
+        inline = re.search(r"([0-9a-f]{40,})\s*$", stripped)
+        if inline:
+            marks.append((n, inline.group(1)))
+            continue
+        for follow in lines[n + 1:n + 4]:
+            if re.fullmatch(r"[0-9a-f]{40,}", follow.strip()):
+                marks.append((n, follow.strip()))
+                break
+
+    cases = []
+    kind = None
+    kinds = [(n, l.strip().strip("=").strip()) for n, l in enumerate(lines) if l.strip().startswith("===")]
+    for i, line in enumerate(lines):
+        match = re.match(r"\s*sigHash:\s*([0-9a-f]{64})", line)
+        if not match:
+            continue
+        digest = match.group(1)
+        kind = next((k for n, k in reversed(kinds) if n < i), None)
+        tx_hex = next((h for n, h in reversed(marks) if n < i), None)
+        if tx_hex is None:
+            continue
+
+        fields = {}
+        for back in range(i - 1, max(i - 40, 0), -1):
+            entry = re.match(r"\s*(outpoint|scriptCode|amount|nHashType):\s*([0-9a-f]{6,})\s*$", lines[back])
+            if entry and entry.group(1) not in fields:
+                fields[entry.group(1)] = entry.group(2)
+            if len(fields) == 4:
+                break
+        if len(fields) != 4:
+            continue
+
+        tx = sighash_parse_tx(tx_hex)
+        # The document names the input by its outpoint, not by its position in the spending
+        # transaction -- and the two differ in three of the five examples.
+        outpoint = bytes.fromhex(fields["outpoint"])
+        matches = [n for n, inp in enumerate(tx["inputs"])
+                   if inp["txid"] == outpoint[:32]
+                   and inp["index"] == int.from_bytes(outpoint[32:36], "little")]
+        if len(matches) != 1:
+            continue
+        in_ = matches[0]
+        hash_type = int.from_bytes(bytes.fromhex(fields["nHashType"]), "little")
+        script_code = bytes.fromhex(fields["scriptCode"])
+        # The document prints the scriptCode with its compactsize length byte in front.
+        declared, _ = read_compactsize(script_code, 0)
+        if declared + 1 == len(script_code):
+            script_code = script_code[1:]
+
+        # A P2WPKH scriptCode is, by definition, the P2PKH script of the key; anything else signed
+        # here is a witness script. (The section titles alone are not enough: the "No FindAndDelete"
+        # examples are P2WSH spends and do not say so in the heading.)
+        p2wpkh = len(script_code) == 25 and script_code[0] == 0x76 and script_code[1] == 0xa9
+        p2wsh = not p2wpkh
+        p2sh = kind.startswith("P2SH")
+        if p2wsh:
+            input_type = "BTC_INPUT_TYPE_P2WSH"
+            witness_script, script, redeem = script_code.hex(), "", ""
+        elif p2sh:
+            input_type = "BTC_INPUT_TYPE_P2WPKH"
+            witness_script, script = "", ""
+            redeem = (bytes([0, 0x14]) + script_code[3:23]).hex()
+        else:
+            input_type = "BTC_INPUT_TYPE_P2WPKH"
+            witness_script, redeem = "", ""
+            script = (bytes([0, 0x14]) + script_code[3:23]).hex()
+
+        cases.append({
+            "name": f"BIP-143 {kind} in{in_} ht {hash_type:#010x}",
+            "tx": bytes.fromhex(tx_hex),
+            "in": in_,
+            "hash_type": hash_type,
+            "input_type": input_type,
+            "script": script,
+            "redeem": redeem,
+            "witness_script": witness_script,
+            "amount": fields["amount"],
+            "digest": digest,
+        })
+    return cases
+
+
+def sighash_vectors() -> str:
+    cases = sighash_chain_cases() + sighash_sweep_cases() + sighash_bip143_cases()
+    # A shape signed under several hash types is the same bytes once, so identical transactions
+    # share one array.
+    arrays, named, rows = [], {}, []
+    for i, c in enumerate(cases):
+        key = c["tx"].hex()
+        if key not in named:
+            named[key] = f"sighash_{len(arrays)}"
+            arrays.append(tx_c_array(named[key], c["tx"]))
+        rows.append(
+            f'    {{ "{c["name"]}", {named[key]}, sizeof({named[key]}), {c["in"]},\n'
+            f'      0x{c["hash_type"]:08x}U, {c["input_type"]},\n'
+            f'      "{c["script"]}", "{c["redeem"]}", "{c["witness_script"]}", "{c["amount"]}",\n'
+            f'      "{c["digest"]}" }},')
+
+    return """/* Generated by tests/vectors/generate.py -- do not edit.
+ *
+ * The digest each signature commits to. Three sources, none of them this implementation:
+ *
+ *  - Two confirmed mainnet spends, fetched by transaction id. Each is kept only if the signature
+ *    in its own scriptSig verifies over the digest the generator's reference computes, so a
+ *    legacy digest here is one a real coin was unlocked with.
+ *  - That same reference over a sweep of shapes and hash types, for what the chain does not offer
+ *    on demand: several inputs, SIGHASH_NONE, SIGHASH_SINGLE, ANYONECANPAY, and lengths that push
+ *    a compactsize prefix past one byte.
+ *  - %s
+ *    BIP-143's examples, which state the signature hash each produces.
+ *
+ * See the note above sighash_chain_cases() for why Bitcoin Core's sighash.json is not the oracle.
+ */
+
+#ifndef VECTORS_SIGHASH_H
+#define VECTORS_SIGHASH_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+typedef struct {
+  const char* name;
+  const uint8_t* tx;         /* the unsigned (non-witness) spending transaction */
+  size_t tx_len;
+  size_t in;                 /* the input being signed */
+  uint32_t hash_type;
+  int input_type;            /* btc_input_type_t, which selects the walker under test */
+  const char* script;        /* scriptPubKey of the spent output, hex */
+  const char* redeem;        /* redeem script record, hex, empty when absent */
+  const char* witness_script;/* witness script record, hex, empty when absent */
+  const char* amount;        /* value of the spent output, 8 bytes little-endian hex; empty for legacy */
+  const char* digest;        /* the signature hash, in the order the digest bytes come out */
+} sighash_case_t;
+
+%s
+
+static const sighash_case_t SIGHASH_CASES[] = {
+%s
+};
+
+#define SIGHASH_CASE_COUNT (sizeof(SIGHASH_CASES) / sizeof(SIGHASH_CASES[0]))
+
+#endif
+""" % (provenance("bip143.mediawiki"), "\n\n".join(arrays), "\n".join(rows))
+
 
 def main() -> None:
     written = {
@@ -2035,6 +2529,7 @@ def main() -> None:
         "vectors_qrcode.h": qrcode_vectors(),
         "vectors_tx.h": tx_vectors(),
         "vectors_psbt_ctx.h": ctx_vectors(),
+        "vectors_sighash.h": sighash_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

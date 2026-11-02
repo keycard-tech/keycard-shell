@@ -30,6 +30,10 @@ typedef struct {
   size_t script_len;
 } psbt_txout_t;
 
+static inline size_t btc_txout_len(const psbt_txout_t* out) {
+  return (size_t) ((uintptr_t) out->script - (uintptr_t) out->amount) + out->script_len;
+}
+
 typedef struct {
   uint32_t input_index;
   uint32_t item_index;

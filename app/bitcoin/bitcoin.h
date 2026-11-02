@@ -7,6 +7,7 @@
 #include "mem.h"
 #include "bitcoin/psbt.h"
 
+#define BTC_TXID_LEN 32
 #define BTC_MAX_INPUTS 40
 #define BTC_MAX_OUTPUTS 40
 
