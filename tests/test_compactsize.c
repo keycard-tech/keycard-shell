@@ -61,6 +61,42 @@ static void test_peek_length(void) {
   }
 }
 
+/* psbt.c moves its cursor by compactsize_peek_length() and decodes with compactsize_read(), so the
+ * two must agree on the width of every encoding: disagreement shifts every offset after it, with
+ * nothing to notice by. Exhaustive over the lead byte, which is all either function looks at. */
+static void test_peek_and_read_agree_on_width(void) {
+  uint8_t buf[9];
+
+  for (unsigned lead = 0; lead <= 0xff; lead++) {
+    memset(buf, 0x5a, sizeof(buf));
+    buf[0] = (uint8_t) lead;
+
+    /* The width a caller bounds a read by can never exceed the widest encoding. */
+    uint32_t width = compactsize_peek_length(buf[0]);
+    TEST_ASSERT_TRUE_MESSAGE(width >= 1 && width <= sizeof(buf), "peek width out of range");
+
+    psbt_result_t err = PSBT_OK;
+    uint64_t value = compactsize_read(buf, &err);
+    if (err != PSBT_OK) {
+      /* Non-canonical or past the serialize limit: refused, and yielding 0 is what keeps a caller
+       * that ignores *err from walking on a length it does not have. */
+      TEST_ASSERT_EQUAL_UINT64(0, value);
+      continue;
+    }
+
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(compactsize_length(value), width, "read against the encoder");
+
+    uint64_t decoded = 0;
+    for (uint32_t i = 0; i + 1 < width; i++) {
+      decoded |= (uint64_t) buf[1 + i] << (8 * i);
+    }
+    if (width == 1) {
+      decoded = lead;
+    }
+    TEST_ASSERT_EQUAL_UINT64_MESSAGE(decoded, value, "value against the lead byte's width");
+  }
+}
+
 static void test_rejects_non_canonical_encoding(void) {
   for (size_t i = 0; i < COMPACTSIZE_NONCANONICAL_COUNT; i++) {
     size_t len = test_unhex(COMPACTSIZE_NONCANONICAL[i], buf, sizeof(buf));
@@ -93,6 +129,7 @@ int main(void) {
   RUN_TEST(test_write);
   RUN_TEST(test_read);
   RUN_TEST(test_peek_length);
+  RUN_TEST(test_peek_and_read_agree_on_width);
   RUN_TEST(test_rejects_non_canonical_encoding);
   RUN_TEST(test_roundtrip_within_serialize_limit);
   return UNITY_END();

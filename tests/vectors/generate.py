@@ -40,6 +40,7 @@ SOURCES = {
     "rfc4231.txt": "https://www.rfc-editor.org/rfc/rfc4231.txt",
     "rfc5869.txt": "https://www.rfc-editor.org/rfc/rfc5869.txt",
     "bip174.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0174.mediawiki",
+    "bip143.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0143.mediawiki",
     "bc_bytewords.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/src/bc-bytewords.c",
     "bc_bytewords_test.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/test/test.c",
 }
@@ -1421,6 +1422,404 @@ static const qr_over_size_t QR_OVER_SIZE[] = {
 
 
 
+# -------------------------------------------------------------- transaction ids (tx.c)
+
+# Block 840000, pinned by hash. The corpus is whatever a node reports for these transactions, so
+# it must not move under a test run; the answers are cached like the spec sources are.
+TX_BLOCK_HEIGHT = "840000"
+TX_BLOCK_HASH = "0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5"
+GENESIS_COINBASE_TXID = "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"
+MEMPOOL = "https://mempool.space"
+
+
+def fetch_api(name: str, path: str) -> str:
+    CACHE.mkdir(parents=True, exist_ok=True)
+    dest = CACHE / f"api_{name}"
+    if not dest.exists():
+        print(f"fetch {MEMPOOL}{path}")
+        dest.write_bytes(urllib.request.urlopen(MEMPOOL + path, timeout=60).read())
+    return dest.read_text().strip()
+
+
+def dsha256(data: bytes) -> bytes:
+    return hashlib.sha256(hashlib.sha256(data).digest()).digest()
+
+
+def csb(value: int) -> bytes:
+    """Canonical compactsize, the same rule read_compactsize() enforces."""
+    if value < 0xFD:
+        return bytes([value])
+    for flag, width, floor in ((0xFD, 2, 0x10000), (0xFE, 4, 0x100000000), (0xFF, 8, 2 ** 64)):
+        if value < floor:
+            return bytes([flag]) + value.to_bytes(width, "little")
+    raise ValueError(value)
+
+
+def tx_parse(raw: bytes) -> dict:
+    """Reference read of a transaction in either serialization, returning the ranges the id is
+    made of, the witness range the id ignores, and the offsets a hostile splice can target.
+
+    The id is computed here by hashing the non-witness serialization, which is what BIP-144
+    defines it over; app/bitcoin/tx.c gets there by skipping the marker, the flag and the stacks
+    with a cursor. Every real transaction is checked against the id a node reports for it, so the
+    two derivations cannot both be wrong."""
+    if len(raw) < 6:
+        raise ValueError("shorter than the version plus two counts")
+
+    witness = raw[4] == 0x00 and raw[5] == 0x01
+    pos = 6 if witness else 4
+
+    inputs, pos = read_compactsize(raw, pos)
+    scripts_in, script_len_at = [], []
+    for _ in range(inputs):
+        pos += 36
+        script_len_at.append(pos)
+        script_len, pos = read_compactsize(raw, pos)
+        scripts_in.append(script_len)
+        pos += script_len + 4
+
+    outputs, pos = read_compactsize(raw, pos)
+    scripts_out = []
+    for _ in range(outputs):
+        pos += 8
+        script_len, pos = read_compactsize(raw, pos)
+        scripts_out.append(raw[pos:pos + script_len])
+        pos += script_len
+
+    stacks, witness_start, witness_end = [], pos, pos
+    if witness:
+        for _ in range(inputs):
+            count, pos = read_compactsize(raw, pos)
+            items = []
+            for _ in range(count):
+                item_len, pos = read_compactsize(raw, pos)
+                items.append(raw[pos:pos + item_len])
+                pos += item_len
+            stacks.append(items)
+        witness_end = pos
+
+    if len(raw) - pos != 4:
+        raise ValueError("serialization does not end at the locktime")
+
+    head = 6 if witness else 4
+    id_input = raw[:4] + raw[head:witness_start] + raw[len(raw) - 4:]
+    return {
+        "raw": raw,
+        "witness": witness,
+        "inputs": inputs,
+        "outputs": outputs,
+        "scripts_in": scripts_in,
+        "scripts_out": scripts_out,
+        "stacks": stacks,
+        "script_len_at": script_len_at,
+        "witness_start": witness_start,
+        "witness_end": witness_end,
+        "id": dsha256(id_input),
+    }
+
+
+def tx_shape(info: dict) -> str:
+    return (f"{info['inputs']}in/{info['outputs']}out/{len(info['raw'])}B"
+            f"/{'witness' if info['witness'] else 'legacy'}")
+
+
+def tx_real_vectors() -> list:
+    """Real transactions, each paired with the id a node reports for it. Selection is by shape:
+    the cursor walk has to meet a legacy serialization, witness inputs with empty scriptSigs,
+    several inputs, a taproot output, a length that needs the 0xFD prefix, and a transaction large
+    enough for the input loop to turn more than a few times."""
+    txids = json.loads(fetch_api(f"block_{TX_BLOCK_HEIGHT}_txids.json",
+                                f"/api/block/{TX_BLOCK_HASH}/txids"))
+    wanted = ["coinbase", "taproot", "legacy", "large", "many-inputs", "many-outputs", "witness"]
+    picks: dict[str, tuple[str, dict]] = {}
+    longest: tuple[int, str, dict] = (0, "", {})
+
+    # A stride rather than the first pages, so one busy transaction type cannot fill the corpus.
+    for index, txid in enumerate([txids[0]] + txids[1::13]):
+        raw = bytes.fromhex(fetch_api(f"tx_{txid}.hex", f"/api/tx/{txid}/hex"))
+        info = tx_parse(raw)
+        if info["id"] != bytes.fromhex(txid)[::-1]:
+            raise ValueError(f"{txid}: id computed here is not the one the node reports")
+
+        tags = []
+        if index == 0:
+            tags.append("coinbase")
+        if not info["witness"]:
+            tags.append("legacy")
+        if any(len(s) == 34 and s[0] == 0x51 for s in info["scripts_out"]):
+            tags.append("taproot")
+        if len(raw) >= 900:
+            tags.append("large")
+        if info["inputs"] >= 4:
+            tags.append("many-inputs")
+        if info["outputs"] >= 8:
+            tags.append("many-outputs")
+        if info["witness"]:
+            tags.append("witness")
+
+        here = max(info["scripts_in"] + [len(s) for s in info["scripts_out"]], default=0)
+        if here > longest[0]:
+            longest = (here, txid, info)
+
+        for tag in wanted:
+            if tag in tags and tag not in picks:
+                picks[tag] = (txid, info)
+                break
+        if all(w in picks for w in wanted):
+            break
+
+    missing = [w for w in wanted if w not in picks]
+    if missing:
+        raise ValueError(f"the sampled part of block {TX_BLOCK_HEIGHT} held no {missing}")
+
+    vectors = [{"name": f"node block {TX_BLOCK_HEIGHT} {tag} {tx_shape(info)} id {txid[:16]}",
+                "tx": info["raw"], "id": info["id"],
+                "witness_start": info["witness_start"], "witness_end": info["witness_end"]}
+               for tag in wanted for txid, info in [picks[tag]]]
+
+    # No transaction in the sample carried a script long enough to need the 0xFD length prefix --
+    # 2024 scripts are short -- so that boundary is covered by the reference vectors instead, and
+    # the longest script the sample did hold gets its own entry to record where the gap is.
+    if longest[0] >= 24:
+        vectors.append({"name": f"node block {TX_BLOCK_HEIGHT} longest script in the sample "
+                                f"({longest[0]}B, {tx_shape(longest[2])}) id {longest[1][:16]}",
+                        "tx": longest[2]["raw"], "id": longest[2]["id"],
+                        "witness_start": longest[2]["witness_start"],
+                        "witness_end": longest[2]["witness_end"]})
+
+    # That the stacks are not part of the id is asserted in the test over every witness vector, by
+    # mutating a stack byte and by eliding the whole range, rather than by carrying copies here.
+    if all(not info["witness"] for _, info in picks.values()):
+        raise ValueError("no witness transaction in the sample to vary")
+    return vectors
+
+
+def tx_spec_vectors() -> list:
+    """The genesis coinbase, whose id is a constant of the system, and BIP-143's example
+    transactions. Each BIP example is fetched back from a node by the id computed here, which is
+    the only way a document that does not state ids can be checked against the chain."""
+    genesis = bytes.fromhex(fetch_api("tx_genesis_coinbase.hex", f"/api/tx/{GENESIS_COINBASE_TXID}/hex"))
+    info = tx_parse(genesis)
+    if info["id"] != bytes.fromhex(GENESIS_COINBASE_TXID)[::-1]:
+        raise ValueError("the genesis coinbase does not hash to its well-known id")
+    vectors = [{"name": f"spec genesis coinbase {tx_shape(info)} id {GENESIS_COINBASE_TXID[:16]}",
+                "tx": genesis, "id": info["id"],
+                "witness_start": info["witness_start"], "witness_end": info["witness_end"]}]
+
+    text = fetch("bip143.mediawiki")
+    examples = []
+    for line in text.splitlines():
+        if "serialized signed transaction is" not in line:
+            continue
+        tail = line.split("is", 1)[1].strip().strip("*:").strip()
+        if re.fullmatch(r"[0-9a-f]{200,}", tail):
+            examples.append(tail)
+        else:
+            continue
+    for number, hexs in enumerate(dict.fromkeys(examples), start=1):
+        raw = bytes.fromhex(hexs)
+        try:
+            info = tx_parse(raw)
+        except ValueError as exc:
+            raise ValueError(f"BIP-143 example {number}: {exc}")
+        shown = info["id"][::-1].hex()
+        try:
+            back = bytes.fromhex(fetch_api(f"tx_{shown}.hex", f"/api/tx/{shown}/hex"))
+            where = "confirmed by a node" if back == raw else "the node has different bytes"
+        except Exception:
+            where = "not retrievable by id"
+        vectors.append({"name": f"spec BIP-143 example {number} {tx_shape(info)} id {shown[:16]} ({where})",
+                        "tx": raw, "id": info["id"],
+                        "witness_start": info["witness_start"], "witness_end": info["witness_end"]})
+    return vectors
+
+
+PREV_TXID = bytes.fromhex("969fadd9e41bd53343edb61e1738ec2b36f6e7d1420d94a6af99801a88f7fff7")
+P2PKH = bytes.fromhex("76a9148280b37df378db99f66f85c95a783a76ac7a6d5988ac")
+LONG_OP_RETURN = b"\x6a" + b"ipfs" + bytes(range(250))
+
+
+def tx_assemble(vin: list, vout: list, stacks=None, version: int = 1,
+                locktime: int = 0) -> tuple[bytes, bytes]:
+    """Assembles both serializations of one logical transaction: the witness form, with marker,
+    flag and stacks, and the non-witness form whose hash is the id. vin items are
+    (outpoint hash, vout index, scriptSig, sequence), vout items (amount, scriptPubKey)."""
+    body = csb(len(vin))
+    for txid, index, script, seq in vin:
+        body += txid + index.to_bytes(4, "little") + csb(len(script)) + script + seq
+    body += csb(len(vout))
+    for amount, script in vout:
+        body += amount.to_bytes(8, "little") + csb(len(script)) + script
+
+    head = version.to_bytes(4, "little")
+    tail = locktime.to_bytes(4, "little")
+    plain = head + body + tail
+    if stacks is None:
+        return plain, plain
+
+    witness = head + b"\x00\x01" + body
+    for stack in stacks:
+        witness += csb(len(stack))
+        for item in stack:
+            witness += csb(len(item)) + item
+    return witness + tail, plain
+
+
+def tx_synth_vectors() -> tuple[list, list]:
+    """Shapes the chain sample does not contain, assembled byte by byte with the id taken from the
+    non-witness serialization by definition. The rejects are splices into the first of them, so
+    each is one edit away from a transaction that does validate and claims its id."""
+    good, reject = [], []
+
+    def add(name: str, serialization: bytes, id_input: bytes, info=None):
+        parsed = info or tx_parse(serialization)
+        expected = dsha256(id_input)
+        if parsed["id"] != expected:
+            raise ValueError(f"{name}: the reference read disagrees with the definition")
+        good.append({"name": name, "tx": serialization, "id": expected,
+                     "witness_start": parsed["witness_start"], "witness_end": parsed["witness_end"]})
+        return parsed
+
+    seq = b"\xff\xff\xff\xff"
+
+    long_script = bytes(range(253))
+    witness, plain = tx_assemble(
+        [(PREV_TXID, 1, long_script, seq)],
+        [(100000000, P2PKH), (0, LONG_OP_RETURN)],
+        [[b"\x48" + bytes(71), b"\x21" + bytes(33)]])
+    base = add(f"reference witness, scriptSig {len(long_script)}B needs the 0xFD prefix", witness, plain)
+    add("reference same transaction without the witness serialization", plain, plain)
+
+    empty_in, empty_plain = tx_assemble([], [(5000, P2PKH), (7000, P2PKH)], stacks=[])
+    add("reference witness flag with no inputs", empty_in, empty_plain)
+
+    mixed, mixed_plain = tx_assemble(
+        [(PREV_TXID, 0, b"", seq), (PREV_TXID, 1, b"\x00", seq), (PREV_TXID, 2, bytes(100), seq)],
+        [(999999, P2PKH + bytes(275))],
+        [[bytes(72)], [], [bytes(1), bytes(2)]])
+    add("reference witness, three inputs, output script needing 0xFD", mixed, mixed_plain)
+
+    zero_item, zero_plain = tx_assemble([(PREV_TXID, 0, b"", seq)], [(1, P2PKH)],
+                                        [[b"", bytes(33)]], locktime=0x12345678)
+    add("reference witness with a zero-length stack item", zero_item, zero_plain)
+
+    def splice(at: int, replacement: bytes) -> bytes:
+        return base["raw"][:at] + replacement + base["raw"][at + 1:]
+
+    script_at = base["script_len_at"][0]
+    count_at = 4 + 2
+    reject += [
+        (f"script length 0xFF cut short of its eight bytes at offset {script_at}",
+         splice(script_at, b"\xff\xff\xff\xff"), base["id"]),
+        (f"script length 0xFF all ones, past the serialize limit",
+         splice(script_at, b"\xff" + bytes(8)), base["id"]),
+        ("script length FD FC 00, which is not a canonical encoding",
+         splice(script_at, b"\xfd\xfc\x00"), base["id"]),
+        ("input count 0x10000 with nothing behind it",
+         splice(count_at, b"\xfe\x00\x00\x01\x00"), base["id"]),
+        ("version, marker and flag only", base["raw"][:6], base["id"]),
+        ("five bytes, under the version plus two counts", base["raw"][:5], base["id"]),
+        ("flag 0x02, which is not a witness serialization",
+         splice(5, b"\x02"), base["id"]),
+    ]
+
+    alias = (1).to_bytes(4, "little") + csb(0) + csb(1) + (1000).to_bytes(8, "little") + csb(len(P2PKH)) + P2PKH + bytes(4)
+    reject.append(("legacy with no inputs and one output, claiming the whole-buffer hash: 00 01 is "
+                   "also marker and flag, and Bitcoin Core's deserializer reads it that way too, so "
+                   "it is hashed as a witness transaction and its id is not the plain double SHA256",
+                   alias, dsha256(alias)))
+
+    return good, reject
+
+
+def tx_c_array(name: str, data: bytes) -> str:
+    if not data:
+        raise ValueError(f"{name}: an empty array is not valid C")
+    lines = [", ".join(f"0x{b:02x}" for b in data[i:i + 16]) for i in range(0, len(data), 16)]
+    return f"static const uint8_t {name}[] = {{\n    " + ",\n    ".join(lines) + "\n};"
+
+
+def tx_vectors() -> str:
+    synth_good, synth_reject = tx_synth_vectors()
+    good = tx_spec_vectors() + tx_real_vectors() + synth_good
+    arrays, rows = [], []
+    for i, v in enumerate(good):
+        arrays.append(tx_c_array(f"tx_ok_{i}", v["tx"]))
+        arrays.append(tx_c_array(f"tx_ok_{i}_id", v["id"]))
+        rows.append(f'    {{ "{v["name"]}", tx_ok_{i}, sizeof(tx_ok_{i}), tx_ok_{i}_id,\n'
+                    f'      {v["witness_start"]}, {v["witness_end"]} }},')
+
+    bad_arrays, bad_rows = [], []
+    for i, (name, tx, claimed) in enumerate(synth_reject):
+        bad_arrays.append(tx_c_array(f"tx_bad_{i}", tx))
+        bad_arrays.append(tx_c_array(f"tx_bad_{i}_claim", claimed))
+        bad_rows.append(f'    {{ "{name}", tx_bad_{i}, sizeof(tx_bad_{i}), tx_bad_{i}_claim }},')
+
+    return """/* Generated by tests/vectors/generate.py -- do not edit.
+ *
+ * Transaction ids, with the provenance of each entry in its name:
+ *
+ *   spec      the genesis coinbase, whose id is a constant of the system, and BIP-143's example
+ *             transactions. Each of those is fetched back from a node by the id computed here, the
+ *             only way to check a document that does not state ids.
+ *   node      transactions from block %s (height %s), paired with the id that node reports.
+ *   reference assembled byte by byte for shapes the sample does not contain, with the id taken
+ *             from the non-witness serialization the way BIP-144 defines it.
+ *
+ * Ids are in internal order, the bytes SHA-256 emits: the reverse of how an id is written for
+ * humans, and what a transaction's own outpoints and a PSBT carry, so btc_validate_tx_hash()
+ * compares them unchanged.
+ *
+ * witness_start and witness_end bracket the witness stacks, the range the id does not cover; both
+ * are 0 where there are none.
+ */
+
+#ifndef VECTORS_TX_H
+#define VECTORS_TX_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+/* A transaction and the id it has to validate against. */
+typedef struct {
+  const char* name;
+  const uint8_t* tx;
+  size_t tx_len;
+  const uint8_t* txid;
+  size_t witness_start;
+  size_t witness_end;
+} tx_id_vector_t;
+
+/* Bytes presented as some real transaction: mangled, truncated, or a serialization whose walk
+ * stops part way. Each claims the id named in its entry and must not validate against it. */
+typedef struct {
+  const char* name;
+  const uint8_t* tx;
+  size_t tx_len;
+  const uint8_t* claimed;
+} tx_reject_vector_t;
+
+%s
+
+static const tx_id_vector_t TX_ID_VECTORS[] = {
+%s
+};
+
+#define TX_ID_VECTOR_COUNT (sizeof(TX_ID_VECTORS) / sizeof(TX_ID_VECTORS[0]))
+
+%s
+
+static const tx_reject_vector_t TX_REJECT_VECTORS[] = {
+%s
+};
+
+#define TX_REJECT_VECTOR_COUNT (sizeof(TX_REJECT_VECTORS) / sizeof(TX_REJECT_VECTORS[0]))
+
+#endif
+""" % (TX_BLOCK_HASH, TX_BLOCK_HEIGHT, "\n\n".join(arrays), "\n".join(rows),
+       "\n\n".join(bad_arrays), "\n".join(bad_rows))
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -1435,6 +1834,7 @@ def main() -> None:
         "vectors_psbt.h": psbt_vectors(),
         "vectors_bytewords.h": bytewords_vectors(),
         "vectors_qrcode.h": qrcode_vectors(),
+        "vectors_tx.h": tx_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)
