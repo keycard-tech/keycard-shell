@@ -1819,6 +1819,205 @@ static const tx_reject_vector_t TX_REJECT_VECTORS[] = {
 """ % (TX_BLOCK_HASH, TX_BLOCK_HEIGHT, "\n\n".join(arrays), "\n".join(rows),
        "\n\n".join(bad_arrays), "\n".join(bad_rows))
 
+# ------------------------------------------------------- PSBT input context (psbt_ctx.c)
+
+# The device's fingerprint, in the little-endian order a PSBT stores it.
+MFP_OURS = bytes.fromhex("44332211")
+MFP_OTHER = bytes.fromhex("88776655")
+CTX_PUBKEY = bytes.fromhex("02aabb" + "cc" * 31)
+
+CTX_P2PKH = bytes.fromhex("76a914" + "11" * 20 + "88ac")
+CTX_P2WPKH = bytes.fromhex("0014" + "22" * 20)
+CTX_P2TR = bytes.fromhex("5120" + "33" * 32)
+CTX_WITNESS_SCRIPT = bytes.fromhex("2103" + "44" * 32 + "ac")
+CTX_REDEEM_SCRIPT = bytes.fromhex("522103" + "55" * 32 + "2103" + "66" * 32 + "52ae")
+
+
+def hash160(data: bytes) -> bytes:
+    """sha256 then ripemd160, which is what Bitcoin calls HASH160."""
+    try:
+        h = hashlib.new("ripemd160")
+    except ValueError:
+        from Crypto.Hash import RIPEMD160
+        h = RIPEMD160.new()
+    h.update(hashlib.sha256(data).digest())
+    return h.digest()
+
+
+def prevtx(amount: int, script: bytes) -> tuple[bytes, bytes]:
+    """One-input transaction whose output `amount`/`script` is spent, and that output's id in the
+    internal order a transaction's outpoints carry."""
+    inner, _ = tx_assemble([(bytes(32), 0, b"\x00", b"\xff\xff\xff\xff")], [(1, CTX_P2PKH)], version=2)
+    inner_id = dsha256(inner)
+    raw, _ = tx_assemble([(inner_id, 0, b"\x00", b"\xff\xff\xff\xff")],
+                         [(amount, script), (2, CTX_P2PKH)], version=2)
+    return raw, dsha256(raw)
+
+
+def key_record(kind: int, value: bytes, key_data: bytes = b"") -> bytes:
+    key = bytes([kind]) + key_data
+    return csb(len(key)) + key + csb(len(value)) + value
+
+
+def derivation(fingerprint: bytes) -> bytes:
+    return key_record(0x06, fingerprint + (0x80000000).to_bytes(4, "little"), CTX_PUBKEY)
+
+
+def tx_io_counts(unsigned: bytes) -> tuple[int, int]:
+    pos = 4
+    n_in, pos = read_compactsize(unsigned, pos)
+    for _ in range(n_in):
+        pos += 36
+        script_len, pos = read_compactsize(unsigned, pos)
+        pos += script_len + 4
+    n_out, pos = read_compactsize(unsigned, pos)
+    return n_in, n_out
+
+
+def psbt_of(unsigned: bytes, input_maps: list, output_maps: list) -> bytes:
+    # BIP-174 wants a map for every input and every output of the unsigned transaction, and the
+    # parser stops short of FINALIZED when one is missing.
+    n_in, n_out = tx_io_counts(unsigned)
+    input_maps = list(input_maps) + [[]] * (n_in - len(input_maps))
+    output_maps = list(output_maps) + [[]] * (n_out - len(output_maps))
+
+    body = key_record(0, unsigned) + b"\x00"
+    for records in input_maps:
+        body += b"".join(records) + b"\x00"
+    for records in output_maps:
+        body += b"".join(records) + b"\x00"
+    return b"\x70\x73\x62\x74\xff" + body
+
+
+def ctx_vectors() -> str:
+    """What the device takes an input to *be*: its value and scriptPubKey decide the signature and
+    the number shown on the screen, and both arrive from records a wallet chose. The cases come from
+    BIP-174's grammar and from the precedence Bitcoin Core's analyzer documents --
+    non_witness_utxo wins when both fields are present -- not from this implementation."""
+    prev_legacy, id_legacy = prevtx(100000000, CTX_P2PKH)
+    prev_segwit, id_segwit = prevtx(100000000, CTX_P2WPKH)
+    prev_p2sh, id_p2sh = prevtx(70000, bytes.fromhex("a914") + hash160(CTX_REDEEM_SCRIPT) + bytes.fromhex("87"))
+    prev_p2wsh, id_p2wsh = prevtx(80000, bytes.fromhex("0020") + hashlib.sha256(CTX_WITNESS_SCRIPT).digest())
+
+    def unsigned(prev_id: bytes, out_index: int = 0) -> bytes:
+        raw, _ = tx_assemble([(prev_id, out_index, b"", b"\xff\xff\xff\xff")], [(90000000, CTX_P2WPKH)])
+        return raw
+
+    def ctx_out(amount: int, script: bytes) -> bytes:
+        return amount.to_bytes(8, "little") + bytes([len(script)]) + script
+
+    wrong = lambda b: bytes([b[0] ^ 0xFF]) + b[1:]
+
+    cases = [
+        # Each field on its own.
+        ("witness_utxo only", unsigned(id_segwit), [[key_record(1, ctx_out(100000000, CTX_P2WPKH)), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_P2WPKH", 100000000, CTX_P2WPKH),
+        ("non_witness_utxo only", unsigned(id_legacy), [[key_record(0, prev_legacy), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_LEGACY", 100000000, CTX_P2PKH),
+
+        # Both fields, agreeing, in both orders: the same answer either way.
+        ("both fields agree, prevtx first", unsigned(id_segwit),
+         [[key_record(0, prev_segwit), key_record(1, ctx_out(100000000, CTX_P2WPKH)), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_P2WPKH", 100000000, CTX_P2WPKH),
+        ("both fields agree, witness first", unsigned(id_segwit),
+         [[key_record(1, ctx_out(100000000, CTX_P2WPKH)), key_record(0, prev_segwit), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_P2WPKH", 100000000, CTX_P2WPKH),
+
+        # Both fields, disagreeing, in both orders: the prevtx wins, because its id is the one
+        # checked against the outpoint. Record order must not reach the value that is signed.
+        ("both fields, witness claims more, prevtx first", unsigned(id_segwit),
+         [[key_record(0, prev_segwit), key_record(1, ctx_out(900000000, CTX_P2WPKH)), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_P2WPKH", 100000000, CTX_P2WPKH),
+        ("both fields, witness claims more, witness first", unsigned(id_segwit),
+         [[key_record(1, ctx_out(900000000, CTX_P2WPKH)), key_record(0, prev_segwit), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_P2WPKH", 100000000, CTX_P2WPKH),
+        ("both fields, witness claims another script, prevtx first", unsigned(id_segwit),
+         [[key_record(0, prev_segwit), key_record(1, ctx_out(100000000, CTX_P2TR)), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_P2WPKH", 100000000, CTX_P2WPKH),
+        ("both fields, witness claims another script, witness first", unsigned(id_segwit),
+         [[key_record(1, ctx_out(100000000, CTX_P2TR)), key_record(0, prev_segwit), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_P2WPKH", 100000000, CTX_P2WPKH),
+
+        # witness_utxo has to be a whole CTxOut.
+        ("witness_utxo with a byte past the script", unsigned(id_segwit),
+         [[key_record(1, ctx_out(100000000, CTX_P2WPKH) + b"\x00"), derivation(MFP_OURS)]], [], 0, "", 0, b""),
+        ("witness_utxo shorter than its own length byte", unsigned(id_segwit),
+         [[key_record(1, ctx_out(100000000, CTX_P2WPKH)[:-1] ), derivation(MFP_OURS)]], [], 0, "", 0, b""),
+        ("witness_utxo with a 0xFD script length", unsigned(id_segwit),
+         [[key_record(1, (100000000).to_bytes(8, "little") + b"\xfd\xfd\x00" + CTX_P2WPKH, ), derivation(MFP_OURS)]],
+         [], 0, "", 0, b""),
+
+        # The prevtx has to actually contain the output the outpoint names.
+        ("outpoint names an output the prevtx does not have", unsigned(id_segwit, out_index=3),
+         [[key_record(0, prev_segwit), key_record(1, ctx_out(900000000, CTX_P2WPKH)), derivation(MFP_OURS)]], [],
+         0, "", 0, b""),
+
+        # The prevtx has to be the transaction the outpoint names.
+        ("prevtx is some other transaction", unsigned(id_segwit),
+         [[key_record(0, prev_legacy), derivation(MFP_OURS)]], [], 0, "", 0, b""),
+        ("no utxo record at all", unsigned(id_segwit), [[derivation(MFP_OURS)]], [], 0, "", 0, b""),
+        ("input belongs to another device", unsigned(id_segwit),
+         [[key_record(1, ctx_out(100000000, CTX_P2WPKH)), derivation(MFP_OTHER)]], [], 0, "", 0, b""),
+
+        # Redeem and witness scripts have to hash to the output they are said to redeem.
+        ("redeem script that hashes to the P2SH output", unsigned(id_p2sh),
+         [[key_record(0, prev_p2sh), key_record(4, CTX_REDEEM_SCRIPT), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_LEGACY_WITH_REDEEM", 70000, bytes.fromhex("a914") + hash160(CTX_REDEEM_SCRIPT) + bytes.fromhex("87")),
+        ("redeem script that does not", unsigned(id_p2sh),
+         [[key_record(0, prev_p2sh), key_record(4, wrong(CTX_REDEEM_SCRIPT)), derivation(MFP_OURS)]], [],
+         0, "", 0, b""),
+        ("witness script that hashes to the P2WSH output", unsigned(id_p2wsh),
+         [[key_record(1, ctx_out(80000, bytes.fromhex("0020") + hashlib.sha256(CTX_WITNESS_SCRIPT).digest())),
+           key_record(5, CTX_WITNESS_SCRIPT), derivation(MFP_OURS)]], [],
+         1, "BTC_INPUT_TYPE_P2WSH", 80000, bytes.fromhex("0020") + hashlib.sha256(CTX_WITNESS_SCRIPT).digest()),
+        ("witness script that does not", unsigned(id_p2wsh),
+         [[key_record(1, ctx_out(80000, bytes.fromhex("0020") + hashlib.sha256(CTX_WITNESS_SCRIPT).digest())),
+           key_record(5, wrong(CTX_WITNESS_SCRIPT)), derivation(MFP_OURS)]], [],
+         0, "", 0, b""),
+    ]
+
+    arrays, rows = [], []
+    for i, (name, unsigned_tx, inputs, outputs, accept, kind, amount, script) in enumerate(cases):
+        blob = psbt_of(unsigned_tx, inputs, outputs)
+        arrays.append(tx_c_array(f"psbt_ctx_{i}", blob))
+        rows.append(
+            f'    {{ "{name}", psbt_ctx_{i}, sizeof(psbt_ctx_{i}), {accept},\n'
+            f'      {kind if kind else "-1"}, {amount}ULL, "{hexs(script)}" }},')
+
+    return """/* Generated by tests/vectors/generate.py -- do not edit.
+ *
+ * PSBTs built from BIP-174's grammar to pin what the device takes an input to be. Where two utxo
+ * fields describe one input, the prevtx is authoritative -- the answer a verifying node computes --
+ * whichever record the wallet wrote last.
+ */
+
+#ifndef VECTORS_PSBT_CTX_H
+#define VECTORS_PSBT_CTX_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+typedef struct {
+  const char* name;
+  const uint8_t* psbt;
+  size_t psbt_len;
+  int accept;              /* the flow has to take the PSBT, or refuse it */
+  int input_type;          /* btc_input_type_t once accepted; -1 for a refused case */
+  uint64_t amount;         /* the value taken as the input's, which the signature and the screen use */
+  const char* script;      /* the scriptPubKey taken for it, empty when the case is refused */
+} psbt_ctx_case_t;
+
+%s
+
+static const psbt_ctx_case_t PSBT_CTX_CASES[] = {
+%s
+};
+
+#define PSBT_CTX_CASE_COUNT (sizeof(PSBT_CTX_CASES) / sizeof(PSBT_CTX_CASES[0]))
+
+#endif
+""" % ("\n\n".join(arrays), "\n".join(rows))
+
 
 def main() -> None:
     written = {
@@ -1835,6 +2034,7 @@ def main() -> None:
         "vectors_bytewords.h": bytewords_vectors(),
         "vectors_qrcode.h": qrcode_vectors(),
         "vectors_tx.h": tx_vectors(),
+        "vectors_psbt_ctx.h": ctx_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

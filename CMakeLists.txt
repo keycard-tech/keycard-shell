@@ -204,6 +204,7 @@ set(APP_SOURCES
     app/bitcoin/multisig_crypto.c
     app/bitcoin/psbt.c
     app/bitcoin/psbt_tx.c
+    app/bitcoin/psbt_ctx.c
     app/bitcoin/tx.c
     app/bitcoin/taproot.c
     app/freertos_support.c

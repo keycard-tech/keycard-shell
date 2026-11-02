@@ -93,6 +93,7 @@ add_library(app_bitcoin STATIC
     ${SHELLOS_ROOT}/app/bitcoin/compactsize.c
     ${SHELLOS_ROOT}/app/bitcoin/psbt.c
     ${SHELLOS_ROOT}/app/bitcoin/psbt_tx.c
+    ${SHELLOS_ROOT}/app/bitcoin/psbt_ctx.c
     ${SHELLOS_ROOT}/app/bitcoin/tx.c
 )
 target_include_directories(app_bitcoin PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
@@ -162,6 +163,7 @@ shellos_test(bech32 LIBS app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)
 shellos_test(psbt LIBS app_bitcoin app_crypto)
 shellos_test(tx LIBS app_bitcoin app_crypto)
+shellos_test(psbt_ctx LIBS app_bitcoin app_crypto)
 shellos_test(bytewords LIBS app_ur app_crypto)
 shellos_test(ur LIBS app_ur app_crypto)
 shellos_test(qrcode LIBS app_qrcode)
