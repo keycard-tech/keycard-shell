@@ -42,6 +42,8 @@ SOURCES = {
     "rfc5869.txt": "https://www.rfc-editor.org/rfc/rfc5869.txt",
     "bip174.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0174.mediawiki",
     "bip143.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0143.mediawiki",
+    "bip341_wallet.json": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0341/wallet-test-vectors.json",
+    "bip340_vectors.csv": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0340/test-vectors.csv",
     "bc_bytewords.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/src/bc-bytewords.c",
     "bc_bytewords_test.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/test/test.c",
 }
@@ -2058,6 +2060,58 @@ def sighash_parse_tx(hexs: str) -> dict:
 # reference drifts.
 # ---------------------------------------------------------------------------
 
+# BIP-340 Schnorr verification. A taproot digest is only meaningful as "the thing this signature was
+# made over", so the vectors are accepted by verifying, not by copying. The verifier itself is checked
+# against BIP-340's own test vectors before it is trusted with anything.
+def tagged_hash(tag: str, data: bytes) -> bytes:
+    digest = hashlib.sha256(tag.encode()).digest()
+    return hashlib.sha256(digest + digest + data).digest()
+
+
+def lift_x(x: int):
+    if x >= SECP256K1_P:
+        return None
+    y_square = (pow(x, 3, SECP256K1_P) + 7) % SECP256K1_P
+    y = pow(y_square, (SECP256K1_P + 1) // 4, SECP256K1_P)
+    if pow(y, 2, SECP256K1_P) != y_square:
+        return None
+    # The serialization carries only the x coordinate and the convention that the point has an even
+    # y; the other root of the same x is the negation.
+    return x, y if y % 2 == 0 else SECP256K1_P - y
+
+
+def schnorr_verify(message: bytes, signature: bytes, key: bytes) -> bool:
+    if len(signature) != 64 or len(key) != 32 or len(message) != 32:
+        return False
+    r = int.from_bytes(signature[:32], "big")
+    s = int.from_bytes(signature[32:], "big")
+    point = lift_x(int.from_bytes(key, "big"))
+    if point is None or r >= SECP256K1_P or s >= SECP256K1_N:
+        return False
+    challenge = int.from_bytes(
+        tagged_hash("BIP0340/challenge", signature[:32] + key + message), "big") % SECP256K1_N
+    r_point = ec_add(ec_mul(s, SECP256K1_G), ec_mul(SECP256K1_N - challenge, point))
+    return r_point is not None and r_point[1] % 2 == 0 and r_point[0] % SECP256K1_P == r
+
+
+def check_schnorr_verifier() -> None:
+    import csv
+    import io
+
+    rows = csv.DictReader(io.StringIO(fetch("bip340_vectors.csv")))
+    checked = 0
+    for row in rows:
+        signature, key, message = row["signature"], row["public key"], row["message"]
+        if len(signature) != 128 or len(key) != 64 or len(message) != 64:
+            continue  # rows that must fail on shape before any arithmetic happens
+        want = row["verification result"] == "TRUE"
+        if schnorr_verify(bytes.fromhex(message), bytes.fromhex(signature), bytes.fromhex(key)) != want:
+            raise SystemExit(f"BIP-340 vector {row['index']}: the generator's verifier disagrees")
+        checked += 1
+    if checked < 10:
+        raise SystemExit("BIP-340's vector file changed shape; the verifier is unchecked")
+
+
 SECP256K1_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 SECP256K1_G = (0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
@@ -2304,6 +2358,26 @@ def sighash_sweep_cases() -> list:
                 "amount": "0000000000000000",
                 "digest": digest.hex(),
             })
+    # A legacy P2SH spend signs over the redeem script, not over the P2SH scriptPubKey that locks
+    # it, which is the one thing the input type changes about the preimage.
+    redeem = bytes([0x21]) + public + bytes([0xac])  # <key> CHECKSIG
+    p2sh = b"\xa9\x14" + hash160(redeem) + b"\x87"
+    for hash_type in (0x01, 0x02, 0x03, 0x81, 0x82, 0x83):
+        raw = sweep_tx(2, 2, p2sh, 0)
+        tx = sighash_parse_tx(raw.hex())
+        cases.append({
+            "name": f"sweep p2sh legacy ht 0x{hash_type:02x}",
+            "tx": raw,
+            "in": 1,
+            "hash_type": hash_type,
+            "input_type": "BTC_INPUT_TYPE_LEGACY_WITH_REDEEM",
+            "script": p2sh.hex(),
+            "redeem": redeem.hex(),
+            "witness_script": "",
+            "amount": "0000000000000000",
+            "digest": legacy_digest(tx, redeem, 1, hash_type).hex(),
+        })
+
     # Past 0xfc the length prefixes widen mid-transaction, for the scriptCode as much as for an
     # output's scriptPubKey.
     long_code = b"\x76\xa9\x14" + bytes(250) + b"\x88\xac"
@@ -2341,6 +2415,155 @@ def sighash_sweep_cases() -> list:
                 "amount": amount,
                 "digest": digest.hex(),
             })
+    return cases
+
+
+VALID_TAPROOT_SIGHASH = (0x00, 0x01, 0x02, 0x03, 0x81, 0x82, 0x83)
+
+
+def taproot_common(tx: dict, utxos: list) -> tuple:
+    """The five hash_* values a taproot digest commits to, in the order they enter the message."""
+    digest = lambda data: hashlib.sha256(data).digest()  # untagged, single, as BIP-341 defines them
+    prevouts = digest(b"".join(e["txid"] + e["index"].to_bytes(4, "little") for e in tx["inputs"]))
+    amounts = digest(b"".join(u["amount"] for u in utxos))
+    script_pubkeys = digest(b"".join(csb(len(u["spk"])) + u["spk"] for u in utxos))
+    sequences = digest(b"".join(e["sequence"] for e in tx["inputs"]))
+    outputs = digest(b"".join(a + csb(len(s)) + s for a, s in tx["outputs"]))
+    return prevouts, amounts, script_pubkeys, sequences, outputs
+
+
+def taproot_sigmsg(tx: dict, utxos: list, in_: int, hash_type: int) -> tuple:
+    """BIP-341's SigMsg for one input, and the hash_* values that go into it.
+
+    An input signing SIGHASH_SINGLE with no output at its own index has no message: the device
+    reports it, so this raises rather than invent a digest.
+    """
+    base = hash_type & 0x03
+    anyone_can_pay = bool(hash_type & 0x80)
+    if base == 0x03 and in_ >= len(tx["outputs"]):
+        raise ValueError("SIGHASH_SINGLE with no output at the input's index")
+    prevouts, amounts, script_pubkeys, sequences, outputs = taproot_common(tx, utxos)
+
+    msg = bytearray([0, hash_type])  # sighash epoch, then the byte the signature will carry
+    msg += tx["version"] + tx["locktime"]
+    if not anyone_can_pay:
+        msg += prevouts + amounts + script_pubkeys + sequences
+    if base not in (0x02, 0x03):
+        msg += outputs
+    msg += bytes([0])  # spend_type: key path, no annex, no leaf version
+    if anyone_can_pay:
+        entry, utxo = tx["inputs"][in_], utxos[in_]
+        msg += entry["txid"] + entry["index"].to_bytes(4, "little") + utxo["amount"]
+        msg += csb(len(utxo["spk"])) + utxo["spk"] + entry["sequence"]
+    else:
+        msg += in_.to_bytes(4, "little")
+    if base == 0x03:
+        amount, script = tx["outputs"][in_]
+        msg += hashlib.sha256(amount + csb(len(script)) + script).digest()
+    return bytes(msg), (prevouts, amounts, script_pubkeys, sequences, outputs)
+
+
+def utxo_blob(utxos: list) -> str:
+    """Every input's witness utxo, as [amount:8][script length:1][script] repeated."""
+    stream = bytearray()
+    for utxo in utxos:
+        if len(utxo["spk"]) > 0xFF:
+            raise ValueError("witness utxo script too long for the vector encoding")
+        stream += utxo["amount"] + bytes([len(utxo["spk"])]) + utxo["spk"]
+    return stream.hex()
+
+
+def taproot_case(name, raw, tx, utxos, in_, hash_type, digest, common=""):
+    return {
+        "name": name,
+        "tx": raw,
+        "in": in_,
+        "hash_type": hash_type,
+        "input_type": "BTC_INPUT_TYPE_P2TR",
+        "script": "",
+        "redeem": "",
+        "witness_script": "",
+        "amount": "",
+        "utxos": utxo_blob(utxos),
+        "common": common,
+        "digest": digest,
+    }
+
+
+def sighash_bip341_cases() -> list:
+    """BIP-341's wallet vectors: one nine-input transaction, the witness utxo of each of its inputs,
+    and for seven of those inputs the SigMsg the document states plus the witness the key produces.
+
+    Two checks run here, and generation fails if either breaks: the SigMsg rebuilt by this file has
+    to equal the document's byte for byte, and the document's signature has to verify over the tagged
+    hash of it with that input's own output key. Every digest emitted below is therefore pinned by a
+    Schnorr signature rather than by my reading of the document.
+
+    The seven cover all defined sighash bytes, three of them on a transaction whose other inputs are
+    legacy and P2WPKH spends -- the hash_* values cover every input either way.
+    """
+    check_schnorr_verifier()
+    document = json.loads(fetch("bip341_wallet.json"))
+    spending = document["keyPathSpending"][0]
+    raw = bytes.fromhex(spending["given"]["rawUnsignedTx"])
+    tx = sighash_parse_tx(raw.hex())
+    utxos = [{"amount": u["amountSats"].to_bytes(8, "little"), "spk": bytes.fromhex(u["scriptPubKey"])}
+             for u in spending["given"]["utxosSpent"]]
+
+    common = ""
+    for name, got in zip(("hashPrevouts", "hashAmounts", "hashScriptPubkeys", "hashSequences",
+                          "hashOutputs"), taproot_common(tx, utxos)):
+        if got.hex() != spending["intermediary"][name]:
+            raise SystemExit(f"BIP-341: {name} computed here is not the document's")
+        common += got.hex()
+
+    cases = []
+    for entry in spending["inputSpending"]:
+        index = entry["given"]["txinIndex"]
+        hash_type = entry["given"]["hashType"]
+        message, _ = taproot_sigmsg(tx, utxos, index, hash_type)
+        if message.hex() != entry["intermediary"]["sigMsg"]:
+            raise SystemExit(f"BIP-341 input {index}: SigMsg differs from the document")
+        digest = tagged_hash("TapSighash", message)
+        witness = bytes.fromhex(entry["expected"]["witness"][0])
+        if not schnorr_verify(digest, witness[:64], utxos[index]["spk"][2:]):
+            raise SystemExit(f"BIP-341 input {index}: the document's signature does not verify")
+        cases.append(taproot_case(f"BIP-341 key path in{index} ht 0x{hash_type:02x}", raw, tx, utxos,
+                                  index, hash_type, digest.hex(), common))
+    return cases
+
+
+def taproot_utxos(count: int) -> list:
+    """Deterministic P2TR witness utxos; the keys are real points but nothing here signs with them."""
+    utxos = []
+    for i in range(count):
+        x, _ = ec_mul(0x4C0D + 0x1F00 * i, SECP256K1_G)
+        utxos.append({"amount": (1000 * (i + 1)).to_bytes(8, "little"),
+                      "spk": bytes([0x51, 0x20]) + x.to_bytes(32, "big")})
+    return utxos
+
+
+def sighash_taproot_sweep_cases() -> list:
+    """Shapes the BIP's one transaction cannot supply: a single input, an input index SIGHASH_SINGLE
+    has no output for, and sighash bytes the spec leaves undefined. The digest comes from the
+    reference the BIP vectors just verified."""
+    cases = []
+    for n_inputs in (1, 2, 3):
+        for n_outputs in (1, 3, 20):
+            for hash_type in VALID_TAPROOT_SIGHASH + (0x04, 0x80, 0xFF):
+                index = 1 if n_inputs > 1 else 0
+                raw = sweep_tx(n_inputs, n_outputs, bytes([0x51, 0x20]) + bytes(32), 0x3C)
+                tx = sighash_parse_tx(raw.hex())
+                utxos = taproot_utxos(n_inputs)
+                refuse = (hash_type not in VALID_TAPROOT_SIGHASH
+                          or ((hash_type & 0x03) == 0x03 and index >= n_outputs))
+                digest = ""
+                if not refuse:
+                    message, _ = taproot_sigmsg(tx, utxos, index, hash_type)
+                    digest = tagged_hash("TapSighash", message).hex()
+                cases.append(taproot_case(
+                    f"taproot sweep {n_inputs}in {n_outputs}out ht 0x{hash_type:02x} in{index}",
+                    raw, tx, utxos, index, hash_type, digest))
     return cases
 
 
@@ -2450,7 +2673,8 @@ def sighash_bip143_cases() -> list:
 
 
 def sighash_vectors() -> str:
-    cases = sighash_chain_cases() + sighash_sweep_cases() + sighash_bip143_cases()
+    cases = (sighash_chain_cases() + sighash_sweep_cases() + sighash_bip143_cases()
+             + sighash_bip341_cases() + sighash_taproot_sweep_cases())
     # A shape signed under several hash types is the same bytes once, so identical transactions
     # share one array.
     arrays, named, rows = [], {}, []
@@ -2463,20 +2687,29 @@ def sighash_vectors() -> str:
             f'    {{ "{c["name"]}", {named[key]}, sizeof({named[key]}), {c["in"]},\n'
             f'      0x{c["hash_type"]:08x}U, {c["input_type"]},\n'
             f'      "{c["script"]}", "{c["redeem"]}", "{c["witness_script"]}", "{c["amount"]}",\n'
+            # Only a taproot case names every input's utxo, or the hash_* values the document states.
+            f'      "{c.get("utxos", "")}", "{c.get("common", "")}",\n'
             f'      "{c["digest"]}" }},')
 
     return """/* Generated by tests/vectors/generate.py -- do not edit.
  *
- * The digest each signature commits to. Three sources, none of them this implementation:
+ * The digest each signature commits to. The oracles, none of them this implementation:
  *
  *  - Two confirmed mainnet spends, fetched by transaction id. Each is kept only if the signature
  *    in its own scriptSig verifies over the digest the generator's reference computes, so a
  *    legacy digest here is one a real coin was unlocked with.
- *  - That same reference over a sweep of shapes and hash types, for what the chain does not offer
- *    on demand: several inputs, SIGHASH_NONE, SIGHASH_SINGLE, ANYONECANPAY, and lengths that push
- *    a compactsize prefix past one byte.
+ *  - %s
+ *    BIP-341's wallet vectors: one transaction, the witness utxo of every input, and for seven of
+ *    those inputs the SigMsg the document states, the five hash_* values, and the resulting
+ *    witness. The generator rebuilds the SigMsg, requires it to match, and BIP-340-verifies the
+ *    document's signature against the input's own output key. That verifier is itself checked
+ *    against %s before use.
  *  - %s
  *    BIP-143's examples, which state the signature hash each produces.
+ *  - The reference the first two vouch for, over a sweep of shapes and hash types: several inputs,
+ *    SIGHASH_NONE, SIGHASH_SINGLE, ANYONECANPAY, lengths that push a compactsize prefix past one
+ *    byte, and the cases a walker must refuse (an empty digest), which are the undefined sighash
+ *    bytes and SIGHASH_SINGLE with no output at the input's index.
  *
  * See the note above sighash_chain_cases() for why Bitcoin Core's sighash.json is not the oracle.
  */
@@ -2498,7 +2731,15 @@ typedef struct {
   const char* redeem;        /* redeem script record, hex, empty when absent */
   const char* witness_script;/* witness script record, hex, empty when absent */
   const char* amount;        /* value of the spent output, 8 bytes little-endian hex; empty for legacy */
+  /* Every input's witness utxo as [amount:8][script length:1][script], in input order. A taproot
+   * digest commits to all of them, so the case has to carry them; the other walkers take the spent
+   * output's fields from the four strings above and leave this empty. */
+  const char* utxos;
+  /* hash_prevouts, hash_amounts, hash_scriptpubkeys, hash_sequence, hash_outputs, concatenated:
+   * what BIP-341 states and the taproot digest is built from. Empty when no document states them. */
+  const char* common;
   const char* digest;        /* the signature hash, in the order the digest bytes come out */
+                             /* empty means the walker must refuse the case */
 } sighash_case_t;
 
 %s
@@ -2510,7 +2751,8 @@ static const sighash_case_t SIGHASH_CASES[] = {
 #define SIGHASH_CASE_COUNT (sizeof(SIGHASH_CASES) / sizeof(SIGHASH_CASES[0]))
 
 #endif
-""" % (provenance("bip143.mediawiki"), "\n\n".join(arrays), "\n".join(rows))
+""" % (provenance("bip341_wallet.json"), provenance("bip340_vectors.csv"),
+       provenance("bip143.mediawiki"), "\n\n".join(arrays), "\n".join(rows))
 
 
 def main() -> None:
