@@ -1074,34 +1074,41 @@ static void finder_scan(struct quirc *q, int y)
     uint8_t color, last_color;
     int run_length = 1;
     int run_count = 0;
-    int pb[5] = {0};
+    int pb0 = 0, pb1 = 0, pb2 = 0, pb3 = 0, pb4 = 0;
 
     last_color = row[0];
     for (x = 1; x < QUIRC_WIDTH; x++) {
         color = row[x];
 
-        if (/* x && */ color != last_color) {
-            memmove(pb, &pb[1], sizeof(pb[0]) * 4);
-            pb[4] = run_length;
+        if (color != last_color) {
+            pb0 = pb1;
+            pb1 = pb2;
+            pb2 = pb3;
+            pb3 = pb4;
+            pb4 = run_length;
             run_length = 0;
             run_count++;
 
             if (!color && run_count >= 5) {
-                static int check[5] = {1, 1, 3, 1, 1};
-                int avg, err;
-                int i;
-                int ok = 1;
+                int avg, err, lo, hi, lo3, hi3;
 
-                avg = (pb[0] + pb[1] + pb[3] + pb[4]) / 4;
+                avg = (pb0 + pb1 + pb3 + pb4) / 4;
                 err = avg * 3 / 4;
+                lo = avg - err;
+                hi = avg + err;
+                lo3 = 3 * avg - err;
+                hi3 = 3 * avg + err;
 
-                for (i = 0; i < 5; i++)
-                    if (pb[i] < check[i] * avg - err ||
-                        pb[i] > check[i] * avg + err)
-                        ok = 0;
+                /* The 1:1:3:1:1 ratio, each run within a quarter of its ideal */
+                if (pb0 >= lo && pb0 <= hi &&
+                    pb1 >= lo && pb1 <= hi &&
+                    pb2 >= lo3 && pb2 <= hi3 &&
+                    pb3 >= lo && pb3 <= hi &&
+                    pb4 >= lo && pb4 <= hi) {
+                    int pb[5] = { pb0, pb1, pb2, pb3, pb4 };
 
-                if (ok)
                     test_capstone(q, x, y, pb);
+                }
             }
         }
 
@@ -1337,29 +1344,21 @@ static int fitness_cell(const struct quirc *q, int index, int x, int y)
     const struct quirc_grid *qr = &q->grids[index];
     const float *c = qr->c;
     static const float offsets[] = {0.3, 0.5, 0.7};
-    float xu[3], yv[3], xw[3], yw[3], du[3], dv[3];
     int score = 0;
-    int u, v;
 
-    for (int i = 0; i < 3; i++) {
-        float fx = x + offsets[i];
-        float fy = y + offsets[i];
+    for (int v = 0; v < 3; v++) {
+        const float fy = y + offsets[v];
+        const float ny = c[1]*fy;
+        const float py = c[4]*fy;
+        const float dy = c[7]*fy;
 
-        xu[i] = c[0]*fx;
-        yv[i] = c[1]*fy;
-        xw[i] = c[3]*fx;
-        yw[i] = c[4]*fy;
-        du[i] = c[6]*fx;
-        dv[i] = c[7]*fy;
-    }
-
-    for (v = 0; v < 3; v++)
-        for (u = 0; u < 3; u++) {
-            float den = du[u] + dv[v] + 1.0;
+        for (int u = 0; u < 3; u++) {
+            const float fx = x + offsets[u];
+            const float den = c[6]*fx + dy + 1.0;
             struct quirc_point p;
 
-            p.x = fast_roundf((xu[u] + yv[v] + c[2]) / den);
-            p.y = fast_roundf((xw[u] + yw[v] + c[5]) / den);
+            p.x = fast_roundf((c[0]*fx + ny + c[2]) / den);
+            p.y = fast_roundf((c[3]*fx + py + c[5]) / den);
 
             if (p.y < 0 || p.y >= QUIRC_HEIGHT || p.x < 0 || p.x >= QUIRC_WIDTH)
                 continue;
@@ -1369,6 +1368,7 @@ static int fitness_cell(const struct quirc *q, int index, int x, int y)
             else
                 score--;
         }
+    }
 
     return score;
 }
