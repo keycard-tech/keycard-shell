@@ -65,18 +65,7 @@ uv run python tests/vectors/generate.py     # needs network; sources cached in v
 
 Generated headers are committed, so building the tests needs no network.
 
-## Behaviour this records
-
-Whether the following is *correct* is open; these tests pin what the code does today, so changing
-it is a decision rather than an accident.
-
-* `compactsize_read()` rejects any decoded length above `MAX_SERIALIZE_SIZE` (0x02000000,
-  Bitcoin Core's `MAX_SIZE`), so not every well-formed encoding round-trips. It is 256 times
-  `MEM_HEAP_SIZE` and larger than the whole 640 KB of RAM, so it cannot be the bound that
-  protects this device: both PSBT parsers already check every read length against
-  `data + src_size`. See the discussion in the commit that introduced this section.
-
-## What these tests deliberately do not cover
+## What these tests do not cover
 
 * **The hardware crypto paths.** The firmware uses the PKA for EC, the HASH peripheral for
   SHA-256 and the AES accelerator. The host build takes the `SOFT_SHA256`/`SOFT_CRC32`

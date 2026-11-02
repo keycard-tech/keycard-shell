@@ -84,6 +84,7 @@ add_library(app_crypto STATIC
     ${SHELLOS_ROOT}/app/crypto/slip39.c
     ${SHELLOS_ROOT}/app/crypto/slip39_english.c
     ${SHELLOS_ROOT}/app/crypto/util.c
+    ${SHELLOS_ROOT}/app/crypto/xoshiro256.c
 )
 target_include_directories(app_crypto PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_crypto PRIVATE ${SHELLOS_COMMON_FLAGS})
@@ -96,10 +97,23 @@ add_library(app_bitcoin STATIC
 target_include_directories(app_bitcoin PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_bitcoin PRIVATE ${SHELLOS_COMMON_FLAGS})
 
+# zcbor is vendored in tree and part of the firmware build, so the UR framing is compiled the
+# same way here. ZCBOR_CANONICAL is what the firmware passes and what the generated encoders in
+# ur_encode.c are written against.
 add_library(app_ur STATIC
     ${SHELLOS_ROOT}/app/ur/bytewords.c
+    ${SHELLOS_ROOT}/app/ur/sampler.c
+    ${SHELLOS_ROOT}/app/ur/ur.c
+    ${SHELLOS_ROOT}/app/ur/ur_decode.c
+    ${SHELLOS_ROOT}/app/ur/ur_encode.c
+    ${SHELLOS_ROOT}/zcbor/zcbor_common.c
+    ${SHELLOS_ROOT}/zcbor/zcbor_decode.c
+    ${SHELLOS_ROOT}/zcbor/zcbor_encode.c
 )
-target_include_directories(app_ur PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_include_directories(app_ur PUBLIC
+    ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host
+)
+target_compile_definitions(app_ur PUBLIC ZCBOR_CANONICAL)
 target_compile_options(app_ur PRIVATE ${SHELLOS_COMMON_FLAGS})
 target_link_libraries(app_ur PUBLIC app_crypto)
 
@@ -134,3 +148,4 @@ shellos_test(bech32 LIBS app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)
 shellos_test(psbt LIBS app_bitcoin app_crypto)
 shellos_test(bytewords LIBS app_ur app_crypto)
+shellos_test(ur LIBS app_ur app_crypto)

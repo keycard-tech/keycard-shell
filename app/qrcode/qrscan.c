@@ -38,7 +38,7 @@ app_err_t qrscan_decode(struct quirc *qrctx, ur_t* ur) {
     if (g_ui_cmd.params.qrscan.type == NO_UR) {
       data_t* out = g_ui_cmd.params.qrscan.out;
       out->len = qrdata->payload_len;
-      out->data = ur->data;
+      out->data = ur->buffer;
       memcpy(out->data, qrdata->payload, qrdata->payload_len);
       out->data[out->len] = '\0';
       g_ui_cmd.params.qrscan.type = qrdata->data_type;
@@ -161,7 +161,7 @@ static inline void qrscan_draw_indicator(qrscan_indicator_t* indicator, uint8_t 
 app_err_t qrscan_scan() {
   struct quirc qrctx;
   app_err_t res = ERR_OK;
-  ur_t ur = { .data_max_len = MEM_HEAP_SIZE, .data = g_mem_heap, .percent_done = 0, .crc = 0};
+  ur_t ur = { .data_max_len = MEM_HEAP_SIZE, .buffer = g_mem_heap, .percent_done = 0, .crc = 0};
 
   screen_fill_area(&screen_fullarea, TH_COLOR_QR_BG);
   dialog_nav_hints(ICON_NAV_CANCEL, ICON_NONE);

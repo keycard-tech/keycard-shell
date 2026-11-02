@@ -70,18 +70,18 @@ static inline int ur_desc_is_subset(const ur_desc_t* x, const ur_desc_t* y) {
 
 typedef enum {
   BYTES = 0,
-  ETH_SIGN_REQUEST = 1,
-  CRYPTO_PSBT = 3,
-  CRYPTO_MULTI_ACCOUNTS = 4,
-  FW_UPDATE = 6,
-  CRYPTO_HDKEY = 7,
-  BTC_SIGNATURE = 8,
-  CRYPTO_ACCOUNT = 9,
-  ETH_SIGNATURE = 11,
-  DEV_AUTH = 12,
-  FS_DATA = 13,
-  BTC_SIGN_REQUEST = 14,
-  CRYPTO_OUTPUT = 15,
+  ETH_SIGN_REQUEST,
+  CRYPTO_PSBT,
+  CRYPTO_MULTI_ACCOUNTS,
+  FW_UPDATE,
+  CRYPTO_HDKEY,
+  BTC_SIGNATURE,
+  CRYPTO_ACCOUNT,
+  ETH_SIGNATURE,
+  DEV_AUTH,
+  FS_DATA,
+  BTC_SIGN_REQUEST,
+  CRYPTO_OUTPUT,
   UR_ANY_TX = 254,
   NO_UR = 255,
 } ur_type_t;
@@ -95,6 +95,9 @@ typedef struct {
   int sampler_aliases[UR_MAX_PART_COUNT];
   size_t data_max_len;
   size_t data_len;
+  /* Scratch of data_max_len bytes that parts are decoded and reassembled in. */
+  uint8_t* buffer;
+  /* The finished message. Only meaningful once ur_process_part returns ERR_OK. */
   uint8_t* data;
   uint8_t percent_done;
 } ur_t;
