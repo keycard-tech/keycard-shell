@@ -1243,6 +1243,184 @@ static const bytewords_invalid_t BYTEWORDS_INVALID[] = {
 """
 
 
+# QR symbols from segno, which shares no code with the vendored encoder (Nayuki port) or the
+# vendored decoder (quirc). Encoding parameters are requested exactly -- no ECC boosting and a
+# forced mask -- so the encoder under test can be asked for the same symbol. `mode` names the
+# segment type segno must use, which is what makes the two encoders comparable; "auto" leaves it
+# to segno and then only the decoder is pinned, because how a mixed payload is split into segments
+# is implementation freedom.
+QR_CASES = [
+    ("01234567", 1, "L", 0, "numeric"),
+    ("86753092109876543210", 2, "M", 3, "numeric"),
+    ("0123456789" * 20, 8, "Q", 5, "numeric"),
+    ("HELLO WORLD", 2, "H", 1, "alphanumeric"),
+    ("AN16CHARS $%*+-./:", 2, "L", 7, "alphanumeric"),
+    ("$%*+-./: 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ", 5, "Q", 2, "alphanumeric"),
+    ("MAX", 2, "Q", 2, "byte"),
+    ("MAX", 4, "M", 6, "byte"),
+    ("MAX", 10, "H", 0, "byte"),
+    ("MAX", 21, "L", 1, "byte"),
+    ("UR:CRYPTO-PSBT/1-3/" + "Ab9 .,~-_x" * 9, 7, "L", 3, "auto"),
+]
+
+QR_ECC_QUIRC = {"M": 0, "L": 1, "H": 2, "Q": 3}
+QR_MODE_QUIRC = {"numeric": 1, "alphanumeric": 2, "byte": 4}
+
+
+def byte_capacity(version: int, ecc: str) -> int:
+    """Longest byte-mode payload the symbol still holds, found by probing."""
+    import segno
+
+    length = 0
+
+    while True:
+        try:
+            segno.make("a" * (length + 1), version=version, error=ecc, mask=0, mode="byte",
+                       boost_error=False)
+        except Exception:
+            return length
+        length += 1
+
+
+def qrcode_vectors() -> str:
+    import segno
+
+    arrays = []
+    rows = []
+
+    for index, (payload, version, ecc, mask, mode) in enumerate(QR_CASES):
+        if payload == "MAX":
+            # Byte-mode rows are filled to capacity on purpose. When spare codewords are left over
+            # the reference pads them 0x00 before starting the 0xEC/0x11 sequence that section
+            # 8.4.10 prescribes, so only an exactly full data region says the same thing twice.
+            length = byte_capacity(version, ecc)
+            payload = "ur:bytes/" + "".join(chr(ord("a") + (i % 26)) for i in range(length - 9))
+
+        symbol = segno.make(
+            payload,
+            version=version,
+            error=ecc,
+            mask=mask,
+            mode=None if mode == "auto" else mode,
+            boost_error=False,
+        )
+        if (symbol.version, symbol.error, symbol.mask, symbol.mode) != (version, ecc, mask, mode if mode != "auto" else symbol.mode):
+            sys.exit(
+                f"segno chose version={symbol.version} error={symbol.error} "
+                f"mask={symbol.mask} mode={symbol.mode}"
+            )
+
+        matrix = symbol.matrix
+        size = len(matrix)
+        bits = bytearray((size * size + 7) // 8)
+
+        for y in range(size):
+            for x in range(size):
+                if matrix[y][x]:
+                    pos = y * size + x
+                    bits[pos >> 3] |= 1 << (pos & 7)
+
+        name = f"QR_MATRIX_{index}"
+        body = ", ".join(f"0x{b:02x}" for b in bits)
+        arrays.append(f"static const uint8_t {name}[{len(bits)}] = {{\n    {body},\n}};")
+        rows.append(
+            "  { %s, %s, %d, %d, %d, %d, %d, %d, %d },"
+            % (
+                cstr(payload),
+                name,
+                version,
+                QR_ECC_QUIRC[ecc],
+                mask,
+                size,
+                len(payload.encode()),
+                QR_MODE_QUIRC[symbol.mode],
+                0 if mode == "auto" else 1,
+            )
+        )
+
+    oversized = []
+
+    for version, ecc in ((26, "L"), (40, "L")):
+        symbol = segno.make("ur:bytes/" + "a" * 10, version=version, error=ecc, mask=0,
+                            boost_error=False)
+        if symbol.version != version:
+            sys.exit(f"segno chose version {symbol.version}, wanted {version}")
+
+        matrix = symbol.matrix
+        size = len(matrix)
+        bits = bytearray((size * size + 7) // 8)
+
+        for y in range(size):
+            for x in range(size):
+                if matrix[y][x]:
+                    pos = y * size + x
+                    bits[pos >> 3] |= 1 << (pos & 7)
+
+        oversized.append("  { %d, QR_OVER_SIZE_%d }," % (size, version))
+        arrays.append(
+            "static const uint8_t QR_OVER_SIZE_%d[%d] = {\n    %s,\n};"
+            % (version, len(bits), ", ".join(f"0x{b:02x}" for b in bits))
+        )
+
+    return """#ifndef VECTORS_QRCODE_H
+#define VECTORS_QRCODE_H
+
+#include <stdint.h>
+
+/*
+ * reference
+ *
+ * segno %s (https://segno.readthedocs.io/), an implementation sharing no code with the vendored
+ * encoder or decoder. Each matrix is a module grid, row-major, one bit per module, bit set
+ * meaning dark, in the layout struct quirc_code documents:
+ *
+ *   cell_bitmap[(y * size + x) >> 3] & (1 << ((y * size + x) & 7))
+ *
+ * ecc is a QUIRC_ECC_LEVEL_* value, data_type a QUIRC_DATA_TYPE_* value. Where the symbol was
+ * made with an explicit segment type the encoder under test reproduces it module for module;
+ * single_segment is 0 where the reference chose the segmentation itself, which a competing encoder
+ * is free to do differently, so such a row pins only the decoder.
+ */
+
+%s
+
+typedef struct {
+  const char* payload;
+  const uint8_t* matrix;
+  uint8_t version;
+  uint8_t ecc;
+  uint8_t mask;
+  uint8_t size;
+  uint16_t payload_len;
+  uint8_t data_type;
+  uint8_t single_segment;
+} qr_vector_t;
+
+static const qr_vector_t QR_VECTORS[] = {
+%s
+};
+
+#define QR_VECTORS_COUNT (sizeof(QR_VECTORS) / sizeof(QR_VECTORS[0]))
+
+/* Symbols past the largest version the scanner sizes its buffers for. The grid the scanner
+ * measures out of the image is what has to stay inside those buffers. */
+typedef struct {
+  uint8_t size;
+  const uint8_t* matrix;
+} qr_over_size_t;
+
+static const qr_over_size_t QR_OVER_SIZE[] = {
+%s
+};
+
+#define QR_OVER_SIZE_COUNT (sizeof(QR_OVER_SIZE) / sizeof(QR_OVER_SIZE[0]))
+
+#endif
+""" % (getattr(segno, "__version__", "unknown"), "\n\n".join(arrays), "\n".join(rows),
+       "\n".join(oversized))
+
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -1256,6 +1434,7 @@ def main() -> None:
         "vectors_address.h": address_vectors(),
         "vectors_psbt.h": psbt_vectors(),
         "vectors_bytewords.h": bytewords_vectors(),
+        "vectors_qrcode.h": qrcode_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

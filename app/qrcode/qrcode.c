@@ -844,38 +844,26 @@ uint32_t quirc_threshold(struct quirc *q)
 
     for (y = 0; y < QUIRC_HEIGHT; y++) {
         int row_average[QUIRC_WIDTH];
-
-        memset(row_average, 0, QUIRC_WIDTH * 4);
+        const int w_step = (y & 1) ? 1 : -1;
+        int w = (y & 1) ? 0 : QUIRC_WIDTH - 1;
+        int u = QUIRC_WIDTH - 1 - w;
 
         for (x = 0; x < QUIRC_WIDTH; x++) {
-            int w, u;
-
-            if (y & 1) {
-                w = x;
-                u = QUIRC_WIDTH - 1 - x;
-            } else {
-                w = QUIRC_WIDTH - 1 - x;
-                u = x;
-            }
-
-//            avg_w = (avg_w * (threshold_s - 1)) / threshold_s + row[w];
-//            avg_u = (avg_u * (threshold_s - 1)) / threshold_s + row[u];
-            // The original mul/div operation sought to reduce the average value by a small fraction (e.g. 1/79)
-            // This mul/shift approximation achieves the same goal with only a small percentage difference
             avg_w = ((avg_w * FRACMUL) >> 15) + row[w];
-            avg_u = ((avg_u * FRACMUL) >> 15) + row[u];
-
-            row_average[w] += avg_w;
-            row_average[u] += avg_u;
+            row_average[w] = avg_w;
+            w += w_step;
         }
 
         for (x = 0; x < QUIRC_WIDTH; x++) {
-            total_luma += row[x];
-            //            if (row[x] < row_average[x] * (100 - THRESHOLD_T) / (200 * threshold_s))
-            if (row[x] < ((row_average[x] * FRACMUL2) >> 20))
-                row[x] = QUIRC_PIXEL_BLACK;
+            avg_u = ((avg_u * FRACMUL) >> 15) + row[u];
+            total_luma += row[u];
+
+            if (row[u] < (((row_average[u] + avg_u) * FRACMUL2) >> 20))
+                row[u] = QUIRC_PIXEL_BLACK;
             else
-                row[x] = QUIRC_PIXEL_WHITE;
+                row[u] = QUIRC_PIXEL_WHITE;
+
+            u -= w_step;
         }
 
         row += QUIRC_WIDTH;
@@ -1318,6 +1306,11 @@ static int measure_timing_pattern(struct quirc *q, int index)
     /* Choose the nearest allowable grid size */
     size = scan * 2 + 13;
     ver = (size - 15) / 4;
+
+    if (ver > QUIRC_MAX_VERSION) {
+        return -1;
+    }
+
     qr->grid_size = ver * 4 + 17;
 
     return 0;
@@ -1342,16 +1335,32 @@ static int read_cell(const struct quirc *q, int index, int x, int y)
 static int fitness_cell(const struct quirc *q, int index, int x, int y)
 {
     const struct quirc_grid *qr = &q->grids[index];
+    const float *c = qr->c;
+    static const float offsets[] = {0.3, 0.5, 0.7};
+    float xu[3], yv[3], xw[3], yw[3], du[3], dv[3];
     int score = 0;
     int u, v;
 
+    for (int i = 0; i < 3; i++) {
+        float fx = x + offsets[i];
+        float fy = y + offsets[i];
+
+        xu[i] = c[0]*fx;
+        yv[i] = c[1]*fy;
+        xw[i] = c[3]*fx;
+        yw[i] = c[4]*fy;
+        du[i] = c[6]*fx;
+        dv[i] = c[7]*fy;
+    }
+
     for (v = 0; v < 3; v++)
         for (u = 0; u < 3; u++) {
-            static const float offsets[] = {0.3, 0.5, 0.7};
+            float den = du[u] + dv[v] + 1.0;
             struct quirc_point p;
 
-            perspective_map(qr->c, x + offsets[u],
-                           y + offsets[v], &p);
+            p.x = fast_roundf((xu[u] + yv[v] + c[2]) / den);
+            p.y = fast_roundf((xw[u] + yw[v] + c[5]) / den);
+
             if (p.y < 0 || p.y >= QUIRC_HEIGHT || p.x < 0 || p.x >= QUIRC_WIDTH)
                 continue;
 

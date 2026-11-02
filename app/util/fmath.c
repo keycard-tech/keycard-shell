@@ -40,11 +40,6 @@ int APP_ALWAYS_INLINE fast_ceilf(float x)
     return ceilf(x);
 }
 
-int APP_ALWAYS_INLINE fast_roundf(float x)
-{
-    return roundf(x);
-}
-
 float APP_ALWAYS_INLINE fast_fabsf(float x)
 {
     return fabsf(x);
@@ -74,16 +69,6 @@ int APP_ALWAYS_INLINE fast_ceilf(float x)
     int i;
     asm volatile (
             "vcvtp.S32.f32  %[r], %[x]\n"
-            : [r] "=t" (i)
-            : [x] "t"  (x));
-    return i;
-}
-
-int APP_ALWAYS_INLINE fast_roundf(float x)
-{
-    int i;
-    asm volatile (
-            "vcvtr.S32.F32  %[r], %[x]\n"
             : [r] "=t" (i)
             : [x] "t"  (x));
     return i;

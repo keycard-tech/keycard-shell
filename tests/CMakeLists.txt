@@ -118,6 +118,19 @@ target_compile_options(app_ur PRIVATE ${SHELLOS_COMMON_FLAGS})
 target_link_libraries(app_ur PUBLIC app_crypto)
 
 # shellos_test(<name> LIBS <targets...>) builds tests/test_<name>.c and registers it with ctest.
+# The vendored quirc (OpenMV fork) and our own encoder. The image is supplied by the caller, so
+# nothing here reaches hardware; fmath.c is what qrcode.c's perspective maths calls.
+add_library(app_qrcode STATIC
+    ${SHELLOS_ROOT}/app/qrcode/qrcode.c
+    ${SHELLOS_ROOT}/app/qrcode/qrcodegen.c
+    ${SHELLOS_ROOT}/app/util/fmath.c
+)
+target_include_directories(app_qrcode PUBLIC
+    ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/app/qrcode ${CMAKE_CURRENT_SOURCE_DIR}/host
+)
+target_compile_options(app_qrcode PRIVATE ${SHELLOS_COMMON_FLAGS})
+target_link_libraries(app_qrcode PUBLIC m)
+
 function(shellos_test name)
   cmake_parse_arguments(TEST "" "SRC" "LIBS" ${ARGN})
   if(NOT TEST_SRC)
@@ -149,3 +162,4 @@ shellos_test(compactsize LIBS app_bitcoin)
 shellos_test(psbt LIBS app_bitcoin app_crypto)
 shellos_test(bytewords LIBS app_ur app_crypto)
 shellos_test(ur LIBS app_ur app_crypto)
+shellos_test(qrcode LIBS app_qrcode)

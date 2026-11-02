@@ -11,11 +11,28 @@
 #ifndef __FMATH_H__
 #define __FMATH_H__
 #include <stdlib.h>
+#if (__ARM_ARCH < 8)
+#include <math.h>
+#endif
+
+static inline __attribute__((always_inline)) int fast_roundf(float x) {
+#if (__ARM_ARCH >= 8)
+    int i;
+
+    asm volatile(
+        "vcvtr.S32.F32  %[r], %[x]\n"
+        : [r] "=t"(i)
+        : [x] "t"(x));
+
+    return i;
+#else
+    return (int)roundf(x);
+#endif
+}
 
 float fast_sqrtf(float x);
 int fast_floorf(float x);
 int fast_ceilf(float x);
-int fast_roundf(float x);
 float fast_atanf(float x);
 float fast_atan2f(float y, float x);
 float fast_expf(float x);
