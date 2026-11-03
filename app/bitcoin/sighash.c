@@ -10,11 +10,15 @@ static const uint8_t P2PKH_SCRIPT_PRE[4] = { 0x19, 0x76, 0xa9, 0x14 };
 static const uint8_t P2PKH_SCRIPT_POST[2] = { 0x88, 0xac };
 
 app_err_t btc_sighash_legacy(const btc_tx_ctx_t* tx_ctx, size_t index, uint8_t digest[SHA256_DIGEST_LENGTH]) {
-  SHA256_CTX sha256;
-  sha256_Init(&sha256);
-
   uint8_t sighash = tx_ctx->input_data[index].sighash_flag & SIGHASH_MASK;
   uint8_t anyonecanpay = tx_ctx->input_data[index].sighash_flag & SIGHASH_ANYONECANPAY;
+
+  if ((sighash == SIGHASH_SINGLE) && (index >= tx_ctx->output_count)) {
+    return ERR_DATA;
+  }
+
+  SHA256_CTX sha256;
+  sha256_Init(&sha256);
 
   sha256_Update(&sha256, (const uint8_t*) &tx_ctx->tx.version, sizeof(uint32_t));
 

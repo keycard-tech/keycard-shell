@@ -2196,8 +2196,8 @@ def legacy_digest(tx: dict, script_code: bytes, in_: int, hash_type: int) -> byt
     base = hash_type & 0x1F
     anyone_can_pay = bool(hash_type & 0x80)
     if base == 0x03 and in_ >= len(tx["outputs"]):
-        # The historical SIGHASH_SINGLE answer is the digest 0x...01; the device reports the case
-        # instead of signing it, so no vector here asks for it.
+        # Bitcoin Core answers with the constant 1, which is a signature over nothing at all. The
+        # device reports the case, so no vector here asks the legacy walker for a digest.
         raise ValueError("SIGHASH_SINGLE with no output at the input's index")
     inputs = [tx["inputs"][in_]] if anyone_can_pay else tx["inputs"]
 
@@ -2234,20 +2234,35 @@ def legacy_digest(tx: dict, script_code: bytes, in_: int, hash_type: int) -> byt
 
 def witness_digest(tx: dict, script_code: bytes, in_: int, hash_type: int, amount: bytes) -> bytes:
     """BIP-143's v0 digest. Unlike the legacy one it names no single input: prevouts, sequences and
-    outputs each get their own hash over the whole transaction."""
+    outputs each get their own hash over the whole transaction, and each is replaced by 32 zero bytes
+    when the hash type leaves it out.
+
+    SIGHASH_SINGLE with no output at the input's index is the interesting one: hashOutputs stays
+    zero, exactly as for SIGHASH_NONE, because the preimage never names an output. Bitcoin Core's
+    verifier computes the same thing, so the device signs this case -- the digest still commits to
+    every input and to the other outputs. The legacy hash has no such answer, which is why the two
+    walkers part ways here.
+    """
+    base = hash_type & 0x1F
+    anyone_can_pay = bool(hash_type & 0x80)
     prevouts = b"".join(entry["txid"] + entry["index"].to_bytes(4, "little") for entry in tx["inputs"])
     sequences = b"".join(entry["sequence"] for entry in tx["inputs"])
-    outputs = b"".join(amount + csb(len(script)) + script for amount, script in tx["outputs"])
-    stream = tx["version"]
-    stream += dsha256(prevouts)
-    stream += dsha256(sequences)
+    outputs = b"".join(value + csb(len(script)) + script for value, script in tx["outputs"])
+
+    hash_prevouts = bytes(32) if anyone_can_pay else dsha256(prevouts)
+    hash_sequence = bytes(32) if (anyone_can_pay or base != 0x01) else dsha256(sequences)
+    if base == 0x01:
+        hash_outputs = dsha256(outputs)
+    elif base == 0x03 and in_ < len(tx["outputs"]):
+        value, script = tx["outputs"][in_]
+        hash_outputs = dsha256(value + csb(len(script)) + script)
+    else:
+        hash_outputs = bytes(32)
+
+    stream = tx["version"] + hash_prevouts + hash_sequence
     stream += tx["inputs"][in_]["txid"] + tx["inputs"][in_]["index"].to_bytes(4, "little")
-    stream += csb(len(script_code)) + script_code
-    stream += amount
-    stream += tx["inputs"][in_]["sequence"]
-    stream += dsha256(outputs)
-    stream += tx["locktime"]
-    stream += (hash_type & 0xFFFFFFFF).to_bytes(4, "little")
+    stream += csb(len(script_code)) + script_code + amount + tx["inputs"][in_]["sequence"]
+    stream += hash_outputs + tx["locktime"] + (hash_type & 0xFFFFFFFF).to_bytes(4, "little")
     return dsha256(bytes(stream))
 
 
@@ -2341,11 +2356,10 @@ def sighash_sweep_cases() -> list:
     for n_inputs, n_outputs in [(1, 1), (1, 2), (2, 1), (2, 3), (3, 2), (19, 3), (2, 19), (40, 40)]:
         for hash_type in (0x01, 0x02, 0x03, 0x81, 0x82, 0x83):
             index = 1 if n_inputs > 1 else 0
-            if (hash_type & 0x1F) == 0x03 and index >= n_outputs:
-                continue
             raw = sweep_tx(n_inputs, n_outputs, bytes([0x00, 0x14]) + bytes(23), 0)
             tx = sighash_parse_tx(raw.hex())
-            digest = legacy_digest(tx, script_code, index, hash_type)
+            digest = b"" if (hash_type & 0x1F) == 0x03 and index >= n_outputs \
+                else legacy_digest(tx, script_code, index, hash_type)
             cases.append({
                 "name": f"sweep {n_inputs}in {n_outputs}out ht 0x{hash_type:02x} in{index}",
                 "tx": raw,
@@ -2377,6 +2391,56 @@ def sighash_sweep_cases() -> list:
             "amount": "0000000000000000",
             "digest": legacy_digest(tx, redeem, 1, hash_type).hex(),
         })
+
+    # SIGHASH_SINGLE with no output at the input's index. The two schemes answer differently and
+    # both answers are load-bearing, so both are pinned here.
+    #
+    # A witness input still has a preimage: hashOutputs is simply 32 zero bytes, which is what
+    # Bitcoin Core's verifier hashes too, so the device signs and the result is spendable.
+    #
+    # A legacy input has none. Core returns the constant 1, and a signature over a constant is valid
+    # for every transaction that spends the same outpoint with fewer outputs -- an amount and a
+    # destination the user never saw. So the legacy walker reports the case instead of signing, and
+    # no vector here asks it for a digest.
+    for n_inputs, n_outputs, index in [(2, 1, 1), (3, 1, 2), (5, 3, 4), (40, 1, 39)]:
+        raw = sweep_tx(n_inputs, n_outputs, bytes([0x00, 0x14]) + bytes(23), 0)
+        tx = sighash_parse_tx(raw.hex())
+        for hash_type in (0x03, 0x83):
+            for kind, utxo_script, redeem_script, witness, value in (
+                ("LEGACY", script_code.hex(), "", "", "0000000000000000"),
+                ("LEGACY_WITH_REDEEM", p2sh.hex(), redeem.hex(), "", "0000000000000000"),
+            ):
+                cases.append({
+                    "name": f"sweep single without output {kind} {n_inputs}in {n_outputs}out in{index} "
+                            f"ht 0x{hash_type:02x}",
+                    "tx": raw,
+                    "in": index,
+                    "hash_type": hash_type,
+                    "input_type": f"BTC_INPUT_TYPE_{kind}",
+                    "script": utxo_script,
+                    "redeem": redeem_script,
+                    "witness_script": witness,
+                    "amount": value,
+                    "digest": "",
+                })
+            for kind, utxo_script, redeem_script, witness, value in (
+                ("P2WPKH", (bytes([0, 0x14]) + hash160(public)).hex(), "", "", "0100000000000000"),
+                ("P2WSH", "", "", script_code.hex(), "0200000000000000"),
+            ):
+                cases.append({
+                    "name": f"sweep single without output {kind} {n_inputs}in {n_outputs}out in{index} "
+                            f"ht 0x{hash_type:02x}",
+                    "tx": raw,
+                    "in": index,
+                    "hash_type": hash_type,
+                    "input_type": f"BTC_INPUT_TYPE_{kind}",
+                    "script": utxo_script,
+                    "redeem": redeem_script,
+                    "witness_script": witness,
+                    "amount": value,
+                    "digest": witness_digest(tx, script_code, index, hash_type,
+                                             bytes.fromhex(value)).hex(),
+                })
 
     # Past 0xfc the length prefixes widen mid-transaction, for the scriptCode as much as for an
     # output's scriptPubKey.
@@ -2656,6 +2720,10 @@ def sighash_bip143_cases() -> list:
             input_type = "BTC_INPUT_TYPE_P2WPKH"
             witness_script, redeem = "", ""
             script = (bytes([0, 0x14]) + script_code[3:23]).hex()
+
+        if witness_digest(tx, script_code, in_, hash_type,
+                          bytes.fromhex(fields["amount"])).hex() != digest:
+            raise SystemExit(f"BIP-143 {kind} in{in_}: the reference does not reproduce the document")
 
         cases.append({
             "name": f"BIP-143 {kind} in{in_} ht {hash_type:#010x}",
