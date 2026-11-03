@@ -12,7 +12,7 @@ static const char INDEX_KEY[] = "index";
 
 /* Query keys that name a destination other than the address in the path. */
 static const char* const OTHER_DESTINATION_KEYS[] = {
-  "lightning", "lno", "sp", "pay", "bc", "tb", "pop"
+  "lightning", "lno", "lnurl", "sp", "pay", "bc", "tb", "pop"
 };
 
 static bool _prefix_eq(const char* name, size_t len, const char* prefix) {

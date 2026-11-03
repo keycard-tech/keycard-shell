@@ -65,6 +65,7 @@ set(SHELLOS_COMMON_FLAGS -include ${SHELLOS_ROOT}/app/variant.h)
 
 add_library(app_crypto STATIC
     ${SHELLOS_ROOT}/app/crypto/address.c
+    ${SHELLOS_ROOT}/app/crypto/addr_uri.c
     ${SHELLOS_ROOT}/app/crypto/base32.c
     ${SHELLOS_ROOT}/app/crypto/base58.c
     ${SHELLOS_ROOT}/app/crypto/bignum.c
@@ -172,6 +173,7 @@ shellos_test(slip39 LIBS app_crypto)
 shellos_test(base58 LIBS app_crypto)
 shellos_test(bech32 LIBS app_crypto)
 shellos_test(address LIBS app_crypto)
+shellos_test(addr_uri LIBS app_crypto)
 shellos_test(bignum LIBS app_crypto)
 shellos_test(ethereum LIBS app_ethereum app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)

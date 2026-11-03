@@ -39,6 +39,8 @@ SOURCES = {
     "bip350.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0350.mediawiki",
     "eip-155.md": "https://raw.githubusercontent.com/ethereum/EIPs/master/EIPS/eip-155.md",
     "erc-55.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-55.md",
+    "bip-0021.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0021.mediawiki",
+    "erc-681.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-681.md",
     "slip39_wordlist.txt": "https://raw.githubusercontent.com/satoshilabs/slips/master/slip-0039/wordlist.txt",
     "slip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-shamir-mnemonic/master/vectors.json",
     "rfc4231.txt": "https://www.rfc-editor.org/rfc/rfc4231.txt",
@@ -70,8 +72,19 @@ def hexs(data: bytes) -> str:
     return data.hex()
 
 
+C_ESCAPES = {
+    ord("\\"): "\\\\",
+    ord('"'): '\\"',
+    ord("\t"): "\\t",
+    ord("\r"): "\\r",
+    ord("\n"): "\\n",
+}
+
+
 def cstr(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """A C string literal. Control characters are escaped, because a bare newline or tab
+    inside quotes does not survive a header being read again."""
+    return '"' + value.translate(C_ESCAPES) + '"'
 
 
 def wordlist_digest(url_name: str, words: list[str]) -> str:
@@ -759,6 +772,258 @@ static const char* const COMPACTSIZE_NONCANONICAL[] = {{
 }};
 
 #define COMPACTSIZE_NONCANONICAL_COUNT (sizeof(COMPACTSIZE_NONCANONICAL) / sizeof(COMPACTSIZE_NONCANONICAL[0]))
+
+#endif
+"""
+
+
+# ---------------------------------------------------------------- addr_uri
+
+# Expectations for the URI splitter. Nothing here is computed from the module: the inputs are the
+# two specifications' own examples (asserted below to appear verbatim) plus forms that occur in
+# practice, and each expectation is stated for the row or the group it belongs to.
+#
+#   accept  whether address_uri_parse() must return true
+#   address the target it must hand back, verbatim -- case included, since base58 and the ERC-681
+#           hexadecimal address are case-bearing
+#   index   the keycard-specific ?index= narrowing, or None for "the caller picks the range"
+#
+# The policy is addr_uri.h's: a URI is acted on only if it cannot point somewhere other than the
+# address in its path.
+
+BIP21_ADDRESS = "175tWpb8K1S7NmH4Zx6rewF9WQrcZv245W"
+ERC681_ADDRESS = "0xfb6916095ca1df60bb79Ce92ce3ea74c37c5d359"
+ERC681_CONTRACT = "0x89205a3a3b2a69de6dbf7f01ed13b2108b2c43e7"
+ERC681_BENEFICIARY = "0x8e23ee67d1332ad560396262c48ffbb01f93d052"
+
+URI_CASES = [
+    # BIP-21's own examples. Its "Forward compatibility" section: a client that does not implement
+    # a req- variable MUST consider the whole URI invalid; unknown non-req- variables may be
+    # ignored. Nothing here but the path can move coins, so index stays None.
+    ("bitcoin:" + BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?label=Luke-Jr" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?amount=20.3&label=Luke-Jr" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?amount=50&label=Luke-Jr&message=Donation%%20for%%20project%%20xyz" % BIP21_ADDRESS,
+     True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?req-somethingyoudontunderstand=50&req-somethingelseyoudontget=999" % BIP21_ADDRESS,
+     False, "bitcoin", "", None),
+    ("bitcoin:%s?somethingyoudontunderstand=50&somethingelseyoudontget=999" % BIP21_ADDRESS,
+     True, "bitcoin", BIP21_ADDRESS, None),
+    # BIP-21: "The scheme component is case-insensitive... The rest of the URI is case-sensitive".
+    # Upper case parameter keys are therefore not what the specification calls them -- refusing
+    # them anyway is stricter than required, which is the safe direction for a destination key.
+    ("BITCOIN:" + BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?LIGHTNING=lnbc1" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?REQ-x=1" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    # A second '?' is legal query data under RFC 3986; the keys before it are unaffected.
+    ("bitcoin:%s?label=Steve?message=Comments" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    # A fragment right after the address is refused outright. A '#' further along is inside the
+    # query, where it starts no parameter -- so the item that follows is an unknown key, not req-.
+    ("bitcoin:%s#donate" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?amount=20.3#frag" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?#req-x=1" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    # Segwit addresses in bitcoin: URIs, from BIP-173. BIP-21's grammar says *base58 and predates
+    # them; the case the vector publishes is preserved for the decoder to judge.
+    ("bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", True, "bitcoin",
+     "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", None),
+    ("BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4", True, "",
+     "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4", None),
+
+    # Query keys that name a destination of their own are refused whole -- one row per key in
+    # OTHER_DESTINATION_KEYS, cross-checked below so a key added to that list without a vector
+    # fails generation, plus the near misses that have to stay accepted because the match is on the
+    # whole key. The Lightning spellings matter because LUD-16 and LUD-17 put a bolt11 invoice or
+    # an LNURL next to an on-chain address.
+    ("bitcoin:%s?lightning=lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqf" % BIP21_ADDRESS,
+     False, "bitcoin", "", None),
+    ("bitcoin:%s?lno=LNO1QYR5HXW" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?lnurl=LNURL1DP68GURN8GHJ7UM9WFMXJCM99E3K7MF0D9EK2PP5V0XV" % BIP21_ADDRESS,
+     False, "bitcoin", "", None),
+    ("bitcoin:%s?lnurl" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?LNURL=x" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?lnurlx=1" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?sp=0200000001" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?pay=https://example.com/pay" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?bc=bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4" % BIP21_ADDRESS,
+     False, "bitcoin", "", None),
+    ("bitcoin:%s?tb=tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx" % BIP21_ADDRESS,
+     False, "bitcoin", "", None),
+    ("bitcoin:%s?pop=deadbeef" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    # A valueless key still names the destination, and so does a key that merely starts with one.
+    ("bitcoin:%s?lightning" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?lightningx=1" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?pay-1=2" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?xreq-y=1" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?req-" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?req-x&amount=1" % BIP21_ADDRESS, False, "bitcoin", "", None),
+
+    # ERC-681: request = schema_prefix target_address [ "@" chain_id ] [ "/" function_name ]
+    #                   [ "?" parameters ], schema_prefix = "ethereum" ":" [ "pay-" ].
+    # The target_address is either the beneficiary or, when a function follows, the contract --
+    # and a contract is never a payment target, so a path is refused.
+    ("ethereum:%s?value=2.014e18" % ERC681_ADDRESS, True, "ethereum", ERC681_ADDRESS, None),
+    ("ethereum:pay-%s" % ERC681_ADDRESS, True, "ethereum", ERC681_ADDRESS, None),
+    ("ethereum:%s/transfer?address=%s&uint256=1" % (ERC681_CONTRACT, ERC681_BENEFICIARY),
+     False, "ethereum", "", None),
+    ("ethereum:%s/" % ERC681_CONTRACT, False, "ethereum", "", None),
+    ("ethereum:%s/?value=1" % ERC681_CONTRACT, False, "ethereum", "", None),
+    # The chain id is metadata, not a destination: it is dropped. An empty or non-numeric one is
+    # still refused, because guessing which network a request meant is a destination choice.
+    ("ethereum:%s@1" % ERC681_CONTRACT, True, "ethereum", ERC681_CONTRACT, None),
+    ("ethereum:%s@137?value=1e18" % ERC681_CONTRACT, True, "ethereum", ERC681_CONTRACT, None),
+    ("ethereum:%s@abc" % ERC681_CONTRACT, False, "ethereum", "", None),
+    ("ethereum:%s@?value=1" % ERC681_CONTRACT, True, "ethereum", ERC681_CONTRACT, None),
+    # "pay-" is part of the scheme prefix in the specification's grammar and lower case there; the
+    # scheme is matched case-insensitively (RFC 3986) but the prefix is not, so an upper case PAY-
+    # stays glued to what the caller then has to make of it.
+    ("ETHEREUM:%s" % ERC681_ADDRESS, True, "ethereum", ERC681_ADDRESS, None),
+    ("ethereum:PAY-%s" % ERC681_ADDRESS, True, "ethereum", "PAY-" + ERC681_ADDRESS, None),
+    # ERC-681 allows an ENS name where the address goes, and says a client "may ... outright
+    # reject" names that look like hexadecimal addresses. The splitter hands the name over and the
+    # decoder in core.c is what refuses it, because it wants 0x plus forty hex digits.
+    ("ethereum:vitalik.eth", True, "ethereum", "vitalik.eth", None),
+    # BIP-21 lists "address" as a query key and ERC-681 uses it as transfer's beneficiary. On a URI
+    # with no function the path target wins, so it is an unknown key here -- not an alias.
+    ("ethereum:%s?address=%s" % (ERC681_ADDRESS, ERC681_BENEFICIARY), True, "ethereum",
+     ERC681_ADDRESS, None),
+
+    # keycard's own ?index= narrows which of its addresses the user is asked to confirm; it can
+    # only make the search stricter, so it is checked for range rather than for meaning. index=0
+    # is a real index and must not read as "absent".
+    ("bitcoin:%s?index=0" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, 0),
+    ("bitcoin:%s?index=7&label=x" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, 7),
+    ("bitcoin:%s?label=x&index=7" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, 7),
+    ("bitcoin:%s?index=007" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, 7),
+    ("bitcoin:%s?index=4294967294" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, 4294967294),
+    ("bitcoin:%s?index=4294967295" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?index=4294967296" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?index=99999999999999999999" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?index=" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?index" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?index=1&index=4294967295" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?index=+1" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?index=1e3" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s?indexx=1" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    # Short keys, including ones shorter than the req- prefix itself.
+    ("bitcoin:%s?x=1" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?x" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?a=1&b=2&c=3" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+
+    # Forms with no scheme at all, and forms that only look like URIs. A colon always introduces a
+    # scheme, so anything unknown before one is refused rather than treated as an address.
+    (BIP21_ADDRESS, True, "", BIP21_ADDRESS, None),
+    ("LNURL1DP68GURN8GHJ7UM9WFMXJCM99E3K7MF0D9EK2PP5V0XV" + "0" * 40, True, "",
+     "LNURL1DP68GURN8GHJ7UM9WFMXJCM99E3K7MF0D9EK2PP5V0XV" + "0" * 40, None),
+    ("", False, "", "", None),
+    ("   ", False, "", "", None),
+    ("\t \r\n", False, "", "", None),
+    ("bitcoin:", False, "bitcoin", "", None),
+    ("bitcoin:?index=1", False, "bitcoin", "", None),
+    (":%s" % BIP21_ADDRESS, False, "", "", None),
+    ("http://example.com/%s" % BIP21_ADDRESS, False, "", "", None),
+    # Without a colon there is no scheme to check, so the whole string is the target and whether it
+    # means anything is the decoder's problem.
+    ("mattermost", True, "", "mattermost", None),
+    # Surrounding whitespace is what a scanned line or a clipboard tends to carry.
+    ("  bitcoin:%s  \t\r\n" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("\nbitcoin:%s?index=2\n" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, 2),
+    # A colon after the target opens a query-ish tail rather than another scheme; the target is
+    # still the path, and the tail is checked for destination keys like any other.
+    ("bitcoin:%s:extra" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s:req-x=1" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    # Empty query items, and the delimiters that end a target.
+    ("bitcoin:%s?" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    ("bitcoin:%s?&" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, None),
+    # Only '?' opens a query, so a '&' that arrives before one is part of the target rather than a
+    # separator. BIP-21's grammar makes it not base58 either, so what refuses such a URI is the
+    # decoder -- the splitter's contract is to report the path, not to judge it.
+    ("bitcoin:%s&&index=2" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS + "&&index=2", None),
+    ("bitcoin:%s&index=2" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS + "&index=2", None),
+    ("bitcoin:%s@123?index=2" % BIP21_ADDRESS, True, "bitcoin", BIP21_ADDRESS, 2),
+    ("bitcoin:%s@123abc" % BIP21_ADDRESS, False, "bitcoin", "", None),
+    ("bitcoin:%s/?x=1" % BIP21_ADDRESS, False, "bitcoin", "", None),
+
+    # out.address is char[MAX_ADDR_LEN] and the copy is guarded by the header, so a target of
+    # MAX_ADDR_LEN - 1 characters still leaves room for the terminator and longer does not.
+    ("bitcoin:" + "1" * 89, True, "bitcoin", "1" * 89, None),
+    ("bitcoin:" + "1" * 90, True, "bitcoin", "1" * 90, None),
+    ("bitcoin:" + "1" * 91, False, "bitcoin", "", None),
+    ("bitcoin:" + "1" * 500, False, "bitcoin", "", None),
+]
+
+
+def addr_uri_vectors() -> str:
+    """Address URI splitting, against BIP-21, ERC-681 and the policy stated in addr_uri.h."""
+    bip21 = fetch("bip-0021.mediawiki")
+    erc681 = fetch("erc-681.md")
+
+    for spec, needles in ((bip21, [BIP21_ADDRESS, ("bitcoin:%s?label=Luke-Jr" % BIP21_ADDRESS),
+                                   ("bitcoin:%s?amount=20.3&label=Luke-Jr" % BIP21_ADDRESS),
+                                   ("bitcoin:%s?amount=50&label=Luke-Jr&message=Donation%%20for%%20project%%20xyz" % BIP21_ADDRESS),
+                                   ("bitcoin:%s?req-somethingyoudontunderstand=50&req-somethingelseyoudontget=999" % BIP21_ADDRESS),
+                                   ("bitcoin:%s?somethingyoudontunderstand=50&somethingelseyoudontget=999" % BIP21_ADDRESS)]),
+                          (erc681, [ERC681_ADDRESS, ERC681_CONTRACT, ERC681_BENEFICIARY,
+                                    ("ethereum:%s?value=2.014e18" % ERC681_ADDRESS),
+                                    ("ethereum:%s/transfer?address=%s&uint256=1" % (ERC681_CONTRACT, ERC681_BENEFICIARY))])):
+        for needle in needles:
+            assert needle in spec, needle
+
+    bip173 = fetch("bip173.mediawiki")
+    assert "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4" in bip173.upper()
+
+    # Every key the parser treats as naming another destination has to have a row of its own: the
+    # list lives in the firmware, the reasons live here, and this is what keeps them together.
+    listing = re.search(
+        r"OTHER_DESTINATION_KEYS\[\] = \{(.*?)\};",
+        (HERE.parents[1] / "app/crypto/addr_uri.c").read_text(),
+        re.S,
+    )
+    keys = re.findall(r'"([^"]+)"', listing.group(1))
+    assert len(keys) >= 7, keys
+    refused = [uri for uri, accept, *_ in URI_CASES if not accept]
+    for key in keys:
+        assert any(u.endswith("?%s" % key) or ("?%s=" % key) in u for u in refused), key
+
+    rows = []
+    for uri, accept, scheme, address, index in URI_CASES:
+        if scheme == "bitcoin":
+            kind = "ADDR_URI_BITCOIN"
+        elif scheme == "ethereum":
+            kind = "ADDR_URI_ETHEREUM"
+        else:
+            kind = "ADDR_URI_NONE"
+        rows.append(
+            "  {%s, %d, %s, %s, %s}"
+            % (cstr(uri), 1 if accept else 0, kind, cstr(address),
+               "ADDR_URI_INDEX_NONE" if index is None else "%d" % index)
+        )
+
+    return f"""#ifndef VECTORS_ADDR_URI_H
+#define VECTORS_ADDR_URI_H
+
+/* spec: {provenance('bip-0021.mediawiki')}
+ *     {provenance('erc-681.md')}
+ *     {provenance('bip173.mediawiki')}
+ *
+ * Splitting an address URI into scheme, target and index. The URIs are the two documents' own
+ * examples where they have them -- asserted while generating -- and the expected verdict for each
+ * row follows those documents plus the rule addr_uri.h states: refuse a URI that could point
+ * somewhere other than the target in its path. Where a row is accepted with a target the caller
+ * cannot use (an ENS name, a LNURL, an upper case PAY- prefix), that is the splitter doing its
+ * part and leaving the judgement to the decoder.
+ */
+typedef struct {{
+  const char* uri;
+  int accept;
+  addr_uri_scheme_t scheme;
+  const char* address;
+  uint32_t index;
+}} addr_uri_case_t;
+
+static const addr_uri_case_t ADDR_URI_CASES[] = {{
+{",\n".join(rows)}}};
+
+#define ADDR_URI_CASES_COUNT (sizeof(ADDR_URI_CASES) / sizeof(ADDR_URI_CASES[0]))
 
 #endif
 """
@@ -3840,6 +4105,7 @@ def main() -> None:
         "vectors_bech32.h": bech32_vectors(),
         "vectors_compactsize.h": compactsize_vectors(),
         "vectors_address.h": address_vectors(),
+        "vectors_addr_uri.h": addr_uri_vectors(),
         "vectors_psbt.h": psbt_vectors(),
         "vectors_bytewords.h": bytewords_vectors(),
         "vectors_qrcode.h": qrcode_vectors(),

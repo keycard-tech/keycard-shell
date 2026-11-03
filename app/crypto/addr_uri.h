@@ -22,19 +22,17 @@ typedef struct {
 } addr_uri_t;
 
 /**
- * Split a scanned or typed address string: surrounding whitespace, an optional
- * case-insensitive 'bitcoin:' (BIP21/BIP321) or 'ethereum:'/'ethereum:pay-'
- * (ERC-681) scheme, the address itself and an optional query.
+ * Split a scanned or typed address URI: surrounding whitespace, an optional
+ * case-insensitive 'bitcoin:'/'ethereum:' scheme (ERC-681's 'pay-' target prefix
+ * included), the target, and an optional query.
  *
- * A URI is accepted only when it cannot redirect the payment away from the
- * address: required-but-unsupported parameters ('req-', BIP321) and query keys
- * naming another destination (lightning, lno, sp, pay, bc, tb, pop) are
- * rejected, as are fragments, a '/function' path (the ERC-681 address is then
- * the token contract) and ENS names. 'amount', 'label', 'message', the ERC-681
- * chain id and unknown non-required keys carry no destination and are ignored.
+ * Accepted only when the URI cannot point somewhere other than that target, so a
+ * required-but-unsupported parameter or a key naming a second destination refuses the
+ * whole string. Whether the target is an address is the caller's judgement.
  *
  * @param in NUL-terminated not required; only in_len bytes are read
- * @return false if the string is not an address we are willing to act on
+ * @return false if the string is not something to act on, in which case the output
+ *         holds whatever the parse reached: the verdict is all a caller may use
  */
 bool address_uri_parse(const char* in, size_t in_len, addr_uri_t* out);
 
