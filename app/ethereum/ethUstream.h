@@ -34,10 +34,11 @@ struct txContext_t;
 // First variant of every Tx enum.
 #define RLP_NONE 0
 
-#define PARSING_IS_DONE(ctx)                                              \
-  ((ctx->txType == LEGACY && ctx->currentField == LEGACY_RLP_DONE) ||   \
-   (ctx->txType == EIP2930 && ctx->currentField == EIP2930_RLP_DONE) || \
-   (ctx->txType == EIP1559 && ctx->currentField == EIP1559_RLP_DONE))
+#define PARSING_IS_DONE(ctx)                                                \
+  ((ctx->txType == LEGACY && ctx->currentField == LEGACY_RLP_DONE) ||       \
+   (ctx->txType == EIP2930 && ctx->currentField == EIP2930_RLP_DONE) ||     \
+   (ctx->txType == EIP1559 && ctx->currentField == EIP1559_RLP_DONE) ||     \
+   (ctx->txType == EIP7702 && ctx->currentField == EIP7702_RLP_DONE))
 
 typedef enum rlpLegacyTxField_e {
   LEGACY_RLP_NONE = RLP_NONE,
@@ -141,6 +142,9 @@ typedef struct txContent_t {
 
 typedef struct txContext_t {
   uint8_t currentField;
+  uint32_t consumed;
+  uint32_t listEnd;
+  uint8_t scalar[sizeof(uint32_t)];
   SHA3_CTX *sha3;
   uint32_t currentFieldLength;
   uint32_t currentFieldPos;

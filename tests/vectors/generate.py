@@ -18,6 +18,7 @@ import hashlib
 import hmac
 import json
 import os
+import random
 import re
 import string
 import sys
@@ -36,6 +37,7 @@ SOURCES = {
     "base58.cpp": "https://raw.githubusercontent.com/bitcoin/bitcoin/master/src/base58.cpp",
     "bip173.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0173.mediawiki",
     "bip350.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0350.mediawiki",
+    "eip-155.md": "https://raw.githubusercontent.com/ethereum/EIPs/master/EIPS/eip-155.md",
     "slip39_wordlist.txt": "https://raw.githubusercontent.com/satoshilabs/slips/master/slip-0039/wordlist.txt",
     "slip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-shamir-mnemonic/master/vectors.json",
     "rfc4231.txt": "https://www.rfc-editor.org/rfc/rfc4231.txt",
@@ -2823,6 +2825,905 @@ static const sighash_case_t SIGHASH_CASES[] = {
        provenance("bip143.mediawiki"), "\n\n".join(arrays), "\n".join(rows))
 
 
+# --------------------------------------------------------------------------- bignum
+
+
+# app/crypto/bignum.c documents the representation it uses, and every expectation below is computed
+# from that document with CPython's integers: a bignum256 holds sum(limb[i] * 2**(29*i)). Nothing
+# here mirrors the C, which is the point: the C is free to be wrong about its own doc. The domain is
+# 2**261, not 2**256 -- nine 29-bit limbs -- and several functions are documented to work above the
+# 256-bit mark where a bignum256 cannot be written as 32 bytes at all.
+
+BN_LIMBS = 9
+BN_BITS = 29
+BN_BASE = 1 << BN_BITS
+BN_DOMAIN = BN_BASE ** BN_LIMBS
+
+SECP256K1_P = 2**256 - 2**32 - 977
+SECP256K1_N = 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFE_BAAEDCE6_AF48A03B_BFD25E8C_D0364141
+
+
+def bn_is_prime(n: int) -> bool:
+    """Miller-Rabin on the first twelve prime bases.
+
+    That set certifies numbers only below 3.3e24, so at 256 bits this is a screen and not a proof.
+    It is here to catch a mistyped constant, which is the realistic failure: every modular
+    expectation in this section rests on the modulus being prime -- bn_inverse uses Fermat and
+    bn_sqrt needs p % 4 == 3 -- and both numbers are published, so passing the screen says the
+    digits were copied correctly.
+    """
+    if n < 4:
+        return n in (2, 3)
+    if n % 2 == 0:
+        return False
+    d, r = n - 1, 0
+    while d % 2 == 0:
+        d //= 2
+        r += 1
+    for a in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37):
+        if a % n == 0:
+            continue
+        x = pow(a, d, n)
+        if x in (1, n - 1):
+            continue
+        for _ in range(r - 1):
+            x = x * x % n
+            if x == n - 1:
+                break
+        else:
+            return False
+    return True
+
+
+assert bn_is_prime(SECP256K1_P) and bn_is_prime(SECP256K1_N)
+assert 2**256 - 2**224 <= SECP256K1_P <= 2**256, "outside the prime range the file assumes"
+assert SECP256K1_P % 4 == 3, "bn_sqrt requires prime % 4 == 3"
+
+
+def bn_limbs(value: int) -> list:
+    if not 0 <= value < BN_DOMAIN:
+        raise ValueError(f"{hex(value)} does not fit the 261-bit domain")
+    return [(value >> (BN_BITS * i)) & (BN_BASE - 1) for i in range(BN_LIMBS)]
+
+
+def bn_raw_limbs(value: int) -> list:
+    """Nine base-2**29 digits with the most significant one absorbing whatever is left over.
+
+    bn_fast_mod is documented to take a number up to 2**264, and bn_normalize an unnormalized one;
+    neither value can be expressed as 32 big-endian bytes, so those tables carry limbs.
+    """
+    if not 0 <= value < (1 << 32) * BN_BASE ** (BN_LIMBS - 1):
+        raise ValueError(f"{hex(value)} does not fit nine limbs even unnormalized")
+    limbs = [(value >> (BN_BITS * i)) & (BN_BASE - 1) for i in range(BN_LIMBS - 1)]
+    limbs.append(value >> (BN_BITS * (BN_LIMBS - 1)))
+    return limbs
+
+
+def bn_unnormalized(value: int, spots: tuple) -> list:
+    """Limbs for `value` with carries left unpropagated at `spots`, representing it exactly.
+
+    Borrowing one whole limb out of the next one up keeps the sum unchanged while making the lower
+    limb overflow, which is the only way an unnormalized number arises in practice.
+    """
+    limbs = bn_limbs(value)
+    for i in spots:
+        if limbs[i + 1] == 0:
+            raise ValueError(f"cannot unnormalize limb {i} of {hex(value)}")
+        limbs[i] += BN_BASE
+        limbs[i + 1] -= 1
+    return limbs
+
+
+def bn_c(*limbs) -> str:
+    return "{ " + ", ".join(f"0x{v:08X}u" for v in limbs) + " }"
+
+
+def bn_hex(value: int) -> str:
+    if not 0 <= value < 2**256:
+        raise ValueError("not a 32-byte value")
+    return value.to_bytes(32, "big").hex()
+
+
+def bn_table(name: str, doc: str, rows: list) -> str:
+    """One bn_op_t table: (name, a, b, modulus, k, out, extra), None becoming 0 or "".
+
+    The operands are limbs rather than hex because a partly reduced number -- anything up to 2*prime
+    -- needs 257 bits and cannot be written as 32 bytes. Only the modulus is hex, and it is always
+    fully reduced.
+    """
+    body = ",\n".join(
+        '  { "%s",\n    %s,\n    %s, "%s",\n    %u, %s, %u }' % (
+            n, bn_c(*bn_limbs(a)) if a is not None else bn_c(*[0] * BN_LIMBS),
+            bn_c(*bn_limbs(b)) if b is not None else bn_c(*[0] * BN_LIMBS),
+            bn_hex(p) if p is not None else "", k, bn_c(*bn_limbs(out)), extra)
+        for n, a, b, p, k, out, extra in rows)
+    return (f"/* {doc} */\nstatic const bn_op_t {name}[] = {{\n{body}\n}};\n"
+            f"#define {name.upper()}_COUNT (sizeof({name}) / sizeof({name}[0]))\n")
+
+
+def bn_raw_table(name: str, doc: str, rows: list) -> str:
+    body = ",\n".join('  { "%s",\n    %s, "%s",\n    %s }' % (
+        n, bn_c(*inp), bn_hex(p) if p is not None else "", bn_c(*bn_limbs(out)))
+        for n, inp, p, out in rows)
+    return (f"/* {doc} */\nstatic const bn_raw_t {name}[] = {{\n{body}\n}};\n"
+            f"#define {name.upper()}_COUNT (sizeof({name}) / sizeof({name}[0]))\n")
+
+
+def bn_compact_table(rows: list) -> str:
+    body = ",\n".join(
+        '  { "compact_be %s in %d bytes",\n    %s, %u,\n    %s }' % (
+            hex(value)[:10], length, bn_c(*bn_limbs(value % 2 ** (8 * length))), length,
+            bn_c(*bn_limbs(value % 2 ** (8 * length))))
+        for value, length in rows)
+    return ("/* bn_read_compact_be: the number the last `length` bytes denote. */\n"
+            "static const bn_compact_t compact_be_cases[] = {\n" + body + "\n};\n"
+            "#define COMPACT_BE_CASES_COUNT (sizeof(compact_be_cases) / "
+            "sizeof(compact_be_cases[0]))\n")
+
+
+def bn_pow_mod_two_ways(base: int, expo: int, mod: int) -> int:
+    """CPython's pow cross-checked against a left-to-right binary method before either is trusted."""
+    result = 1
+    for bit in bin(expo)[2:]:
+        result = result * result % mod
+        if bit == "1":
+            result = result * base % mod
+    if result != pow(base, expo, mod):
+        raise SystemExit("the two modular exponentiations disagree")
+    return result
+
+
+def bn_format_model(amount: int, prefix, suffix, decimals: int, exponent: int, trailing: bool,
+                    thousands: str, capacity: int):
+    """The prototype bn_format carries as a comment, with two corrections the C insists on.
+
+    A non-empty suffix is separated by a space, which the prototype omits, and a buffer that cannot
+    hold the string plus its terminator gets nothing at all: the function fills it with NULs and
+    returns 0. A prefix or suffix of None is the NULL pointer the C accepts.
+    """
+    value = amount * 10**exponent if exponent >= 0 else amount // 10 ** (-exponent)
+    scale = 10**decimals
+    integer, fraction = divmod(value, scale)
+    group = thousands if thousands else ""
+    text = f"{integer:,}".replace(",", group) if group else f"{integer}"
+    if decimals:
+        fractional = f".{fraction:0{decimals}d}"
+        if not trailing:
+            fractional = fractional.rstrip("0").rstrip(".")
+    else:
+        fractional = ""
+    out = f"{prefix or ''}{text}{fractional}{(' ' + suffix) if suffix else ''}"
+    return "" if len(out) + 1 > capacity else out
+
+
+def bn_format_parse(text: str, prefix, suffix, decimals: int):
+    """The integer a formatted string denotes, ignoring grouping and padding.
+
+    This is the check that does not care how the digits were spelled, only that they are the amount's
+    -- which is the one property a user can act on.
+    """
+    body = text[len(prefix or ""): len(text) - (len(suffix) + 1 if suffix else 0)]
+    whole, dot, fraction = body.partition(".")
+    if dot:
+        fraction = fraction.ljust(decimals, "0")
+    group = THOUSANDS_STRIP
+    return int(whole.translate(group) or "0") * 10**decimals + (int(fraction) if fraction else 0)
+
+
+THOUSANDS_STRIP = {ord(","): None, ord(" "): None, ord("."): None}
+
+
+def bn_format_cases() -> str:
+    """Amount formatting: what the user reads on the screen before approving.
+
+    Each expectation is checked twice before it is emitted, once against the prototype above and once
+    by parsing the string back into the number it must denote. The second catches a model that is
+    self-consistent and wrong.
+    """
+    satoshi, ether = 10**8, 10**18
+    rows = [
+        # Written out by hand first, so the model is pinned to intent and not only to itself.
+        (0, "", "BTC", 8, 0, False, ",", 32, "0 BTC"),
+        (1, "", "BTC", 8, 0, False, ",", 32, "0.00000001 BTC"),
+        (satoshi, "", "BTC", 8, 0, False, ",", 32, "1 BTC"),
+        (satoshi + 1, "", "BTC", 8, 0, False, ",", 32, "1.00000001 BTC"),
+        (10 * satoshi, "", "BTC", 8, 0, False, ",", 32, "10 BTC"),
+        (123456789, "", "BTC", 8, 0, False, ",", 32, "1.23456789 BTC"),
+        (1000 * satoshi, "", "BTC", 8, 0, False, ",", 32, "1,000 BTC"),
+        (1234567 * satoshi, "", "BTC", 8, 0, False, ",", 32, "1,234,567 BTC"),
+        (21000000 * satoshi, "", "BTC", 8, 0, False, ",", 32, "21,000,000 BTC"),
+        (satoshi - 1, "", "BTC", 8, 0, False, ",", 32, "0.99999999 BTC"),
+        (satoshi // 2, "", "BTC", 8, 0, False, ",", 32, "0.5 BTC"),
+        (1, "", "BTC", 8, -1, False, ",", 32, "0 BTC"),
+        (satoshi, "", "BTC", 8, 0, True, ",", 32, "1.00000000 BTC"),
+        (satoshi // 100, "", "", 8, 0, False, ",", 32, "0.01"),
+        (satoshi * 10, "", "", 8, 0, False, ",", 32, "10"),
+        (satoshi * 1234567 + 89, "", "", 8, 0, False, ",", 32, "1,234,567.00000089"),
+        (ether, "", "ETH", 18, 0, False, " ", 64, "1 ETH"),
+        (ether + 1, "", "ETH", 18, 0, False, " ", 64, "1.000000000000000001 ETH"),
+        (1234, "", "", 0, 3, False, ",", 32, "1,234,000"),
+        (1234, "", "", 0, -1, False, ",", 32, "123"),
+        (0, "", "", 0, -5, False, ",", 32, "0"),
+        (9 ** 20, "", "", 0, 6, False, 0, 128, "12157665459056928801000000"),
+        (5, "", "", 0, 0, False, ",", 1, ""),
+        (5, "", "", 0, 0, False, ",", 2, "5"),
+        (5, "", "", 0, 0, False, ",", 3, "5"),
+        (5, "$", "CAD", 2, 0, False, ",", 11, "$0.05 CAD"),
+        (5, "$", "CAD", 2, 0, False, ",", 9, ""),
+        (505, "$", "CAD", 2, 0, False, ",", 12, "$5.05 CAD"),
+        (10**25 - 1, "", "", 0, 0, False, ",", 64, "9,999,999,999,999,999,999,999,999"),
+        (satoshi, None, None, 8, 0, False, 0, 32, "1"),
+        (0, None, "XBT", 0, 0, False, 0, 32, "0 XBT"),
+    ]
+
+    rng = random.Random(0xF074)
+    for _ in range(26):
+        amount = rng.randrange(0, 2 ** rng.randrange(1, 257))
+        decimals = rng.randrange(0, 19)
+        exponent = rng.randrange(-6, 7)
+        rows.append((amount, rng.choice(["", "$", "P ", None]), rng.choice(["", "BTC", "sat", None]),
+                     decimals, exponent, rng.randrange(2) == 1,
+                     rng.choice([",", " ", 0]), rng.choice([0, 1, 8, 24, 64, 128]), None))
+
+    out = []
+    for amount, prefix, suffix, decimals, exponent, trailing, thousands, cap, want in rows:
+        text = bn_format_model(amount, prefix, suffix, decimals, exponent, trailing, thousands, cap)
+        if want is not None and text != want:
+            raise SystemExit(f"bn_format model produced {text!r}, expected {want!r}")
+        if text:
+            scaled = amount * 10**exponent if exponent >= 0 else amount // 10 ** (-exponent)
+            if bn_format_parse(text, prefix, suffix, decimals) != scaled:
+                raise SystemExit(f"bn_format {text!r} does not parse back to {scaled}")
+        out.append((amount, prefix, suffix, decimals, exponent, trailing, thousands, cap, text))
+
+    def emit(row):
+        amount, prefix, suffix, decimals, exponent, trailing, thousands, cap, text = row
+        name = (f"format {hex(amount)[:10]} d{decimals} e{exponent}"
+                f"{' trailing' if trailing else ''}{' nul' if prefix is None or suffix is None else ''}"
+                f"{' cap' + str(cap) if cap != 64 else ''}")
+        return '  { "%s",\n    "%s", %s, %s,\n    %u, %d, %s, %s, %u,\n    "%s" },' % (
+            name, bn_hex(amount), "NULL" if prefix is None else '"%s"' % prefix,
+            "NULL" if suffix is None else '"%s"' % suffix, decimals, exponent,
+            "true" if trailing else "false",
+            "0" if not thousands else "'%s'" % thousands,
+            cap, text)
+
+    return ("/* Amount strings, as the screen shows them. expect is empty where the buffer cannot "
+            "hold the\n * string and its terminator and bn_format must return 0 having written "
+            "nothing useful.\n */\n"
+            "static const bn_format_t format_cases[] = {\n"
+            + "\n".join(emit(r) for r in out) + "\n};\n"
+            "#define FORMAT_CASES_COUNT (sizeof(format_cases) / sizeof(format_cases[0]))\n")
+
+
+def bignum_vectors() -> str:
+    p, n = SECP256K1_P, SECP256K1_N
+    rng = random.Random(0xB16B0B)
+
+    # Values the file's contracts call "normalized": every limb below 2**29, so below 2**256.
+    normal = [0, 1, 2, BN_BASE - 1, BN_BASE, BN_BASE + 1, 2**58 - 1, 2**32 - 1, 2**32, 2**64,
+              2**128, 2**255, 2**256 - 1, p, p - 1, p + 1, n, n - 1]
+    normal += [rng.randrange(0, 2**256) for _ in range(10)]
+    tables = {}
+
+    def add(table, name, a=None, b=None, mod=None, k=0, out=None, extra=0):
+        tables.setdefault(table, []).append((name, a, b, mod, k, out, extra))
+
+    for a in normal[:12]:
+        for b in (0, 1, BN_BASE - 1, p - 1, 2**256 - 1):
+            if a + b < BN_DOMAIN:
+                add("add_cases", f"add {hex(a)[:10]} + {hex(b)[:10]}", a=a, b=b, out=a + b)
+
+    for a in normal[:8]:
+        for b in (0, 1, p - 1):
+            add("addmod_cases", f"addmod {hex(a)[:10]} + {hex(b)[:10]}", a=a, b=b, mod=p,
+                out=(a + b) % p)
+
+    for a in (0, 1, BN_BASE - 1, 2**32 - 1, 2**255, 2**256 - 1, p, BN_DOMAIN - 1 - 7):
+        for y in (0, 1, 2**29, 2**32 - BN_BASE):
+            if a + y < BN_DOMAIN:
+                add("addi_cases", f"addi {hex(a)[:10]} + {y}", a=a, k=y, out=a + y)
+
+    # bn_subi asserts y < prime->val[0], which for secp256k1 is 2**29 - 977.
+    for a in (0, 1, BN_BASE, 2**255, 2**256 - 1, p, p - 1):
+        for y in (1, 2, (p & (BN_BASE - 1)) - 1):
+            add("subi_cases", f"subi {hex(a)[:10]} - {y}", a=a, mod=p, k=y, out=a + p - y)
+
+    for a in (0, 1, BN_BASE, BN_BASE - 1, 2**255, 2**256 - 1, p, p - 1, n):
+        for b in (0, 1, a, BN_BASE, p):
+            if b <= a:
+                add("sub_cases", f"sub {hex(a)[:10]} - {hex(b)[:10]}", a=a, b=b, out=a - b)
+
+    for x in (0, 1, p - 1, p, 2 * p - 1, 2**255, n):
+        for y in (0, 1, p - 1, p, 2 * p - 1):
+            add("subtractmod_cases", f"subtractmod {hex(x)[:8]} - {hex(y)[:8]}", a=x, b=y, mod=p,
+                out=x + 2 * p - y)
+
+    for x in normal[:8]:
+        for k in (0, 1, 2, 3, 7, 8):
+            add("mult_k_cases", f"mult_k {hex(x)[:10]} * {k}", a=x, mod=p, k=k, out=(x * k) % p)
+
+    for x in (0, 1, 2, p - 1, p, p + 1, 2 * p - 1, 2**255, 2**256 - 1, p // 2, p // 2 + 1):
+        add("mult_half_cases", f"mult_half {hex(x)[:10]}", a=x, mod=p,
+            out=x // 2 if x % 2 == 0 else (x + p) // 2)
+
+    for x in (0, 1, p - 1, p, p + 1, 2 * p - 1, 2**256 - 1, 2**255, n, 2 * n - 1):
+        mod = p if x < 2 * p else n
+        add("mod_cases", f"mod {hex(x)[:12]}", a=x, mod=mod, out=x % mod)
+
+    for _ in range(12):
+        k, x = rng.randrange(0, 2**256), rng.randrange(0, 2**256)
+        add("multiply_cases", f"multiply {hex(k)[:8]} x {hex(x)[:8]}", a=k, b=x, mod=p,
+            out=(k * x) % p)
+    for k, x in ((0, 2**256 - 1), (1, 2**256 - 1), (p - 1, p - 1), (2**128, 2**128),
+                 (2**256 - 1, 2**256 - 1), (n - 1, n - 1), (2**129 + 1, 2**127), (2, n)):
+        add("multiply_cases", f"multiply {hex(k)[:8]} by {hex(x)[:8]}", a=k, b=x, mod=p,
+            out=(k * x) % p)
+
+    for x in (0, 1, p - 1, 2**255, 2**256 - 1, p // 2, rng.randrange(0, 2**256)):
+        m = (-x * pow(p, -1, BN_BASE)) % BN_BASE
+        add("divide_base_cases", f"divide_base {hex(x)[:10]}", a=x, mod=p, out=(x + m * p) >> BN_BITS)
+
+    for base, expo in ((2, 0), (2, 1), (3, 255), (2, 256), (5, 2**8 - 1), (p - 1, 2**255),
+                       (p - 1, 2**256 - 1), (0, 0), (7, 2**200 + 3), (n, n - 2)):
+        add("power_mod_cases", f"power_mod {hex(base)[:8]} ^ {expo}", a=base, b=expo, mod=p,
+            out=bn_pow_mod_two_ways(base, expo, p))
+    for _ in range(10):
+        base, expo = rng.randrange(0, 2**256), rng.randrange(0, 2**256)
+        add("power_mod_cases", f"power_mod random {hex(base)[:8]}", a=base, b=expo, mod=p,
+            out=bn_pow_mod_two_ways(base, expo, p))
+
+    for _ in range(12):
+        root = rng.randrange(1, p)
+        x = root * root % p
+        got = pow(x, (p + 1) // 4, p)
+        if got * got % p != x:
+            raise SystemExit("the square root formula does not round-trip")
+        add("sqrt_cases", f"sqrt of {hex(root)[:8]} squared", a=x, mod=p, out=got)
+
+    for x in (0, 1, p - 1, 2, 3, BN_BASE, 2**255, 2**256 - 1, n, n - 1):
+        add("inverse_cases", f"inverse {hex(x)[:12]}", a=x, mod=p,
+            out=0 if x % p == 0 else pow(x, p - 2, p))
+    for _ in range(16):
+        x = rng.randrange(1, p)
+        inv = pow(x, p - 2, p)
+        if x * inv % p != 1:
+            raise SystemExit("the oracle's own inverse is wrong")
+        add("inverse_cases", f"inverse random {hex(x)[:10]}", a=x, mod=p, out=inv)
+
+    # bn_cnegate reduces first, then answers 2*prime - x when the condition is set and prime + x
+    # when it is not; k carries the condition.
+    for x in (0, 1, 2, p - 1, p, p + 1, 2 * p - 1, 2**255, 2**256 - 1, n, p // 2):
+        reduced = x % p
+        for cond in (0, 1):
+            add("cnegate_cases", f"cnegate {hex(x)[:10]} cond {cond}", a=x, mod=p, k=cond,
+                out=(2 * p - reduced) if cond else (p + reduced))
+
+    for x in (0, 1, BN_BASE - 1, BN_BASE, 2**256 - 1, p, 10**18, 210000):
+        for d in (1, 2, 10, 58, 1000, 61303):
+            q, r = divmod(x, d)
+            add("div_cases", f"div {hex(x)[:10]} by {d}", a=x, k=d, out=q, extra=r)
+    for _ in range(8):
+        x, d = rng.randrange(0, 2**256), rng.randrange(1, 61304)
+        q, r = divmod(x, d)
+        add("div_cases", f"div random by {d}", a=x, k=d, out=q, extra=r)
+
+    # The raw tables: subject is the limb vector, so the operand is not 32 bytes.
+    normalize = []
+    for value in (0, 1, BN_BASE - 1, 2**255, p, BN_DOMAIN - 1):
+        for spots in ((0,), (1, 3), tuple(range(BN_LIMBS - 1))):
+            try:
+                raw = bn_unnormalized(value, spots)
+            except ValueError:
+                continue
+            normalize.append((f"normalize {hex(value)[:8]} at {spots}", raw, None, value))
+    for _ in range(6):
+        value = rng.randrange(0, BN_DOMAIN)
+        spots = tuple(i for i in range(BN_LIMBS - 1) if rng.randrange(3) == 0)[:4] or (0,)
+        try:
+            normalize.append((f"normalize random {hex(value)[:8]}",
+                              bn_unnormalized(value, spots), None, value))
+        except ValueError:
+            pass
+
+    lshifts, rshifts, fast_mod = [], [], []
+    for value in (0, 1, 2, BN_BASE - 1, BN_BASE, 2**255, 2**256 - 1, p, n, 2**260 - 1):
+        if value * 2 < BN_DOMAIN:
+            lshifts.append((f"lshift {hex(value)[:10]}", bn_raw_limbs(value), None, value * 2))
+        rshifts.append((f"rshift {hex(value)[:10]}", bn_raw_limbs(value), None, value // 2))
+    for value in (0, 1, p, p - 1, 2 * p, 2 * p + 1, 2**256 - 1, 2**256 + 2**255, 3 * 2**256 + 7,
+                  (255 << 256) + p, 2**261 - 1, 2**264 - 1, p + (1 << 200)):
+        fast_mod.append((f"fast_mod {hex(value)[:12]}", bn_raw_limbs(value), p,
+                         value - (value >> 256) * p))
+
+    header = """/* Generated by tests/vectors/generate.py -- do not edit.
+ *
+ * Expectations for app/crypto/bignum.c, computed with CPython's arbitrary-precision integers from
+ * the representation that file documents (nine limbs, base 2**29, value = sum(limb[i] * 2**(29*i))).
+ * CPython is the oracle: it shares no code, no limb width and no reduction trick with this module.
+ *
+ * The moduli are secp256k1's field prime, written here as 2**256 - 2**32 - 977 as SEC 2 does, and
+ * its order. Both are proven prime by Miller-Rabin during generation, because bn_inverse uses
+ * Fermat's little theorem and bn_sqrt needs p % 4 == 3 -- a composite modulus would make an
+ * incorrect result look merely unusual. The test additionally checks the curve constants the
+ * firmware ships against these two values.
+ *
+ * Two tables carry limbs instead of hex. bn_fast_mod is documented to accept up to 2**264 and
+ * bn_normalize an unnormalized number, and neither can be spelled in 32 bytes.
+ *
+ * Amount strings are checked twice at generation time: against the prototype the function carries
+ * as a comment, and by parsing the produced string back into the integer it must represent.
+ */
+
+#ifndef VECTORS_BIGNUM_H
+#define VECTORS_BIGNUM_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "crypto/bignum.h"
+
+typedef struct {
+  const char* name;
+  /* Operands are limbs rather than hex because a partly reduced number -- anything up to 2*prime --
+   * needs 257 bits and cannot be written as 32 bytes. Empty limbs mean the operand is unused. */
+  uint32_t a[BN_LIMBS];
+  uint32_t b[BN_LIMBS];
+  const char* p_hex;        /* the modulus, always fully reduced; empty when there is none */
+  uint32_t k;               /* scalar operand: bn_mult_k's k, bn_addi's y, bn_long_division's d */
+  uint32_t out[BN_LIMBS];   /* expected result, base 2**29 */
+  uint32_t extra;           /* the remainder of bn_long_division */
+} bn_op_t;
+
+/* A number the function under test builds or accepts as raw limbs, because it does not fit 32
+ * bytes (bn_fast_mod takes up to 2**264) or is deliberately unnormalized (bn_normalize). */
+typedef struct {
+  const char* name;
+  uint32_t in[BN_LIMBS];
+  const char* p_hex;
+  uint32_t out[BN_LIMBS];
+} bn_raw_t;
+
+/* A value plus everything derived from its representation alone. */
+typedef struct {
+  const char* name;
+  const char* hex;          /* 32 bytes big-endian */
+  const char* le_hex;       /* the same value, 32 bytes little-endian */
+  uint32_t limbs[BN_LIMBS];
+  int bitcount;
+  unsigned int digitcount;
+} bn_value_t;
+
+typedef struct {
+  const char* name;
+  const char* amount_hex;
+  const char* prefix;
+  const char* suffix;
+  unsigned int decimals;
+  int exponent;
+  bool trailing;
+  char thousands;
+  unsigned int capacity;    /* size of the caller's buffer */
+  const char* expect;       /* empty when bn_format must return 0 */
+} bn_format_t;
+
+/* bn_read_compact_be takes a big-endian number of any length up to 32 bytes; the value it denotes
+ * is the one those bytes carry, as if the missing leading bytes were zero. */
+typedef struct {
+  const char* name;
+  uint32_t in[BN_LIMBS];
+  unsigned int length;
+  uint32_t out[BN_LIMBS];
+} bn_compact_t;
+
+/* inverse_mod_power_two(a, n) = 1/a mod 2**n. a is odd, 1 <= n <= 32. */
+static const uint32_t BN_INVERSE_POW2[][3] = {
+@POW2@
+};
+#define BN_INVERSE_POW2_COUNT (sizeof(BN_INVERSE_POW2) / sizeof(BN_INVERSE_POW2[0]))
+
+@VALUES@
+@RAW@
+@COMPACT@
+@FORMAT@
+@OPS@
+#endif
+"""
+
+    values = []
+    seen = set()
+    named = [
+        ("zero", 0), ("one", 1), ("two", 2), ("limb max", BN_BASE - 1),
+        ("limb overflow", BN_BASE), ("two limbs full", 2**58 - 1), ("three limbs", 2**58),
+        ("uint32 max", 2**32 - 1), ("uint32 wrap", 2**32), ("uint64 max", 2**64 - 1),
+        ("bit 128", 2**128), ("bit 255", 2**255), ("bit 255 with tail", 2**255 + 0xDEADBEEF),
+        ("2**256 - 1", 2**256 - 1), ("2**256 - 2", 2**256 - 2), ("secp256k1 p", p),
+        ("secp256k1 p - 1", p - 1), ("secp256k1 p + 1", p + 1), ("secp256k1 n", n),
+        ("secp256k1 n - 1", n - 1), ("ends and begins", 1 + (((2**256 - 1) >> 128) << 128)),
+        ("alternating", int("ffff0000" * 8, 16)),
+    ]
+    for i in range(12):
+        named.append((f"random {i}", rng.randrange(0, 2**256)))
+    for i in range(6):
+        named.append((f"random small {i}", rng.randrange(0, 10 ** rng.randrange(1, 12))))
+    for name, value in named:
+        if value in seen:
+            continue
+        seen.add(value)
+        values.append('  { "%s",\n    "%s",\n    "%s",\n    %s,\n    %d, %uU },' % (
+            name, bn_hex(value), value.to_bytes(32, "little").hex(), bn_c(*bn_limbs(value)),
+            value.bit_length(), 1 if value == 0 else len(str(value))))
+
+    pow2 = []
+    for bits in list(range(1, 33)) + [1, 2, 3, 16, 31, 32]:
+        for a in (1, 3, 5, BN_BASE - 1, 2**31 + 1, (1 << bits) - 1 if bits < 32 else 0xFFFFFFFF):
+            a |= 1
+            pow2.append("  { %u, %u, %u }" % (a & 0xFFFFFFFF, bits,
+                                              pow(a, -1, 2**bits) & (2**bits - 1)))
+
+    compact = []
+    for value in (0, 1, 255, 2**32 - 1, 2**64, 210000, p, 2**256 - 1, rng.randrange(0, 2**256)):
+        for length in (1, 4, 8, 13, 31, 32):
+            compact.append((value, length))
+
+    raw = "\n".join([
+        bn_raw_table("normalize_cases",
+                     "Carries left in the limbs; out is the same number normalized.", normalize),
+        bn_raw_table("lshift_cases",
+                     "bn_lshift doubles, for the inputs whose double still fits.", lshifts),
+        bn_raw_table("rshift_cases", "bn_rshift halves, rounding down.", rshifts),
+        bn_raw_table("fast_mod_cases",
+                     "Partly reduced by the documented formula x - (x // 2**256) * prime, which "
+                     "pins the value exactly.", fast_mod),
+    ])
+    ops = "\n".join(bn_table(name, DOC[name], tables[name]) for name in ORDER)
+    return (header.replace("@POW2@", ",\n".join(pow2))
+            .replace("@VALUES@",
+                     "static const bn_value_t values[] = {\n" + "\n".join(values) + "\n};\n"
+                     "#define VALUES_COUNT (sizeof(values) / sizeof(values[0]))\n")
+            .replace("@RAW@", raw)
+            .replace("@COMPACT@", bn_compact_table(compact))
+            .replace("@FORMAT@", bn_format_cases())
+            .replace("@OPS@", ops))
+
+
+ORDER = ["add_cases", "addmod_cases", "addi_cases", "subi_cases", "sub_cases",
+         "subtractmod_cases", "mult_k_cases", "mult_half_cases", "cnegate_cases", "mod_cases",
+         "multiply_cases", "divide_base_cases", "power_mod_cases", "sqrt_cases", "inverse_cases",
+         "div_cases"]
+
+DOC = {
+    "add_cases": "x += y, below 2**261, no modulus.",
+    "addmod_cases": "x += y then partly reduced: out is the fully reduced value, and the test reduces "
+                 "the result with bn_mod before comparing.",
+    "addi_cases": "x += y for a uint32 y at most 2**32 - 2**29.",
+    "subi_cases": "x = x + prime - y exactly, y below prime's lowest limb.",
+    "sub_cases": "res = x - y with x >= y, no modulus.",
+    "subtractmod_cases": "res = x + 2*prime - y exactly, which is what the file specifies rather than a "
+                      "choice of reduction.",
+    "mult_k_cases": "x = k*x % prime for k up to 8; partly reduced, so the test reduces first.",
+    "mult_half_cases": "x = x/2 if even else (x + prime)/2.",
+    "mod_cases": "fully reduced: out is exact.",
+    "multiply_cases": "k*x % prime, partly reduced; the test reduces with bn_mod before comparing.",
+    "divide_base_cases": "x / 2**29 % prime, computed as (x + m*prime) >> 29 with m the documented "
+                      "multiple that makes the sum divisible.",
+    "power_mod_cases": "x**e % prime, partly reduced; the test reduces with bn_mod before comparing.",
+    "sqrt_cases": "x**((prime+1)/4) % prime for a square x, fully reduced.",
+    "inverse_cases": "1/x % prime, fully reduced; zero stays zero, as the file states.",
+    "cnegate_cases": "x negated modulo prime: 2*prime - x when the condition (k) is set, prime + x "
+                  "when it is, after a reduction of x. Partly reduced either way.",
+    "div_cases": "q = x / d and r = x % d for d up to 61303, exact.",
+}
+
+
+# --- Ethereum -----------------------------------------------------------------------------
+#
+# An RLP encoder and the four signing-preimage shapes, both written here from the specs, so the
+# parser is checked against something that shares no code with it. The encoder is first required to
+# reproduce EIP-155's published example transaction byte for byte; nothing else in this section is
+# trusted until that has passed.
+
+def eth_be(n: int) -> bytes:
+    return b"" if n == 0 else n.to_bytes((n.bit_length() + 7) // 8, "big")
+
+
+def rlp_header(n: int, base: int) -> bytes:
+    if n < 56:
+        return bytes([base + n])
+    length = eth_be(n)
+    return bytes([base + 55 + len(length)]) + length
+
+
+def rlp_item(item) -> bytes:
+    """RLP as defined in the Ethereum simple summary: strings below 56 bytes carry their length in
+    the first byte, longer ones prefix it; a list is the concatenation of its encodings."""
+    if isinstance(item, int):
+        item = eth_be(item)
+    elif isinstance(item, str):
+        item = item.encode()
+    if isinstance(item, list):
+        body = b"".join(rlp_item(i) for i in item)
+        return rlp_header(len(body), 0xC0) + body
+    if len(item) == 1 and item[0] < 0x80:
+        return item  # a single byte below 0x80 is its own encoding
+    return rlp_header(len(item), 0x80) + item
+
+
+def eth_keccak(data: bytes) -> bytes:
+    from Crypto.Hash import keccak
+
+    return keccak.new(digest_bits=256, data=data).digest()
+
+
+def eip155_example() -> dict:
+    """The example transaction EIP-155 publishes: fields, signing data, signing hash, v/r/s and the
+    signed encoding, all read out of the spec text rather than transcribed here."""
+    text = fetch("eip-155.md")
+    blocks = re.findall(r"```\n(.*?)```", text, re.S)
+    signing_data = signed_tx = None
+    signing_hash = None
+    vrs = None
+    for block in blocks:
+        body = block.strip()
+        if not re.fullmatch(r"0x[0-9a-f]+", body):
+            if body.startswith("("):
+                vrs = tuple(int(x) for x in re.findall(r"\d+", body))
+            continue
+        if len(body) == 66:
+            signing_hash = bytes.fromhex(body[2:])
+            continue
+        raw = bytes.fromhex(body[2:])
+        if raw[0] == 0xEC:
+            signing_data = raw
+        elif raw[0] >= 0xC0:
+            signed_tx = raw
+    assert signing_data and signed_tx and signing_hash and vrs, "EIP-155 example not found in spec"
+    nonce, gas_price, start_gas = 9, 20 * 10**9, 21000
+    to = bytes.fromhex("3535353535353535353535353535353535353535")
+    value, chain_id = 10**18, 1
+    v, r, s = vrs
+    assert v == chain_id * 2 + 35, "example is not EIP-155 bound"
+    unsigned = rlp_item([nonce, gas_price, start_gas, to, value, b"", chain_id, 0, 0])
+    assert unsigned == signing_data, "encoder disagrees with EIP-155 signing data"
+    assert eth_keccak(unsigned) == signing_hash, "keccak disagrees with EIP-155 signing hash"
+    full = rlp_item([nonce, gas_price, start_gas, to, value, b"", v, r, s])
+    assert full == signed_tx, "encoder disagrees with EIP-155 signed transaction"
+    return dict(raw=signed_tx, sign_data=unsigned, nonce=nonce, gas_price=gas_price,
+                start_gas=start_gas, to=to, value=value, data=b"", v=v, r=r, s=s,
+                sign_hash=signing_hash, chain_id=chain_id)
+
+
+def eth_signed_hash(tx_type: int, fields: list) -> bytes:
+    """The preimage whose hash the parser accumulates: the unsigned payload, type prefixed for the
+    typed transactions (EIP-2718), unsigned trailing v/r/s dropped."""
+    body = rlp_item(fields)
+    return eth_keccak(bytes([tx_type]) + body if tx_type else body)
+
+
+def eth_row(name, raw, sign_hash, chain_id, gasprice, startgas, value, to, data, v):
+    """`fields` are the numbers as written on the wire; the parser lays a field's bytes at the start
+    of a 32 byte array and records how many, and right-aligns a destination in 20."""
+    def field(n):
+        b = eth_be(n)
+        assert len(b) <= 32, f"{name}: field wider than 32 bytes"
+        return b
+
+    gasprice_b, startgas_b, value_b = field(gasprice), field(startgas), field(value)
+    to_b = to if isinstance(to, bytes) else bytes.fromhex(to)
+    assert len(to_b) <= 20, f"{name}: destination longer than an address"
+    data_b = data if isinstance(data, bytes) else bytes.fromhex(data)
+    return dict(name=name, raw=raw, sign_hash=sign_hash, chain_id=chain_id,
+                gasprice=gasprice_b, startgas=startgas_b, value=value_b,
+                destination=to_b.rjust(20, b"\0"), data=data_b, v=v)
+
+
+def ethereum_tx_cases() -> list:
+    """The bytes a host sends to be signed: for a legacy transaction the EIP-155 signing preimage
+    (nine elements, chain id in the seventh slot), for a typed one the type byte followed by the
+    unsigned field list, with no trailing signature."""
+    rows = []
+    rng = random.Random(0xE74)
+
+    spec = eip155_example()
+    rows.append(eth_row("eip155 spec example, chain 1", spec["sign_data"], spec["sign_hash"], 1,
+                        spec["gas_price"], spec["start_gas"], spec["value"], spec["to"], b"", 1))
+
+    for chain_id in (1, 137, 10, 2**30 - 1):
+        nonce = 0x1F if chain_id != 1 else 0
+        gas_price, start_gas = 30 * 10**9, 52000
+        value = 12345678901234567890 if chain_id != 1 else 0
+        to = bytes.fromhex("dEaDAdeadbeEf00dC0FFee1234567890aBCdef12")
+        data = b"\x09\xea\xed\x75" + bytes(rng.randrange(256) for _ in range(68))
+        fields = [nonce, gas_price, start_gas, to, value, data, chain_id, 0, 0]
+        preimage = rlp_item(fields)
+        rows.append(eth_row(f"legacy chain {chain_id}", preimage, eth_keccak(preimage), chain_id,
+                            gas_price, start_gas, value, to, data, chain_id))
+
+    # Contract creation: an empty destination is legal and leaves all twenty bytes zero.
+    init = bytes.fromhex("6060604052") + bytes(rng.randrange(256) for _ in range(120))
+    fields = [1, 10**9, 3_000_000, b"", 0, init, 1, 0, 0]
+    preimage = rlp_item(fields)
+    rows.append(eth_row("legacy contract creation", preimage, eth_keccak(preimage), 1, 10**9,
+                        3_000_000, 0, b"", init, 1))
+
+    # Calldata long enough to span several transport chunks, and a payload whose length needs a
+    # length-of-length byte of its own.
+    long_call = bytes(rng.randrange(256) for _ in range(600))
+    fields = [2, 10**12, 100_000, bytes.fromhex("2222222222222222222222222222222222222222"), 10**30,
+              long_call, 1, 0, 0]
+    preimage = rlp_item(fields)
+    rows.append(eth_row("legacy long calldata", preimage, eth_keccak(preimage), 1, 10**12, 100_000,
+                        10**30, bytes.fromhex("2222222222222222222222222222222222222222"),
+                        long_call, 1))
+
+    access_list = [[bytes.fromhex("0000000000000000000000000000000000000001"),
+                    [eth_be(3), eth_be(7)]],
+                   [bytes.fromhex("0000000000000000000000000000000000000002"), []]]
+
+    nonce, gas_price, gas_limit, value = 5, 20 * 10**9, 21000, 7 * 10**17
+    to = bytes.fromhex("1111111111111111111111111111111111111111")
+    for chain_id in (1, 42161, 5000000):
+        fields = [chain_id, nonce, gas_price, gas_limit, to, value, b"", []]
+        rows.append(eth_row(f"eip2930 chain {chain_id}", bytes([1]) + rlp_item(fields),
+                            eth_signed_hash(1, fields), chain_id, gas_price, gas_limit, value, to,
+                            b"", 1))
+    fields = [1, nonce, gas_price, gas_limit, to, value, b"\xde\xad", access_list]
+    rows.append(eth_row("eip2930 access list", bytes([1]) + rlp_item(fields),
+                        eth_signed_hash(1, fields), 1, gas_price, gas_limit, value, to,
+                        b"\xde\xad", 1))
+
+    max_priority, max_fee = 2 * 10**9, 100 * 10**9
+    for chain_id in (1, 10, 8453):
+        fields = [chain_id, nonce, max_priority, max_fee, gas_limit, to, value, b"", []]
+        rows.append(eth_row(f"eip1559 chain {chain_id}", bytes([2]) + rlp_item(fields),
+                            eth_signed_hash(2, fields), chain_id, max_fee, gas_limit, value, to,
+                            b"", 1))
+
+    # Widest fields the parser accepts, with an access list and long calldata.
+    calldata = bytes(rng.randrange(256) for _ in range(600))
+    max_fee_wide, gas_wide, value_wide = 2**256 - 1, 2**256 - 2, 2**256 - 1
+    fields = [8453, 2**64, max_fee_wide, max_fee_wide, gas_wide, to, value_wide, calldata,
+              access_list]
+    rows.append(eth_row("eip1559 widest fields", bytes([2]) + rlp_item(fields),
+                        eth_signed_hash(2, fields), 8453, max_fee_wide, gas_wide, value_wide, to,
+                        calldata, 1))
+
+    # EIP-7702: the authorization list is a list of lists, skipped but hashed.
+    auth = [[1, bytes.fromhex("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), 0,
+             eth_be(0x1234), eth_be(0x5678)]]
+    fields = [1, nonce, max_priority, max_fee, gas_limit, to, value, b"", [], auth]
+    rows.append(eth_row("eip7702 one authorization", bytes([4]) + rlp_item(fields),
+                        eth_signed_hash(4, fields), 1, max_fee, gas_limit, value, to, b"", 1))
+    return rows
+
+
+def eth_reject_cases() -> list:
+    """Inputs the parser must refuse, in the same preimage form a host would send them."""
+    to = bytes.fromhex("1111111111111111111111111111111111111111")
+
+    def legacy(to_field=to, nonce=1, gas_price=10**9, start_gas=21000, value=1, data=b"",
+               chain_id=1, nine_element=True):
+        fields = [nonce, gas_price, start_gas, to_field, value, data]
+        if nine_element:
+            fields += [chain_id, 0, 0]
+        return rlp_item(fields)
+
+    def typed(fields, tx_type=2):
+        return bytes([tx_type]) + rlp_item(fields)
+
+    out = []
+
+    def add(name, raw):
+        out.append((name, raw))
+
+    # No chain binding in either of the two shapes it can take: the six-element list, and the
+    # nine-element list whose chain id slot is empty.
+    add("legacy pre EIP-155, six elements", legacy(nine_element=False))
+    add("legacy with an empty chain id", legacy(chain_id=b""))
+
+    add("legacy chain id 5 bytes", legacy(chain_id=2**32))
+    add("legacy chain id that wraps v", legacy(chain_id=2**31))
+    add("legacy destination 21 bytes", legacy(to_field=bytes(21)))
+    add("legacy nonce 33 bytes", legacy(nonce=2**256))
+    add("legacy gasprice 33 bytes", legacy(gas_price=2**256))
+    add("legacy value 33 bytes", legacy(value=2**256))
+    add("legacy payload is a string", rlp_item(b"hello"))
+
+    base = [1, 1, 10**9, 10**9, 21000, to, 1, b"", []]
+    add("eip1559 chain id 5 bytes", typed([2**32] + base[1:]))
+    add("eip1559 chain id 33 bytes", typed([2**256 - 1] + base[1:]))
+    add("eip1559 destination 21 bytes", typed(base[:5] + [bytes(21)] + base[6:]))
+    add("eip1559 value 33 bytes", typed(base[:6] + [2**256] + base[7:]))
+    add("eip1559 access list is not a list", typed(base[:8] + [eth_be(7)]))
+    add("eip2930 chain id 5 bytes", typed([2**32] + base[1:], tx_type=1))
+    add("eip7702 authorization list is not a list",
+        typed(base[:8] + [[], eth_be(9)], tx_type=4))
+
+    # A string length the file refuses outright: 0xbc needs five length bytes, above its 32 bit cap.
+    add("string length above the 32 bit cap", rlp_item([1, 1, 1, b"\xbc" + b"\x00" * 4 + bytes(64)]))
+    return out
+
+
+def eth_array(values: bytes) -> str:
+    return "{ " + ", ".join(f"0x{b:02x}" for b in values) + " }"
+
+
+def ethereum_vectors() -> str:
+    cases = ethereum_tx_cases()
+    rejects = eth_reject_cases()
+
+    body = ",\n".join(
+        '  { "%s",\n    "%s", %u, %s, %u,\n    %s, %u, %s, %u,\n    %s, "%s", %u,\n    %s }' % (
+            c["name"], c["raw"].hex(), c["chain_id"], eth_array(c["gasprice"]),
+            len(c["gasprice"]), eth_array(c["startgas"]), len(c["startgas"]),
+            eth_array(c["value"]), len(c["value"]), eth_array(c["destination"]),
+            c["data"].hex(), len(c["data"]), eth_array(c["sign_hash"]))
+        for c in cases)
+
+    reject_body = ",\n".join('  { "%s",\n    "%s" }' % (n, raw.hex()) for n, raw in rejects)
+
+    return """/* Generated by tests/vectors/generate.py -- do not edit.
+
+ * reference: an RLP encoder and the EIP-2718 signing-preimage shapes written in this generator,
+ * with keccak from pycryptodome. Before any other row is emitted the encoder must reproduce
+ * EIP-155's published example transaction, its signing data and its signing hash, so the derived
+ * rows inherit an anchor rather than trusting the encoder's own consistency.
+ *
+ * `hash` is what the parser must have fed to keccak when it reports the transaction done: the
+ * unsigned payload, with the type byte for the typed transactions and without the trailing
+ * signature. It is the bytes a signature commits to, which is why it is asserted and not merely
+ * the parsed fields.
+ *
+ * A 256-bit field is stored left aligned in `gasprice`/`startgas`/`value` with the byte count
+ * beside it, because that is where the parser puts the wire bytes; a destination is right aligned
+ * in twenty, shorter addresses being padded on the left as the EVM does. A legacy transaction's
+ * chain id ends up being `v` itself -- the parser records v there, not (v - 35) / 2 -- and a typed
+ * one's is the chain id field. `v` is what the parser stores, which for the typed transactions is
+ * the signature parity it never uses.
+ */
+
+#ifndef VECTORS_ETHEREUM_H
+#define VECTORS_ETHEREUM_H
+
+#include <stdint.h>
+
+typedef struct {
+  const char* name;
+  const char* rlp_hex;        /* the transaction as the transport delivers it */
+  uint32_t chain_id;
+  uint8_t gasprice[32];
+  unsigned int gasprice_len;
+  uint8_t startgas[32];
+  unsigned int startgas_len;
+  uint8_t value[32];
+  unsigned int value_len;
+  uint8_t destination[20];
+  const char* data_hex;
+  unsigned int data_len;
+  uint8_t hash[32];
+} eth_tx_t;
+
+static const eth_tx_t eth_tx_cases[] = {
+@CASES@
+};
+#define ETH_TX_CASES_COUNT (sizeof(eth_tx_cases) / sizeof(eth_tx_cases[0]))
+
+/* Transactions that must be refused. The EIP-2718 type is whatever the first byte implies, the way
+ * the caller reads it: below 0x80 a typed transaction, at or above 0xc0 a legacy one. */
+typedef struct {
+  const char* name;
+  const char* rlp_hex;
+} eth_reject_t;
+
+static const eth_reject_t eth_reject_cases[] = {
+@REJECTS@
+};
+#define ETH_REJECT_CASES_COUNT (sizeof(eth_reject_cases) / sizeof(eth_reject_cases[0]))
+
+#endif  /* VECTORS_ETHEREUM_H */
+""".replace("@CASES@", body).replace("@REJECTS@", reject_body)
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -2840,6 +3741,8 @@ def main() -> None:
         "vectors_tx.h": tx_vectors(),
         "vectors_psbt_ctx.h": ctx_vectors(),
         "vectors_sighash.h": sighash_vectors(),
+        "vectors_bignum.h": bignum_vectors(),
+        "vectors_ethereum.h": ethereum_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

@@ -48,6 +48,7 @@ uint16_t readTxByte(txContext_t *context) {
   }
   if (!(context->processingField && context->fieldSingleByte)) {
     keccak_Update(context->sha3, &data, 1);
+    context->consumed++;
   }
   return data;
 }
@@ -63,6 +64,7 @@ uint16_t copyTxData(txContext_t *context, uint8_t *out, uint32_t length) {
 
   if (!(context->processingField && context->fieldSingleByte)) {
     keccak_Update(context->sha3, context->workBuffer, length);
+    context->consumed += length;
   }
   context->workBuffer += length;
   context->commandLength -= length;
@@ -77,6 +79,8 @@ static uint16_t processContent(txContext_t *context) {
   if (!context->currentFieldIsList) {
     return EXCEPTION;
   }
+
+  context->listEnd = context->consumed + context->currentFieldLength;
 
   context->currentField++;
   context->processingField = false;
@@ -116,16 +120,14 @@ static uint16_t processChainID(txContext_t *context) {
     return EXCEPTION;
   }
 
-  const uint8_t* chainBuf = context->workBuffer;
-
   if (context->currentFieldPos < context->currentFieldLength) {
     uint32_t copySize = APP_MIN(context->commandLength, context->currentFieldLength - context->currentFieldPos);
-    if (copyTxData(context, NULL, copySize) == EXCEPTION) {
+    if (copyTxData(context, context->scalar + context->currentFieldPos, copySize) == EXCEPTION) {
       return EXCEPTION;
     }
   }
   if (context->currentFieldPos == context->currentFieldLength) {
-    context->content->chainID = u32_from_BE(chainBuf, context->currentFieldLength);
+    context->content->chainID = u32_from_BE(context->scalar, context->currentFieldLength);
     context->currentField++;
     context->processingField = false;
   }
@@ -328,26 +330,23 @@ static uint16_t processV(txContext_t *context) {
     return EXCEPTION;
   }
 
-  const uint8_t* vBuf = context->workBuffer;
-
   if (context->currentFieldPos < context->currentFieldLength) {
     uint32_t copySize = APP_MIN(context->commandLength, context->currentFieldLength - context->currentFieldPos);
-    if (copyTxData(context, NULL, copySize) == EXCEPTION) {
+    if (copyTxData(context, context->scalar + context->currentFieldPos, copySize) == EXCEPTION) {
       return EXCEPTION;
     }
   }
 
   if (context->currentFieldPos == context->currentFieldLength) {
     if (context->currentFieldLength == 0) {
-      // Empty `v`: no EIP-155 chain binding. Reject.
+      // Empty: no EIP-155 chain binding. Reject.
       return EXCEPTION;
     }
 
-    context->content->v = u32_from_BE(vBuf, context->currentFieldLength);
+    context->content->v = u32_from_BE(context->scalar, context->currentFieldLength);
 
-    if (context->content->v < 35) {
-      // `v` of 27/28 is a pre EIP-155 signature with no chain binding and can
-      // be replayed on any chain. Reject it.
+    if (context->content->v > (0xFFFFFFFFu - 35) / 2) {
+      // Above this the chain id wraps in the v * 2 + 35 that forms the signature v.
       return EXCEPTION;
     }
 
@@ -362,13 +361,11 @@ static uint16_t processV(txContext_t *context) {
 
 static bool processEIP7702Tx(txContext_t *context) {
   switch (context->currentField) {
-    case EIP7702_RLP_CONTENT: {
+    case EIP7702_RLP_CONTENT:
       if (processContent(context) == EXCEPTION) {
         return true;
       }
-      context->currentField++;
       return false;
-    }
     case EIP7702_RLP_CHAINID:
       return processChainID(context) == EXCEPTION;
     case EIP7702_RLP_NONCE:
@@ -550,11 +547,9 @@ parserStatus_e continueTx(txContext_t *context) {
     if (PARSING_IS_DONE(context)) {
       return USTREAM_FINISHED;
     }
-    // Legacy transaction ending without a `v` field (pre EIP-155, 6-element RLP).
-    // Such transactions carry no chain binding, so displaying a chain name would
-    // let a single approval be replayed on any chain (Ethereum, BNB, Polygon,
-    // Arbitrum, Optimism, Avalanche, ...). Reject them instead.
-    if ((context->txType == LEGACY && context->currentField == LEGACY_RLP_V) && (context->commandLength == 0)) {
+
+    if ((context->txType == LEGACY && context->currentField == LEGACY_RLP_V) &&
+        (context->commandLength == 0) && (context->consumed >= context->listEnd)) {
       return USTREAM_FAULT;
     }
 
