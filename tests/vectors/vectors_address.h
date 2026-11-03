@@ -24,4 +24,59 @@ static const eth_address_vector_t ETH_ADDRESS_VECTORS[] = {
 
 #define ETH_ADDRESS_VECTOR_COUNT (sizeof(ETH_ADDRESS_VECTORS) / sizeof(ETH_ADDRESS_VECTORS[0]))
 
+/* spec: https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-55.md
+ * sha256 54a9b25ffcd12966c60d6abd6584734d2793734f266fbe41118e6ee52b05dc9e
+ *
+ * The addresses the checksum document publishes. `lower` is those same bytes in the form the
+ * document says carries no checksum, `mixed` the form that does, so a row pins both the encoder
+ * and what the verifier must accept.
+ */
+typedef struct {
+  const char* lower;
+  const char* mixed;
+} erc55_vector_t;
+
+static const erc55_vector_t ERC55_VECTORS[] = {
+  {"5aaeb6053f3e94c9b9a09f33669435e7ef1beaed", "5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"},
+  {"fb6916095ca1df60bb79ce92ce3ea74c37c5d359", "fB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"},
+  {"dbf03b407c01e7cd3cbea99509d93f8dddc8c6fb", "dbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"},
+  {"d1220a0cf47c7b9be7a2e6ba89f429762e7b9adb", "D1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb"},
+  {"52908400098527886e0f7030069857d2e4169ee7", "52908400098527886E0F7030069857D2E4169EE7"},
+  {"8617e340b3d01fa5f11f306f4090fd50e238070d", "8617E340B3D01FA5F11F306F4090FD50E238070D"},
+  {"de709f2102306220921060314715629080e2fb77", "de709f2102306220921060314715629080e2fb77"},
+  {"27b1fdb04752bbc536007a920d24acb045561c26", "27b1fdb04752bbc536007a920d24acb045561c26"}
+};
+
+#define ERC55_VECTOR_COUNT (sizeof(ERC55_VECTORS) / sizeof(ERC55_VECTORS[0]))
+
+/* The version bytes of https://raw.githubusercontent.com/bitcoin/bips/master/bip-0032.mediawiki
+ * sha256 e5e00a8289db2f681052cf24a745320afc225e66b25d1e489a7c884d2fc7f11f's own keys for the 4 byte cases, the
+ * boundaries of address_prefix_bytes_len() for the rest. `bytes` is the version written
+ * big-endian over exactly `len` bytes, which is what address_check_prefix() reads back.
+ */
+typedef struct {
+  uint32_t version;
+  unsigned char len;
+  const char* bytes;
+} addr_prefix_vector_t;
+
+static const addr_prefix_vector_t ADDR_PREFIX_VECTORS[] = {
+  {0x00000000, 1, "00"},
+  {0x00000001, 1, "01"},
+  {0x0000007F, 1, "7f"},
+  {0x00000080, 1, "80"},
+  {0x000000FF, 1, "ff"},
+  {0x00000100, 2, "0100"},
+  {0x0000FFFF, 2, "ffff"},
+  {0x00010000, 3, "010000"},
+  {0x00FFFFFF, 3, "ffffff"},
+  {0x01000000, 4, "01000000"},
+  {0x7FFFFFFF, 4, "7fffffff"},
+  {0xFFFFFFFF, 4, "ffffffff"},
+  {0x0488ADE4, 4, "0488ade4"},
+  {0x0488B21E, 4, "0488b21e"}
+};
+
+#define ADDR_PREFIX_VECTOR_COUNT (sizeof(ADDR_PREFIX_VECTORS) / sizeof(ADDR_PREFIX_VECTORS[0]))
+
 #endif

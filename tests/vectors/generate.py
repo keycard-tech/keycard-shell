@@ -38,6 +38,7 @@ SOURCES = {
     "bip173.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0173.mediawiki",
     "bip350.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0350.mediawiki",
     "eip-155.md": "https://raw.githubusercontent.com/ethereum/EIPs/master/EIPS/eip-155.md",
+    "erc-55.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-55.md",
     "slip39_wordlist.txt": "https://raw.githubusercontent.com/satoshilabs/slips/master/slip-0039/wordlist.txt",
     "slip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-shamir-mnemonic/master/vectors.json",
     "rfc4231.txt": "https://www.rfc-editor.org/rfc/rfc4231.txt",
@@ -766,6 +767,68 @@ static const char* const COMPACTSIZE_NONCANONICAL[] = {{
 # ---------------------------------------------------------------- address
 
 
+def erc55_vectors() -> list[tuple[str, str]]:
+    """The addresses ERC-55 itself publishes, as (40 lowercase hex, mixed case).
+
+    `mixed` is the string verbatim from the document where the document printed one -- the
+    document prints four mixed-case addresses and asserts they are their own checksum. The
+    rest come from the algorithm below, which the generator first checks against those four.
+    """
+    from Crypto.Hash import keccak
+
+    text = fetch("erc-55.md")
+    published: list[str] = []
+    for seen in re.findall(r"0x([0-9A-Fa-f]{40})", text):
+        if all(seen.lower() != other.lower() for other in published):
+            published.append(seen)
+    assert len(published) >= 8, published
+
+    def checksum(address: str) -> str:
+        digest = keccak.new(digest_bits=256, data=address.encode()).hexdigest()
+        return "".join(
+            char.upper() if char.isalpha() and int(nibble, 16) >= 8 else char
+            for char, nibble in zip(address, digest)
+        )
+
+    mixed = [a for a in published if a != a.lower() and a != a.upper()]
+    assert len(mixed) >= 4, mixed
+    for address in mixed:
+        assert checksum(address.lower()) == address, address
+
+    return [(address.lower(), checksum(address.lower())) for address in published]
+
+
+def prefix_version_cases() -> list[tuple[int, int, str]]:
+    """Version numbers a base58check payload starts with, as (version, byte count, bytes).
+
+    The 4-byte cases are the version bytes of the extended keys BIP-32 publishes, read off the
+    prefix of those keys; the rest are chosen to sit on each side of the 1/2/3/4 byte boundaries
+    `address_prefix_bytes_len()` uses.
+    """
+    cases = [
+        (0x00000000, 1),
+        (0x00000001, 1),
+        (0x0000007F, 1),
+        (0x00000080, 1),
+        (0x000000FF, 1),
+        (0x00000100, 2),
+        (0x0000FFFF, 2),
+        (0x00010000, 3),
+        (0x00FFFFFF, 3),
+        (0x01000000, 4),
+        (0x7FFFFFFF, 4),
+        (0xFFFFFFFF, 4),
+    ]
+
+    versions = set()
+    for key, _payload in parse_bip32_extended_keys():
+        versions.add(int.from_bytes(b58decode(key)[:-4][:4], "big"))
+    assert versions == {0x0488B21E, 0x0488ADE4}, [hex(v) for v in versions]
+
+    cases += [(version, 4) for version in sorted(versions)]
+    return [(version, length, hexs(version.to_bytes(length, "big"))) for version, length in cases]
+
+
 def address_vectors() -> str:
     """EIP-55 casing comes from eth_utils and the point decompression from coincurve
     (libsecp256k1), both over the public keys carried by the official BIP-32 keys."""
@@ -781,15 +844,24 @@ def address_vectors() -> str:
         uncompressed = coincurve.PublicKey(compressed).format(compressed=False)
         digest = keccak.new(digest_bits=256, data=uncompressed[1:]).digest()
         lowercase = digest[12:32].hex()
+        checksummed = eth_utils.to_checksum_address("0x" + lowercase)[2:]
         rows.append(
             "  {%s, %s, %s, %s}"
             % (
                 cstr(hexs(compressed)),
                 cstr(hexs(uncompressed)),
                 cstr(lowercase),
-                cstr(eth_utils.to_checksum_address("0x" + lowercase)[2:]),
+                cstr(checksummed),
             )
         )
+
+    erc55 = ",\n".join(
+        "  {%s, %s}" % (cstr(lower), cstr(mixed)) for lower, mixed in erc55_vectors()
+    )
+    prefixes = ",\n".join(
+        "  {0x%08X, %d, %s}" % (version, length, cstr(raw))
+        for version, length, raw in prefix_version_cases()
+    )
 
     return f"""#ifndef VECTORS_ADDRESS_H
 #define VECTORS_ADDRESS_H
@@ -812,6 +884,39 @@ static const eth_address_vector_t ETH_ADDRESS_VECTORS[] = {{
 }};
 
 #define ETH_ADDRESS_VECTOR_COUNT (sizeof(ETH_ADDRESS_VECTORS) / sizeof(ETH_ADDRESS_VECTORS[0]))
+
+/* spec: {provenance('erc-55.md')}
+ *
+ * The addresses the checksum document publishes. `lower` is those same bytes in the form the
+ * document says carries no checksum, `mixed` the form that does, so a row pins both the encoder
+ * and what the verifier must accept.
+ */
+typedef struct {{
+  const char* lower;
+  const char* mixed;
+}} erc55_vector_t;
+
+static const erc55_vector_t ERC55_VECTORS[] = {{
+{erc55}
+}};
+
+#define ERC55_VECTOR_COUNT (sizeof(ERC55_VECTORS) / sizeof(ERC55_VECTORS[0]))
+
+/* The version bytes of {provenance('bip32.mediawiki')}'s own keys for the 4 byte cases, the
+ * boundaries of address_prefix_bytes_len() for the rest. `bytes` is the version written
+ * big-endian over exactly `len` bytes, which is what address_check_prefix() reads back.
+ */
+typedef struct {{
+  uint32_t version;
+  unsigned char len;
+  const char* bytes;
+}} addr_prefix_vector_t;
+
+static const addr_prefix_vector_t ADDR_PREFIX_VECTORS[] = {{
+{prefixes}
+}};
+
+#define ADDR_PREFIX_VECTOR_COUNT (sizeof(ADDR_PREFIX_VECTORS) / sizeof(ADDR_PREFIX_VECTORS[0]))
 
 #endif
 """
