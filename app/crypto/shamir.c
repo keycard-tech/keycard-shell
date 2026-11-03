@@ -463,6 +463,7 @@ int32_t shamir_recover_secret(uint8_t threshold, const uint8_t *x, const uint8_t
   memzero(verify, sizeof(verify));
 
   if(!valid) {
+    memzero(secret, share_length);
     return SHAMIR_ERROR_CHECKSUM_FAILURE;
   }
 

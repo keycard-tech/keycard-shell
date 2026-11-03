@@ -16,6 +16,7 @@ Run from anywhere; requires network unless the sources are already in tests/vect
 import base64
 import hashlib
 import hmac
+import itertools
 import json
 import os
 import random
@@ -41,6 +42,7 @@ SOURCES = {
     "erc-55.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-55.md",
     "bip-0021.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0021.mediawiki",
     "erc-681.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-681.md",
+    "slip39.md": "https://raw.githubusercontent.com/satoshilabs/slips/master/slip-0039.md",
     "slip39_wordlist.txt": "https://raw.githubusercontent.com/satoshilabs/slips/master/slip-0039/wordlist.txt",
     "slip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-shamir-mnemonic/master/vectors.json",
     "rfc4231.txt": "https://www.rfc-editor.org/rfc/rfc4231.txt",
@@ -4093,6 +4095,520 @@ static const eth_reject_t eth_reject_cases[] = {
 #endif  /* VECTORS_ETHEREUM_H */
 """.replace("@CASES@", body).replace("@REJECTS@", reject_body)
 
+# ---------------------------------------------------------------- shamir
+
+# The oracle here is SLIP-39's own "Sharing a secret" section, re-implemented below from the
+# published formulas. shamir.c is an independent implementation of the same construction (bitsliced
+# GF(2^8) rather than byte tables), so agreement between the two is a cross-check. That the C side
+# is itself anchored elsewhere is worth stating: slip39.c reconstructs all of SLIP-39's published
+# sets through shamir_interpolate(), so the field arithmetic already has to be right for those to
+# pass -- these rows cover the paths those sets never reach.
+
+RIDIJNDAEL = 0x11B  # x^8 + x^4 + x^3 + x + 1, named by SLIP-39 as the field polynomial
+
+
+def gf_mul(a: int, b: int) -> int:
+    """Carry-less multiply in GF(2)[x] reduced by the Rijndael polynomial."""
+    out = 0
+    for _ in range(8):
+        if b & 1:
+            out ^= a
+        b >>= 1
+        a <<= 1
+        if a & 0x100:
+            a ^= RIDIJNDAEL
+    return out
+
+
+def gf_inv(a: int) -> int:
+    """Multiplicative inverse, by repeated squaring out to the group order 2^8 - 2."""
+    if a == 0:
+        raise ValueError("zero has no inverse")
+    result, power, expo = 1, a, 254  # a^(2^8-2) is the inverse in a field of 2^8 elements
+    while expo:
+        if expo & 1:
+            result = gf_mul(result, power)
+        power = gf_mul(power, power)
+        expo >>= 1
+    return result
+
+
+def gf_eval(coeffs: list, x: int) -> int:
+    """coeffs[0] is the constant term; Horner's rule."""
+    out = 0
+    for c in reversed(coeffs):
+        out = gf_mul(out, x) ^ c
+    return out
+
+
+def slip39_interpolate(x: int, xs: list, ys: list):
+    """Lagrange interpolation over GF(256), each byte of the share values a separate instance.
+
+    Returns None when two share indices collide, which is the one input the interpolation cannot
+    answer. Note that x equal to some xs[i] needs no special case in this formulation: the i-th
+    basis polynomial evaluates to 1 there and to 0 for every other term.
+    """
+    length = len(ys[0])
+    out = bytearray(length)
+    for i in range(len(xs)):
+        num, den = 1, 1
+        for j in range(len(xs)):
+            if i == j:
+                continue
+            num = gf_mul(num, x ^ xs[j])
+            den = gf_mul(den, xs[i] ^ xs[j])
+        if den == 0:
+            return None
+        factor = gf_mul(num, gf_inv(den))
+        for k in range(length):
+            out[k] ^= gf_mul(factor, ys[i][k])
+    return bytes(out)
+
+
+def lagrange_coefficient(i: int, xs: list, x: int) -> int:
+    """The weight of share i when interpolating at x, so a change of d in share i moves the result
+    by gf_mul(d, weight) -- the fact the near-miss search below is built on."""
+    num, den = 1, 1
+    for j in range(len(xs)):
+        if i == j:
+            continue
+        num = gf_mul(num, x ^ xs[j])
+        den = gf_mul(den, xs[i] ^ xs[j])
+    return gf_mul(num, gf_inv(den))
+
+
+def slip39_digest_byte_tampers(rng):
+    """Four tampers, one per digest byte, in which the recovered secret is still the right secret.
+
+    Changing byte p of every share moves the recovered secret by the Lagrange-weighted sum of the
+    deltas and moves the digest share by another weighted sum. Pick deltas whose first sum is zero
+    and whose second is not, and byte p of the digest share stops agreeing with the HMAC while the
+    secret and R are untouched -- so the row is refused only if the comparison reaches byte p. One
+    row per byte pins the comparison to the four bytes the spec asks for, without a search.
+    """
+    threshold, length = 3, 32
+    secret = bytes(rng.randrange(256) for _ in range(length))
+    shares, digest = slip39_split(threshold, threshold, secret, rng)
+    xs = [x for x, _ in shares]
+    ys = [y for _, y in shares]
+    to_secret = [lagrange_coefficient(i, xs, 255) for i in range(threshold)]
+    to_digest = [lagrange_coefficient(i, xs, 254) for i in range(threshold)]
+
+    deltas = None
+    for first in range(1, 256):
+        for second in range(256):
+            third = gf_mul(gf_mul(first, to_secret[0]) ^ gf_mul(second, to_secret[1]),
+                           gf_inv(to_secret[2]))
+            moved = gf_mul(first, to_digest[0]) ^ gf_mul(second, to_digest[1]) ^ gf_mul(third, to_digest[2])
+            if moved:
+                deltas, shift = [first, second, third], moved
+                break
+        if deltas:
+            break
+    assert deltas, "no delta leaves the secret alone and moves the digest"
+
+    rows = []
+    for position in range(4):
+        tampered = []
+        for i in range(threshold):
+            value = bytearray(ys[i])
+            value[position] ^= deltas[i]
+            tampered.append(bytes(value))
+        assert slip39_recover(threshold, xs, tampered) is None
+        # The untouched parts of the check: the secret still comes out right, R is unchanged, and
+        # every digest byte before `position` still matches the HMAC of it.
+        recovered = slip39_interpolate(255, xs, tampered)
+        moved_digest = slip39_interpolate(254, xs, tampered)
+        mac = hmac.new(moved_digest[4:], recovered, hashlib.sha256).digest()
+        assert recovered == secret
+        assert moved_digest[4:] == digest[4:]
+        assert moved_digest[:position] == mac[:position] and moved_digest[position] != mac[position]
+        rows.append((threshold, xs, tampered, length, position + 1))
+    return rows
+
+
+def slip39_split(threshold: int, count: int, secret: bytes, rng):
+    """SplitSecret() as specified: shares for indices 0..N-1, plus the digest share D.
+
+    D is the share at index 254 that carries the integrity check; a real split never hands it out,
+    but recovery vectors have to be able to say what it is.
+    """
+    length = len(secret)
+    if threshold == 1:
+        return [(i, bytes(secret)) for i in range(count)], None
+    rand = bytes(rng.randrange(256) for _ in range(length - 4))
+    digest = hmac.new(rand, secret, hashlib.sha256).digest()[:4] + rand
+    points = {i: bytes(rng.randrange(256) for _ in range(length)) for i in range(threshold - 2)}
+    points[254] = digest
+    points[255] = bytes(secret)
+    known_x = sorted(points)
+    known_y = [points[x] for x in known_x]
+    return [(i, slip39_interpolate(i, known_x, known_y)) for i in range(count)], digest
+
+
+def slip39_recover(threshold: int, xs: list, ys: list):
+    """RecoverSecret() as specified: the secret, or None where the spec says abort."""
+    if threshold == 1:
+        return ys[0]
+    secret = slip39_interpolate(255, xs, ys)
+    if secret is None:
+        return None
+    digest = slip39_interpolate(254, xs, ys)
+    if digest is None:
+        return None
+    if hmac.new(digest[4:], secret, hashlib.sha256).digest()[:4] != digest[:4]:
+        return None
+    return secret
+
+
+SHAMIR_OK = 0
+SHAMIR_INTERP_FAILED = "SHAMIR_ERROR_INTERPOLATION_FAILURE"
+SHAMIR_CHECKSUM_FAILED = "SHAMIR_ERROR_CHECKSUM_FAILURE"
+
+
+def shamir_vectors() -> str:
+    """Interpolation, the digest share and whole splits, against SLIP-39's published construction."""
+    doc = fetch("slip39.md")
+    # The four sentences everything below is built from. If one of them moves, the reading below has
+    # to be re-done rather than quietly kept.
+    for sentence in (
+        "modulo the Rijndael irreducible polynomial",
+        "the shared secret is stored as *f*(255)",
+        "the first 4 bytes of HMAC-SHA256(key=*R*, msg=*S*) with the *n* &minus; 4 bytes of *R*",
+        "If *T* is 1, then let *y<sub>i</sub>* = *S* for all *i*",
+        "If *T* is 1, then let *S* = *y*<sub>1</sub> and return.",
+    ):
+        assert sentence in doc, sentence
+
+    # The field arithmetic underneath everything, checked against the one product FIPS-197 prints:
+    # { 0x53 } • { 0xca } = { 0x01 }.
+    assert gf_mul(0x53, 0xCA) == 0x01 and all(gf_mul(a, gf_inv(a)) == 1 for a in range(1, 256))
+
+    rng = random.Random(20251207)
+
+    # Interpolation on its own, from a random polynomial: no digest and no sharing semantics, so a
+    # disagreement here can only be field arithmetic or the basis polynomials.
+    interp = []
+    for count in (1, 2, 3, 4, 5, 8, 12, 16):
+        for length in (16, 24, 32):
+            # `count` points pin a polynomial of degree < count, hence count coefficients per byte.
+            flat = [rng.randrange(256) for _ in range(length * count)]
+            per_byte = [flat[k * count:(k + 1) * count] for k in range(length)]
+            xs = rng.sample(range(1, 254), count)
+            ys = [bytes(gf_eval(c, x) for c in per_byte) for x in xs]
+            for result_index in (0, 1, 128, 254, 255):
+                interp.append(
+                    {
+                        "comment": "f(%d) of a random polynomial of degree < %d, %d bytes"
+                        % (result_index, count, length),
+                        "result_index": result_index,
+                        "xs": xs,
+                        "ys": ys,
+                        "expect": bytes(gf_eval(c, result_index) for c in per_byte),
+                        "refuses": False,
+                    }
+                )
+
+    # The value at a share's own index is that share. The formulation above needs no exception for
+    # it; the bitsliced one has to special-case it, because its numerator runs over every share and
+    # vanishes as soon as one index equals the result index.
+    for count in (2, 3, 6):
+        xs = [7, 254, 255, 0, 1, 128][:count]
+        ys = [bytes(rng.randrange(256) for _ in range(16)) for _ in xs]
+        for pick in range(count):
+            interp.append(
+                {
+                    "comment": "interpolating at a share index returns that share",
+                    "result_index": xs[pick],
+                    "xs": xs,
+                    "ys": ys,
+                    "expect": ys[pick],
+                    "refuses": False,
+                }
+            )
+
+    for xs in ([7, 7, 30], [9, 9], [255, 20, 255, 21]):
+        interp.append(
+            {
+                "comment": "repeated share index: the interpolation is undefined",
+                "result_index": 255,
+                "xs": xs,
+                "ys": [bytes(rng.randrange(256) for _ in range(16)) for _ in xs],
+                "expect": None,
+                "refuses": False,
+            }
+        )
+
+    interp.append(
+        {
+            "comment": "longer than SHAMIR_MAX_SECRET_SIZE is refused",
+            "result_index": 255,
+            "xs": [1, 2, 3],
+            "ys": [bytes(33)] * 3,
+            "expect": None,
+            "refuses": True,
+        }
+    )
+
+    # The digest share is one sentence of the spec. The HMAC underneath it is pinned to a published
+    # RFC 4231 case first, so a key/message swap cannot slide through here unnoticed.
+    rfc_key = bytes([0x0B] * 20)
+    rfc_data = b"Hi There"
+    rfc_mac = hmac.new(rfc_key, rfc_data, hashlib.sha256).hexdigest()
+    assert rfc_mac == "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7", rfc_mac
+    digests = [
+        {
+            "comment": "RFC 4231 case 1 key and data, first four bytes of the MAC",
+            "random_data": rfc_key,
+            "secret": rfc_data,
+            "expect": bytes.fromhex(rfc_mac[:8]),
+        }
+    ]
+    for rdlen, sslen in ((12, 16), (12, 24), (28, 32), (1, 16), (12, 32)):
+        r = bytes(rng.randrange(256) for _ in range(rdlen))
+        s = bytes(rng.randrange(256) for _ in range(sslen))
+        digests.append(
+            {
+                "comment": "first four bytes of HMAC-SHA256(key=R(%d), msg=S(%d))" % (rdlen, sslen),
+                "random_data": r,
+                "secret": s,
+                "expect": hmac.new(r, s, hashlib.sha256).digest()[:4],
+            }
+        )
+
+    # Recovery over SplitSecret output: the thresholds and lengths SLIP-39 permits, several subsets
+    # of a larger share set, and the ways a caller can be handed rubbish.
+    recovers = []
+    for threshold, count, length in (
+        (1, 1, 16),
+        (1, 5, 32),
+        (2, 2, 16),
+        (2, 3, 24),
+        (3, 5, 16),
+        (3, 5, 32),
+        (4, 4, 24),
+        (5, 5, 16),
+        (6, 10, 32),
+        (8, 8, 20),
+        (12, 16, 32),
+        (16, 16, 32),
+    ):
+        secret = bytes(rng.randrange(256) for _ in range(length))
+        shares, digest = slip39_split(threshold, count, secret, rng)
+        xs = [x for x, _ in shares]
+        ys = [y for _, y in shares]
+
+        if threshold == count:
+            picks = [tuple(range(count))]
+        else:
+            picks = list(itertools.combinations(range(count), threshold))
+            rng.shuffle(picks)
+            picks = picks[:4]
+        for pick in picks:
+            chosen = [xs[i] for i in pick]
+            values = [ys[i] for i in pick]
+            assert slip39_recover(threshold, chosen, values) == secret
+            recovers.append(
+                {
+                    "comment": "T=%d of N=%d, n=%d" % (threshold, count, length),
+                    "threshold": threshold,
+                    "xs": chosen,
+                    "ys": values,
+                    "expect": secret,
+                    "error": SHAMIR_OK,
+                    "digest_share": False,
+                }
+            )
+
+        if digest is not None:
+            # The integrity share is defined, not merely self-consistent: interpolating at 254 has
+            # to give HMAC-SHA256(key=R, msg=S)[:4] || R for the R the split drew.
+            assert digest[:4] == hmac.new(digest[4:], secret, hashlib.sha256).digest()[:4]
+            recovers.append(
+                {
+                    "comment": "T=%d, n=%d: the share at index 254 is HMAC-SHA256(key=R, msg=S)[:4] || R"
+                    % (threshold, length),
+                    "threshold": threshold,
+                    "xs": xs,
+                    "ys": ys,
+                    "expect": digest,
+                    "error": SHAMIR_OK,
+                    "digest_share": True,
+                }
+            )
+
+        # One flipped byte in any share changes both the recovered secret and the digest share, so
+        # the four digest bytes have to disagree with the HMAC of the secret that came out. T=1 is
+        # the exception the spec itself makes, and it gets a row of its own below.
+        for share in range(min(count, 3) if threshold > 1 else 0):
+            others = [i for i in range(count) if i != share][: threshold - 1]
+            chosen = [share] + others
+            for position in (0, length // 2, length - 1):
+                damaged = [ys[i] for i in chosen]
+                damaged[0] = bytes(b ^ 0x80 if j == position else b
+                                   for j, b in enumerate(damaged[0]))
+                assert slip39_recover(threshold, [xs[i] for i in chosen], damaged) is None
+                recovers.append(
+                    {
+                        "comment": "T=%d of N=%d, n=%d: share %d byte %d flipped"
+                        % (threshold, count, length, share, position),
+                        "threshold": threshold,
+                        "xs": [xs[i] for i in chosen],
+                        "ys": damaged,
+                        "expect": None,
+                        "error": SHAMIR_CHECKSUM_FAILED,
+                        "digest_share": False,
+                    }
+                )
+
+        if threshold >= 2:
+            recovers.append(
+                {
+                    "comment": "T=%d, n=%d: repeated share index" % (threshold, length),
+                    "threshold": threshold,
+                    "xs": [xs[0]] * threshold,
+                    "ys": ys[:threshold],
+                    "expect": None,
+                    "error": SHAMIR_INTERP_FAILED,
+                    "digest_share": False,
+                }
+            )
+        elif count > 1:
+            # T=1 has no digest share at all by the spec's step 1, so a altered share is returned
+            # rather than refused. Pinned because it is the one recovery path with no integrity
+            # check, and because it follows from the published algorithm, not from the code.
+            recovers.append(
+                {
+                    "comment": "T=1, n=%d: the single share is returned as-is, altered or not"
+                    % length,
+                    "threshold": 1,
+                    "xs": [count - 1],
+                    "ys": [ys[-1][:-1] + bytes([ys[-1][-1] ^ 0xFF])],
+                    "expect": ys[-1][:-1] + bytes([ys[-1][-1] ^ 0xFF]),
+                    "error": SHAMIR_OK,
+                    "digest_share": False,
+                }
+            )
+
+    for threshold, xs, ys, length, byte in slip39_digest_byte_tampers(rng):
+        recovers.append(
+            {
+                "comment": "T=%d, n=%d: the secret is right, only digest byte %d disagrees -- "
+                           "refused only if the check reaches byte %d"
+                % (threshold, length, byte, byte),
+                "threshold": threshold,
+                "xs": xs,
+                "ys": ys,
+                "expect": None,
+                "error": SHAMIR_CHECKSUM_FAILED,
+                "digest_share": False,
+            }
+        )
+
+    def row(comment, threshold, xs, ys, expect, error=SHAMIR_OK, digest_share=False):
+        return "  {%s, %d, %s, {%s}, %s, %s, %d}" % (
+            cstr(comment),
+            threshold,
+            cstr(hexs(bytes(xs))),
+            ", ".join(cstr(hexs(y)) for y in ys),
+            "NULL" if expect is None else cstr(hexs(expect)),
+            error,
+            1 if digest_share else 0,
+        )
+
+    interp_rows = [
+        "  {%s, %d, %s, {%s}, %s, %d, %d}"
+        % (
+            cstr(c["comment"]),
+            c["result_index"],
+            cstr(hexs(bytes(c["xs"]))),
+            ", ".join(cstr(hexs(y)) for y in c["ys"]),
+            "NULL" if c["expect"] is None else cstr(hexs(c["expect"])),
+            len(c["ys"][0]),
+            1 if c["refuses"] else 0,
+        )
+        for c in interp
+    ]
+    digest_rows = [
+        "  {%s, %s, %s, %s}"
+        % (cstr(c["comment"]), cstr(hexs(c["random_data"])), cstr(hexs(c["secret"])),
+           cstr(hexs(c["expect"])))
+        for c in digests
+    ]
+    recover_rows = [
+        row(c["comment"], c["threshold"], c["xs"], c["ys"], c["expect"], c["error"],
+            c["digest_share"])
+        for c in recovers
+    ]
+
+    return f"""#ifndef VECTORS_SHAMIR_H
+#define VECTORS_SHAMIR_H
+
+/* spec: {provenance('slip39.md')}
+ *     {provenance('rfc4231.txt')}
+ *
+ * Shamir's secret sharing over GF(2^8), as SLIP-39 defines it: the field is GF(256) modulo the
+ * Rijndael polynomial, the shared secret is f(255), and the share at index 254 is the first four
+ * bytes of HMAC-SHA256(key=R, msg=S) followed by the random R that produced them.
+ *
+ * The values below are computed by a Python implementation of the spec's own formulas written
+ * beside a bitsliced C one. SLIP-39's published test sets, which the SLIP-39 suite reconstructs
+ * through the same interpolation, are what hold the C side to the specification; these rows reach
+ * the paths those sets do not: a result index that collides with a share index, colliding share
+ * indices, refused lengths, every threshold from 1 to 16, altered shares and the digest share read
+ * back on its own.
+ *
+ * Share values and indices are hex; the count of shares is the length of `xs`.
+ */
+typedef struct {{
+  const char* comment;
+  uint8_t result_index;
+  const char* xs;
+  const char* ys[SHAMIR_MAX_SHARE_COUNT];
+  const char* expect; /* NULL where the call must be refused */
+  uint8_t length;
+  /* The one refusal that is about the call rather than the mathematics: the length is beyond the
+     maximum, so nothing at all is written to the caller's result buffer. */
+  int refuses;
+}} interpolate_case_t;
+
+typedef struct {{
+  const char* comment;
+  const char* random_data;
+  const char* secret;
+  const char* expect;
+}} digest_case_t;
+
+typedef struct {{
+  const char* comment;
+  uint8_t threshold;
+  const char* xs;
+  const char* ys[SHAMIR_MAX_SHARE_COUNT];
+  const char* expect_secret; /* NULL where recovery must fail */
+  int32_t error;
+  /* The row asks for the digest share at index 254 instead of the secret. */
+  int digest_share;
+}} recover_case_t;
+
+static const interpolate_case_t INTERPOLATE_CASES[] = {{
+{",\n".join(interp_rows)}}};
+
+#define INTERPOLATE_CASES_COUNT (sizeof(INTERPOLATE_CASES) / sizeof(INTERPOLATE_CASES[0]))
+
+static const digest_case_t DIGEST_CASES[] = {{
+{",\n".join(digest_rows)}}};
+
+#define DIGEST_CASES_COUNT (sizeof(DIGEST_CASES) / sizeof(DIGEST_CASES[0]))
+
+static const recover_case_t RECOVER_CASES[] = {{
+{",\n".join(recover_rows)}}};
+
+#define RECOVER_CASES_COUNT (sizeof(RECOVER_CASES) / sizeof(RECOVER_CASES[0]))
+
+#endif
+"""
+
+
 
 def main() -> None:
     written = {
@@ -4114,6 +4630,7 @@ def main() -> None:
         "vectors_sighash.h": sighash_vectors(),
         "vectors_bignum.h": bignum_vectors(),
         "vectors_ethereum.h": ethereum_vectors(),
+        "vectors_shamir.h": shamir_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)
