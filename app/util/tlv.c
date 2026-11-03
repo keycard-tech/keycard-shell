@@ -24,6 +24,26 @@
 #include "tlv.h"
 #include "common.h"
 
+uint16_t tlv_read_tag_bounded(uint8_t *buf, uint16_t buf_len, uint16_t *out_tag) {
+  uint16_t i = 0;
+
+  if (buf == NULL || out_tag == NULL || buf_len == 0) {
+    return TLV_INVALID;
+  }
+
+  *out_tag = buf[i++];
+
+  if ((*out_tag & 0x1F) == 0x1F) {
+    if (i >= buf_len) {
+      return TLV_INVALID;
+    }
+
+    *out_tag = (*out_tag << 8) | buf[i++];
+  }
+
+  return i;
+}
+
 uint16_t tlv_read_tag(uint8_t *buf, uint16_t *out_tag) {
   uint16_t i = 0;
 
@@ -31,6 +51,32 @@ uint16_t tlv_read_tag(uint8_t *buf, uint16_t *out_tag) {
 
   if((*out_tag & 0x1F) == 0x1F) {
     *out_tag = *out_tag << 8 | buf[i++];
+  }
+
+  return i;
+}
+
+uint16_t tlv_read_length_bounded(uint8_t *buf, uint16_t buf_len, uint16_t *out_len) {
+  uint16_t i = 0;
+
+  if (buf == NULL || out_len == NULL || buf_len == 0) {
+    return TLV_INVALID;
+  }
+
+  *out_len = buf[i++];
+
+  if (*out_len > 0x7f) {
+    uint16_t lenOfLen = APP_MIN((*out_len & 0x7f), 2);
+
+    if (lenOfLen > (buf_len - i)) {
+      return TLV_INVALID;
+    }
+
+    *out_len = 0;
+
+    while (lenOfLen--) {
+      *out_len = (*out_len << 8) | buf[i++];
+    }
   }
 
   return i;
@@ -52,6 +98,17 @@ uint16_t tlv_read_length(uint8_t *buf, uint16_t *out_len) {
   return i;
 }
 
+uint16_t tlv_read_fixed_primitive_bounded(uint16_t tag, uint16_t len, uint8_t *buf, uint16_t buf_len, uint8_t *out) {
+  uint16_t parsed_len;
+  uint16_t off = tlv_read_primitive_bounded(tag, len, buf, buf_len, out, &parsed_len);
+
+  if (off == TLV_INVALID || parsed_len != len) {
+    return TLV_INVALID;
+  }
+
+  return off;
+}
+
 uint16_t tlv_read_fixed_primitive(uint16_t tag, uint16_t len, uint8_t *buf, uint8_t *out) {
   uint16_t _len;
   uint16_t off = tlv_read_primitive(tag, len, buf, out, &_len);
@@ -60,6 +117,41 @@ uint16_t tlv_read_fixed_primitive(uint16_t tag, uint16_t len, uint8_t *buf, uint
   }
 
   return off;
+}
+
+uint16_t tlv_read_primitive_bounded(uint16_t tag, uint16_t max_len, uint8_t *buf, uint16_t buf_len, uint8_t *out, uint16_t *len) {
+  uint16_t parsed_tag;
+  uint16_t off;
+  uint16_t read;
+
+  if (buf == NULL || out == NULL || len == NULL) {
+    return TLV_INVALID;
+  }
+
+  *len = TLV_INVALID;
+
+  read = tlv_read_tag_bounded(buf, buf_len, &parsed_tag);
+  if (read == TLV_INVALID || parsed_tag != tag) {
+    return TLV_INVALID;
+  }
+
+  off = read;
+
+  read = tlv_read_length_bounded(&buf[off], buf_len - off, len);
+  if (read == TLV_INVALID) {
+    *len = TLV_INVALID;
+    return TLV_INVALID;
+  }
+
+  off += read;
+
+  if (*len > max_len || *len > (buf_len - off)) {
+    *len = TLV_INVALID;
+    return TLV_INVALID;
+  }
+
+  memcpy(out, &buf[off], *len);
+  return off + *len;
 }
 
 uint16_t tlv_read_primitive(uint16_t tag, uint16_t max_len, uint8_t *buf, uint8_t *out, uint16_t *len) {
