@@ -20,6 +20,8 @@ import itertools
 import json
 import os
 import random
+
+from asn1crypto import core as asn1_core
 import re
 import string
 import sys
@@ -42,6 +44,11 @@ SOURCES = {
     "erc-55.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-55.md",
     "bip-0021.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0021.mediawiki",
     "erc-681.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-681.md",
+    "keycard_applet_4.java": "https://raw.githubusercontent.com/keycard-tech/status-keycard/master/src/main/java/im/status/keycard/KeycardApplet.java",
+    "keycard_applet_3.java": "https://raw.githubusercontent.com/keycard-tech/status-keycard/3.2/src/main/java/im/status/keycard/KeycardApplet.java",
+    "keycard_ident.java": "https://raw.githubusercontent.com/keycard-tech/status-keycard/master/src/main/java/im/status/keycard/IdentApplet.java",
+    "keycard_shared_memory.java": "https://raw.githubusercontent.com/keycard-tech/status-keycard/master/src/main/java/im/status/keycard/SharedMemory.java",
+    "keycard_scv2.java": "https://raw.githubusercontent.com/keycard-tech/status-keycard/master/src/main/java/im/status/keycard/SecureChannelV2.java",
     "slip39.md": "https://raw.githubusercontent.com/satoshilabs/slips/master/slip-0039.md",
     "slip39_wordlist.txt": "https://raw.githubusercontent.com/satoshilabs/slips/master/slip-0039/wordlist.txt",
     "slip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-shamir-mnemonic/master/vectors.json",
@@ -4610,6 +4617,1174 @@ static const recover_case_t RECOVER_CASES[] = {{
 
 
 
+# ---------------------------------------------------------------- TLV
+
+# tlv.c parses the bytes that come back from the secure element. Nothing bounds the buffer: every
+# read takes a bare pointer, and the offset a caller walks next is taken from the length field it
+# has just read, so a response that claims more than it carries reads on past the end. The vectors
+# below are built from the applet's own source, because "what a genuine card sends" is the line the
+# bounds must not cross: a bound that rejects one of these responses is a device that no longer
+# pairs.
+#
+# The tag/length forms themselves are BER as X.690 defines them. Two form decisions are deliberate
+# policy rather than BER: indefinite length (0x80) and a length-of-length beyond two bytes are
+# refused even though they are legal BER, because the firmware cannot represent them -- and
+# non-minimal long forms stay accepted, because BER allows them and the current reader does too.
+
+APP_INFO_INSTANCE_UID_LEN = 16
+APP_INFO_KEY_UID_LEN = 32
+APP_INFO_PUBKEY_LEN = 65
+APP_INFO_CERT_SIZE = 98
+
+
+def javacard_constants(java: str) -> dict:
+    """The applet's own `static final` tag and size constants, so the vectors use its numbers."""
+    found = {}
+    for name, value in re.findall(
+        r"static final (?:byte|short|int) (\w+)\s*=\s*(?:\(byte\))?\s*([^;]+);", java
+    ):
+        value = value.strip()
+        try:
+            found[name] = int(value, 0)
+        except ValueError:
+            found[name] = value
+    # Some constants are written as expressions over other constants, capabilities in particular.
+    for _ in range(4):
+        for name, value in list(found.items()):
+            if not isinstance(value, str):
+                continue
+            expr = value.replace("(byte)", "").replace("(short)", "")
+            for other, other_value in found.items():
+                if isinstance(other_value, int):
+                    expr = re.sub(r"\b%s\b" % other, str(other_value), expr)
+            if re.fullmatch(r"[\d\s|&+*/()-]+", re.sub(r"0x[0-9a-fA-F]+", "0", expr)):
+                found[name] = int(eval(expr))
+    return {name: value for name, value in found.items() if isinstance(value, int)}
+
+
+def applet_write_sequence(java: str, method: str) -> list:
+    """Every `apduBuffer[off++] = ...` between `method` (a definition fragment, so the
+    dispatch that merely calls it is not mistaken for it) and the end of its body.
+
+    This is the response layout as the card writes it, before anyone interprets it.
+    """
+    start = java.index(method)
+    body = java[start:java.index("\n  }", start)]
+    return re.findall(r"apduBuffer\[off\+\+\] = ([^;]+);", body)
+
+
+def tlv_length_bytes(length: int, long_form: bool) -> bytes:
+    """The two forms the applet actually emits: short form, or 0x81 followed by one byte."""
+    if not long_form:
+        assert length <= 0x7F, length
+        return bytes([length])
+    assert length <= 0xFF, length
+    return bytes([0x81, length])
+
+
+def tlv(tag: int, value: bytes, long_form: bool = False) -> bytes:
+    return bytes([tag]) + tlv_length_bytes(len(value), long_form) + value
+
+
+def tlv_field(tag: int, value: bytes, long_form: bool = False):
+    """The encoding plus the offset of its tag byte, so the length byte is the one after it.
+
+    Only short-form fields are ever mutated, which is what makes that true.
+    """
+    encoded = tlv(tag, value, long_form)
+    assert len(encoded) == 2 + len(value), "mutating a long-form field needs a different offset"
+    return encoded, 0
+
+
+def info_response_v4(constants: dict, initialized: bool, rng) -> tuple:
+    """The GET APPLICATION INFO response of the 4.x applet, field for field."""
+    version = constants["APPLICATION_VERSION"]
+    app_status = 0x10 | 3  # APP_STATUS_INITIALIZED plus three PIN tries left
+    if rng.random() < 0.5:
+        app_status |= 0x20  # LEE mode
+    capabilities = constants["APPLICATION_CAPABILITIES"] & 0xFF
+    cert = bytes(rng.randrange(256) for _ in range(constants["CERT_LEN"]))
+    key_uid = bytes(rng.randrange(256) for _ in range(constants["KEY_UID_LENGTH"]))
+    parts = [
+        ("appVersion", tlv_field(constants["TLV_INT"], version.to_bytes(2, "big")), 2),
+        ("appStatus", tlv_field(constants["TLV_STATUS"], bytes([app_status])), 1),
+        ("keyUID", tlv_field(constants["TLV_KEY_UID"], key_uid if initialized else b""), None),
+        ("capabilities", tlv_field(constants["TLV_CAPABILITIES"], bytes([capabilities])), 1),
+        ("certData", tlv_field(constants["TLV_CERT"], cert), 98),
+    ]
+    inner = b"".join(part[1][0] for part in parts)
+    fields = []
+    at = 0
+    for name, (encoded, offset), want in parts:
+        fields.append((name, at + offset, want))
+        at += len(encoded)
+    # The applet reserves a byte for the length and writes 0x81 ahead of it when the content will
+    # not fit the short form; one marker, then the length byte.
+    response = (
+        bytes([constants["TLV_APPLICATION_INFO_TEMPLATE"]])
+        + tlv_length_bytes(len(inner), len(inner) > 0x7F)
+        + inner
+    )
+    header = len(response) - len(inner)
+    fields = [(name, off + header, want) for name, off, want in fields]
+    # The parser derives the status from the INITIALIZED bit and the key UID length together, and a
+    # card with a PIN but no key yet sets the first without the second.
+    if not app_status & 0x10:
+        status = 0
+    elif initialized:
+        status = 2
+    else:
+        status = 1
+    return response, fields, {
+        "version": version,
+        "status": status,
+        "capabilities": capabilities,
+        "key_uid": key_uid if initialized else b"",
+        "primary": cert,
+        "secondary": None,
+        "free_pairing": -1,
+        "app_status": app_status,
+    }
+
+
+def info_response_v3(constants: dict, uid_len: int, initialized: bool, rng) -> tuple:
+    """The 3.2 applet's response: instance UID first, then the secure channel public key."""
+    version = constants["APPLICATION_VERSION"]
+    uid = bytes(rng.randrange(256) for _ in range(uid_len))
+    sc_key = bytes(rng.randrange(256) for _ in range(APP_INFO_PUBKEY_LEN))  # uncompressed point
+    free_pairing = rng.randrange(30)
+    capabilities = constants["APPLICATION_CAPABILITIES"] & 0xFF
+    key_uid = bytes(rng.randrange(256) for _ in range(constants["KEY_UID_LENGTH"]))
+    parts = [
+        ("instanceUID", tlv_field(constants["TLV_UID"], uid), 16),
+        ("secureChannelPubKey", tlv_field(constants["TLV_PUB_KEY"], sc_key), 65),
+        ("appVersion", tlv_field(constants["TLV_INT"], version.to_bytes(2, "big")), 2),
+        ("freePairingSlots", tlv_field(constants["TLV_INT"], bytes([free_pairing])), 1),
+        ("keyUID", tlv_field(constants["TLV_KEY_UID"], key_uid if initialized else b""), None),
+        ("capabilities", tlv_field(constants["TLV_CAPABILITIES"], bytes([capabilities])), 1),
+    ]
+    inner = b"".join(part[1][0] for part in parts)
+    fields, at = [], 0
+    for name, (encoded, offset), want in parts:
+        fields.append((name, at + offset, want))
+        at += len(encoded)
+    response = (
+        bytes([constants["TLV_APPLICATION_INFO_TEMPLATE"]])
+        + tlv_length_bytes(len(inner), len(inner) > 0x7F)
+        + inner
+    )
+    header = len(response) - len(inner)
+    fields = [(name, off + header, want) for name, off, want in fields]
+    # A v3 response carries no status byte, so the key UID length is all the parser has: absent
+    # means initialised without keys, which is what app_info_parse_v3 answers and what keycard.c's
+    # three-way switch handles.
+    return response, fields, {
+        "version": version,
+        "status": 2 if initialized else 1,
+        "capabilities": capabilities,
+        "key_uid": key_uid if initialized else b"",
+        "primary": sc_key,
+        "secondary": uid,
+        "free_pairing": free_pairing,
+        "app_status": -1,
+    }
+
+
+def status_response(constants: dict, pin_tries: int, puk_tries: int, has_key: bool) -> tuple:
+    """GET STATUS: the 0xA3 template the applet writes, with its fixed length of 9."""
+    body = (
+        tlv(constants["TLV_INT"], bytes([pin_tries]))
+        + tlv(constants["TLV_INT"], bytes([puk_tries]))
+        + tlv(constants["TLV_BOOL"], bytes([0xFF if has_key else 0x00]))
+    )
+    response = bytes([constants["TLV_APPLICATION_STATUS_TEMPLATE"], len(body)]) + body
+    return response, {"pin_retries": pin_tries, "puk_retries": puk_tries, "has_key": 0xFF if has_key else 0x00}
+
+
+def tlv_vectors() -> str:
+    """TLV header forms per X.690, primitive reads, and application info parsed from the applet's bytes."""
+    applet4 = fetch("keycard_applet_4.java")
+    applet3 = fetch("keycard_applet_3.java")
+    ident = fetch("keycard_ident.java")
+    shared = fetch("keycard_shared_memory.java")
+
+    c4 = javacard_constants(applet4)
+    c3 = javacard_constants(applet3)
+    c4.update(javacard_constants(shared))
+    c4["TLV_CERT"] = javacard_constants(ident)["TLV_CERT"]
+    c3["CERT_LEN"] = javacard_constants(shared)["CERT_LEN"]
+
+    # The layouts below are the applet's, not a guess at it: the sequence of bytes it writes is read
+    # out of the source and compared to the sequence the vectors encode.
+    writes4 = applet_write_sequence(applet4, "void selectApplet(")
+    assert writes4[:1] == ["TLV_APPLICATION_INFO_TEMPLATE"], writes4
+    for tag in ("TLV_INT", "TLV_STATUS", "TLV_KEY_UID", "TLV_CAPABILITIES", "IdentApplet.TLV_CERT"):
+        assert tag in writes4, writes4
+    writes3 = applet_write_sequence(applet3, "void selectApplet(")
+    for tag in ("TLV_UID", "TLV_PUB_KEY", "TLV_INT", "TLV_KEY_UID"):
+        assert tag in writes3, writes3
+    assert c4["CERT_LEN"] == APP_INFO_CERT_SIZE, c4["CERT_LEN"]
+    assert c4["KEY_UID_LENGTH"] == APP_INFO_KEY_UID_LEN
+    assert c3["UID_LENGTH"] == APP_INFO_INSTANCE_UID_LEN
+
+    rng = random.Random(20240311)
+
+    # ---- header forms, read in isolation (every row long enough that no read runs off) ----
+    filler = "00" * 8
+    headers = [
+        ("primitive, empty value", "0500" + filler, 0x05, 1, 0, 1),
+        ("primitive, short form", "0405" + filler, 0x04, 1, 5, 1),
+        ("short form reaches 127", "047f" + "00" * 127, 0x04, 1, 0x7F, 1),
+        ("0x81 introduces one length byte", "048180" + "00" * 128, 0x04, 1, 0x80, 2),
+        ("0x82 introduces two length bytes", "04820100" + "00" * 256, 0x04, 1, 0x100, 3),
+        # X.690 permits these; the reader does not have to care, and rejecting them would be a
+        # change the card could trip over, so they are accepted.
+        ("non-minimal 0x81 form stays accepted", "048105" + filler, 0x04, 1, 5, 2),
+        ("non-minimal 0x82 form stays accepted", "04820005" + filler, 0x04, 1, 5, 3),
+        ("two-byte tag whose second byte ends it", "1f08" + "02" + filler, 0x1F08, 2, 2, 1),
+        # A size of 0 below means the read is refused and the cursor does not move. Tag numbers
+        # beyond two octets, indefinite lengths and lengths beyond two octets are all refused: not
+        # used by Keycard, and accepting them costs the reader the alignment of everything after.
+        ("two-byte tag whose second byte continues it", "1f88" + "03" + filler, 0, 0, 0, 0),
+        ("three-byte tag", "1f9f08" + "02" + filler, 0, 0, 0, 0),
+        ("indefinite length 0x80", "0480" + filler, 0x04, 1, 0, 0),
+        ("length-of-length 3", "0483010203" + filler, 0x04, 1, 0, 0),
+        ("length-of-length 15", "048f0102030405" + filler, 0x04, 1, 0, 0),
+        # Headers that run past the response.
+        ("tag byte alone", "04", 0x04, 1, 0, 0),
+        ("0x81 with no length byte after it", "0481", 0x04, 1, 0, 0),
+        ("0x82 with one of two length bytes", "048201", 0x04, 1, 0, 0),
+        ("two-byte tag cut after its first byte", "1f", 0, 0, 0, 0),
+        ("empty response", "", 0, 0, 0, 0),
+    ]
+
+    # ---- primitive reads ----
+    reads = [
+        ("value of the expected length", 0x80, 65, tlv(0x80, bytes(range(65))), 65, 65),
+        # A primitive read asks for at most; a short value is fine. Insisting on an exact length is
+        # the fixed variant's job, and it gets its own table below.
+        ("a primitive is content with fewer bytes than the maximum", 0x80, 65, tlv(0x80, bytes(64)), 64, 64),
+        ("value longer than the caller's max is refused", 0x80, 4, tlv(0x80, bytes(5)), None, 0),
+        ("a different tag is refused", 0x80, 4, tlv(0x81, bytes(4)), None, 0),
+        ("empty value against a max of zero", 0x8E, 0, tlv(0x8E, b""), 0, 0),
+        ("long form value within max", 0x8A, 98, tlv(0x8A, bytes(range(98)), long_form=True), 98, 98),
+        ("value shorter than its own length", 0x80, 65, tlv(0x80, bytes(65))[:-3], None, 0),
+        ("empty value shorter than its own length", 0x80, 65, bytes([0x80, 0x05]), None, 0),
+        ("tag alone", 0x80, 65, bytes([0x80]), None, 0),
+        ("empty response", 0x80, 65, b"", None, 0),
+        ("indefinite length", 0x80, 65, bytes([0x80, 0x80]), None, 0),
+    ]
+
+    fixed = [
+        ("value of exactly the expected length", 0x80, 65, tlv(0x80, bytes(range(65))), True),
+        ("fewer bytes than expected is refused", 0x80, 65, tlv(0x80, bytes(64)), False),
+        ("more bytes than expected is refused", 0x80, 5, tlv(0x80, bytes(6)), False),
+        ("a different tag is refused", 0x80, 4, tlv(0x81, bytes(4)), False),
+        ("nothing expected, nothing given", 0x8E, 0, tlv(0x8E, b""), True),
+        ("long form header at the exact length", 0x8A, 98, tlv(0x8A, bytes(range(98)), long_form=True), True),
+        ("value shorter than its own length", 0x8A, 98, tlv(0x8A, bytes(98))[:-1], False),
+        ("tag alone", 0x8A, 98, bytes([0x8A]), False),
+        ("empty response", 0x8A, 98, b"", False),
+    ]
+
+    info_rows = []
+    for label, constants, long_v3 in (("v4", c4, False), ("v3", c3, False)):
+        for initialized in (True, False):
+            if label == "v4":
+                response, fields, expect = info_response_v4(constants, initialized, rng)
+            else:
+                response, fields, expect = info_response_v3(constants, constants["UID_LENGTH"],
+                                                            initialized, rng)
+            info_rows.append(
+                {
+                    "comment": "%s application info, %s key UID, %d byte template"
+                    % (label, "with" if initialized else "without", len(response)),
+                    "response": response,
+                    "ok": 1,
+                    "fields": fields,
+                    **expect,
+                }
+            )
+
+    # Every refusal in application_info.c, provoked in bounds: one field at a time given a
+    # different tag or a length that is not the one expected, with trailing bytes so an inflated
+    # length reads padding rather than past the buffer. A bounds change has to keep refusing all of
+    # these and must not start refusing the genuine rows above.
+    tail = bytes(32)
+    for base in list(info_rows):
+        if not base["ok"] or not base.get("fields"):
+            continue
+        response, fields = base["response"], base["fields"]
+        for name, off, want in fields:
+            mutated = bytearray(response)
+            mutated[off] ^= 0x40
+            info_rows.append({**base, "comment": "%s: %s carries a different tag"
+                              % (base["comment"], name), "response": bytes(mutated) + tail,
+                              "ok": 0, "fields": None})
+            if want is None:
+                # The key UID is a primitive read: only a value larger than the field is refused.
+                mutated = bytearray(response)
+                mutated[off + 1] = APP_INFO_KEY_UID_LEN + 1
+                info_rows.append({**base, "comment": "%s: key UID longer than the field"
+                                  % base["comment"], "response": bytes(mutated) + tail,
+                                  "ok": 0, "fields": None})
+                continue
+            for delta, label in ((1, "one byte longer"), (0xFF, "one byte shorter")):
+                mutated = bytearray(response)
+                mutated[off + 1] = (mutated[off + 1] + delta) & 0xFF
+                info_rows.append({**base, "comment": "%s: %s is %s than expected"
+                                  % (base["comment"], name, label),
+                                  "response": bytes(mutated) + tail, "ok": 0, "fields": None})
+
+    # A v4 card that has no PIN yet sets neither status bit, which is the one path answering
+    # NOT_INITIALIZED rather than reading the state off the key UID length.
+    for base in list(info_rows):
+        if base["ok"] and base["app_status"] >= 0x10 and base["status"] == 2:
+            status_at = next(off + 2 for name, off, _ in base["fields"] if name == "appStatus")
+            mutated = bytearray(base["response"])
+            mutated[status_at] = 0x03
+            info_rows.append({**base, "comment": "%s: appStatus without the INITIALIZED bit"
+                              % base["comment"], "response": bytes(mutated), "status": 0,
+                              "app_status": 0x03, "fields": None})
+            break
+
+    sc_key = bytes(rng.randrange(256) for _ in range(APP_INFO_PUBKEY_LEN))
+    info_rows.append(
+        {
+            "comment": "uninitialised card answers with a bare public key",
+            "response": tlv(c4["TLV_PUB_KEY"], sc_key),
+            "ok": 1,
+            "version": 0,
+            "status": 0,
+            # A bare public key reply carries no capabilities, and the parser leaves the field as it
+            # found it: 0xFFFF says "not answered", which the test checks rather than a value.
+            "capabilities": 0xFFFF,
+            "key_uid": b"",
+            "primary": sc_key,
+            "secondary": None,
+            "free_pairing": -1,
+            "app_status": -1,
+        }
+    )
+
+    v4_response = info_response_v4(c4, True, rng)[0]
+    # Only a refusal the current reader reaches without walking off the end can live in this table;
+    for response, comment in (
+        (bytes([0xA5]) + v4_response[1:], "template tag is not 0xA4"),
+    ):
+        info_rows.append(
+            {
+                "comment": comment,
+                "response": response,
+                "ok": 0,
+                "version": 0,
+                "status": 0,
+                "capabilities": 0,
+                "key_uid": b"",
+                "primary": None,
+                "secondary": None,
+                "free_pairing": -1,
+                "app_status": -1,
+            }
+        )
+
+    # The template tag is checked, and so is which version the first inner tag announces; both are
+    # refusals that fit inside a short buffer.
+    info_rows.append({**info_rows[0], "comment": "template announces neither v3 nor v4",
+                      "response": bytes([0xA4, 0x03, 0x90, 0x00, 0x00]) + tail, "ok": 0,
+                      "fields": None})
+
+    for length, label in ((APP_INFO_PUBKEY_LEN - 1, "short"), (APP_INFO_PUBKEY_LEN + 1, "long")):
+        info_rows.append({**info_rows[0], "comment": "bare public key reply, %s" % label,
+                          "response": bytes([0x80, length]) + sc_key[:length] + tail, "ok": 0,
+                          "fields": None})
+
+    status_rows = []
+    for pin_tries, puk_tries, has_key in ((3, 5, True), (0, 10, False), (10, 10, True)):
+        response, expect = status_response(c4, pin_tries, puk_tries, has_key)
+        status_rows.append({"comment": "status %d/%d key=%d" % (pin_tries, puk_tries, has_key),
+                            "response": response, "ok": 1, **expect})
+    # A template that declares nothing inside it is well formed BER and answers nothing.
+    status_rows.append({**status_rows[0], "comment": "status template holds nothing",
+                        "response": bytes([0xA3, 0x00]), "ok": 0})
+    status_rows.append({**status_rows[0], "comment": "status template under-declares its contents",
+                        "response": bytes([0xA3, 0x06]) + status_rows[0]["response"][2:], "ok": 0})
+
+    # The three fixed reads inside the status template, each given a different tag or a length that
+    # is not one byte, with trailing bytes so an inflated length does not read past the response.
+    for base in [r for r in status_rows if r["ok"]]:
+        for name, at in (("pinRetries", 2), ("pukRetries", 5), ("hasKey", 8)):
+            mutated = bytearray(base["response"])
+            mutated[at] ^= 0x40
+            status_rows.append({**base, "comment": "%s: %s carries a different tag"
+                                % (base["comment"], name), "response": bytes(mutated) + tail,
+                                "ok": 0})
+            for delta, label in ((1, "one byte longer"), (0xFF, "one byte shorter")):
+                mutated = bytearray(base["response"])
+                mutated[at + 1] = (mutated[at + 1] + delta) & 0xFF
+                status_rows.append({**base, "comment": "%s: %s is %s than expected"
+                                    % (base["comment"], name, label),
+                                    "response": bytes(mutated) + tail, "ok": 0})
+
+    status_rows.append(
+        {"comment": "wrong template tag", "response": bytes([0xA4, 0x09]) + status_rows[0]["response"][2:],
+         "ok": 0, "pin_retries": 0, "puk_retries": 0, "has_key": 0}
+    )
+
+    # ---- every prefix of a genuine response, plus the length lies ----
+    info_rows.append({**info_rows[0], "fields": None, "ok": 0,
+                      "comment": "info template holds nothing", "response": bytes([0xA4, 0x00])})
+    # A template that claims fewer bytes than its fields occupy: the fields past the declaration are
+    # bytes the card never said belonged to the response, so the parse stops at the declaration and
+    # comes up short.
+    info_rows.append({**info_rows[0], "fields": None, "ok": 0,
+                      "comment": "info template under-declares its contents",
+                      "response": bytes([0xA4, 0x0A]) + v4_response[3:]})
+
+    # Every truncation of a response a genuine card sends, and every header that lies about how
+    # much follows: 355 of the 360 of these made the unbounded reader walk past the response, so
+    # they are assertions now that the reads carry a bound.
+    for base in [r for r in info_rows if r["ok"]]:
+        for cut in range(0, len(base["response"])):
+            info_rows.append({**base, "fields": None, "ok": 0,
+                              "comment": "%s truncated to %d of %d"
+                              % (base["comment"], cut, len(base["response"])),
+                              "response": base["response"][:cut]})
+    for base in [r for r in status_rows if r["ok"]]:
+        for cut in range(0, len(base["response"])):
+            status_rows.append({**base, "ok": 0,
+                                "comment": "%s truncated to %d of %d"
+                                % (base["comment"], cut, len(base["response"])),
+                                "response": base["response"][:cut]})
+
+    header_rows = [
+        "  {%s, %s, 0x%04x, %d, %d, %d}"
+        % (cstr(c), cstr(h), tag, tag_size, length, length_size)
+        for c, h, tag, tag_size, length, length_size in headers
+    ]
+    read_rows = []
+    for c, tag, max_len, value, out_len, _ in reads:
+        if out_len is None:
+            read_rows.append("  {%s, 0x%04x, %d, %s, NULL, 0, 0}" % (cstr(c), tag, max_len, cstr(hexs(value))))
+        else:
+            read_rows.append(
+                "  {%s, 0x%04x, %d, %s, %s, %d, %d}"
+                % (cstr(c), tag, max_len, cstr(hexs(value)), cstr(hexs(value[1 + (2 if value[1] > 0x7f else 1):])),
+                   1 + (2 if value[1] > 0x7f else 1) + out_len, out_len)
+            )
+
+    fixed_rows = []
+    for c, tag, want, value, accepted in fixed:
+        if accepted:
+            consumed = 1 + (2 if value[1] > 0x7F else 1) + want
+            fixed_rows.append("  {%s, 0x%04x, %d, %s, %d}" % (cstr(c), tag, want, cstr(hexs(value)), consumed))
+        else:
+            fixed_rows.append("  {%s, 0x%04x, %d, %s, 0}" % (cstr(c), tag, want, cstr(hexs(value))))
+
+    def info_row(r):
+        return "  {%s, %s, %d, %d, %d, %d, %s, %s, %s, %d, %d}" % (
+            cstr(r["comment"]), cstr(hexs(r["response"])), r["ok"], r["version"], r["status"],
+            r["capabilities"], cstr(hexs(r["key_uid"])),
+            "NULL" if r["primary"] is None else cstr(hexs(r["primary"])),
+            "NULL" if r["secondary"] is None else cstr(hexs(r["secondary"])),
+            r["free_pairing"], r["app_status"],
+        )
+
+    return f"""#ifndef VECTORS_TLV_H
+#define VECTORS_TLV_H
+
+/* spec: {provenance('keycard_applet_4.java')}
+ *     {provenance('keycard_applet_3.java')}
+ *     {provenance('keycard_ident.java')}
+ *     {provenance('keycard_shared_memory.java')}
+ *
+ * The bytes a Keycard answers with, and the BER forms a reader has to make sense of. The
+ * application info and status responses are assembled from the applet's own source -- its tag
+ * constants, its field order, and its choice of short or 0x81 length form -- which is read while
+ * generating and compared to the layout emitted here. The primitives' cases follow X.690.
+ *
+ * Two forms are refused as policy rather than because BER forbids them: indefinite length (0x80)
+ * and a length-of-length above 2, neither of which the firmware can represent. Non-minimal long
+ * forms stay accepted, as BER allows.
+ *
+ * The PROBE rows are for the over-read harness, which runs each one in its own process so the
+ * sanitizer can answer where the reader stops.
+ */
+typedef struct {{
+  const char* comment;
+  const char* hex;
+  uint16_t tag;
+  uint16_t tag_size;
+  uint16_t length;
+  uint16_t length_size;
+}} tlv_header_case_t;
+
+typedef struct {{
+  const char* comment;
+  uint16_t tag;
+  uint16_t max_len;
+  const char* hex;
+  const char* out;      /* NULL when the read must be refused */
+  uint16_t consumed;
+  uint16_t out_len;
+}} tlv_read_case_t;
+
+typedef struct {{
+  const char* comment;
+  const char* response;
+  int ok;
+  uint16_t version;
+  int status;
+  uint16_t capabilities;
+  const char* key_uid;
+  const char* primary;   /* secure channel key (v3, bare) or certificate (v4) */
+  const char* secondary; /* instance UID (v3) */
+  int free_pairing;      /* v3 only, -1 otherwise */
+  int app_status;        /* v4 only, -1 otherwise */
+}} app_info_case_t;
+
+typedef struct {{
+  const char* comment;
+  const char* response;
+  int ok;
+  uint8_t pin_retries;
+  uint8_t puk_retries;
+  uint8_t has_key;
+}} app_status_case_t;
+
+static const tlv_header_case_t TLV_HEADER_CASES[] = {{
+{",\n".join(header_rows)}}};
+
+#define TLV_HEADER_CASES_COUNT (sizeof(TLV_HEADER_CASES) / sizeof(TLV_HEADER_CASES[0]))
+
+static const tlv_read_case_t TLV_READ_CASES[] = {{
+{",\n".join(read_rows)}}};
+
+#define TLV_READ_CASES_COUNT (sizeof(TLV_READ_CASES) / sizeof(TLV_READ_CASES[0]))
+
+typedef struct {{
+  const char* comment;
+  uint16_t tag;
+  uint16_t want_len;
+  const char* hex;
+  uint16_t consumed; /* TLV_INVALID when the read must be refused */
+}} tlv_fixed_case_t;
+
+static const tlv_fixed_case_t TLV_FIXED_CASES[] = {{
+{",\n".join(fixed_rows)}}};
+
+#define TLV_FIXED_CASES_COUNT (sizeof(TLV_FIXED_CASES) / sizeof(TLV_FIXED_CASES[0]))
+
+static const app_info_case_t APP_INFO_CASES[] = {{
+{",\n".join(info_row(r) for r in info_rows)}}};
+
+#define APP_INFO_CASES_COUNT (sizeof(APP_INFO_CASES) / sizeof(APP_INFO_CASES[0]))
+
+static const app_status_case_t APP_STATUS_CASES[] = {{
+{",\n".join("  {%s, %s, %d, %d, %d, %d}" % (cstr(r["comment"]), cstr(hexs(r["response"])), r["ok"],
+      r["pin_retries"], r["puk_retries"], r["has_key"]) for r in status_rows)}}};
+
+#define APP_STATUS_CASES_COUNT (sizeof(APP_STATUS_CASES) / sizeof(APP_STATUS_CASES[0]))
+
+#endif
+"""
+
+
+
+def der_model(der: bytes):
+    """What ecdsa_sig_from_der has to answer, stated from X.690 and not from the C: a SEQUENCE of
+    exactly two INTEGERs in the minimal length form, each at most 32 bytes once the octet that marks
+    a positive value is skipped, and nothing trailing in the sequence. The firmware's one deliberate
+    departure from DER is written in here too -- it removes a single leading zero, so an INTEGER
+    padded with more than one is still read as the same number.
+
+    Returns (accepted, 64-byte r||s).
+    """
+    if len(der) < 2 or der[0] != 0x30 or der[1] > 0x7F:
+        return False, None
+    end = 2 + der[1]
+    if end > len(der):
+        return False, None
+    out = bytearray(64)
+    pos = 2
+    for i in (0, 1):
+        if end < pos + 2 or der[pos] != 0x02 or der[pos + 1] > 0x7F:
+            return False, None
+        length = der[pos + 1]
+        pos += 2
+        if pos + length > end:
+            return False, None
+        if length and der[pos] == 0:
+            pos += 1
+            length -= 1
+        if length > 32:
+            return False, None
+        out[32 * (i + 1) - length:32 * (i + 1)] = der[pos:pos + length]
+        pos += length
+    if pos != end:
+        return False, None
+    return True, bytes(out)
+
+
+def der_int(value: bytes) -> bytes:
+    stripped = value.lstrip(b"\x00") or b"\x00"
+    if stripped[0] & 0x80:
+        stripped = b"\x00" + stripped
+    return bytes([0x02, len(stripped)]) + stripped
+
+
+def der_seq(body: bytes) -> bytes:
+    assert len(body) <= 0x7F
+    return bytes([0x30, len(body)]) + body
+
+
+class Asn1Sig(asn1_core.Sequence):
+    _fields = [("r", asn1_core.Integer), ("s", asn1_core.Integer)]
+
+
+def asn1_values(der: bytes):
+    """asn1crypto's strict DER read, as a second opinion on the encodings it accepts at all."""
+    try:
+        parsed = Asn1Sig.load(der, strict=True)
+        r, s = parsed["r"].native, parsed["s"].native
+        if not 0 <= r < 2**256 or not 0 <= s < 2**256:
+            return None
+        return r, s
+    except Exception:
+        return None
+
+
+def ecdsa_der_vectors() -> str:
+    rng = random.Random(20250311)
+    rows = []
+
+    def add(comment: str, value: bytes) -> None:
+        rows.append((comment, bytes(value)))
+
+    valid = [(bytes(rng.randrange(256) for _ in range(32)), bytes(rng.randrange(256) for _ in range(32)))
+             for _ in range(3)]
+    # The padding rules live at the edges: a value that needs the sign octet, one that does not, one
+    # that is all zeros, and one whose leading zero the encoder has to add twice over.
+    valid += [
+        (b"\x00" * 31 + b"\x01", b"\x00" * 31 + b"\x7f"),
+        (b"\x00" * 30 + b"\x80\x00", b"\xff" * 32),
+        (b"\x00" * 32, b"\x00" * 31 + b"\x05"),
+        (b"\x00" * 31 + b"\x80", b"\x00" * 3 + b"\xde\xad\xbe\xef"),
+    ]
+
+    for index, (r, s) in enumerate(valid):
+        base = der_seq(der_int(r) + der_int(s))
+        add("signature %d" % index, base)
+        for cut in range(0, len(base)):
+            add("signature %d truncated to %d of %d" % (index, cut, len(base)), base[:cut])
+        if index < 3:
+            for at in range(len(base)):
+                for delta, label in ((1, "up"), (-1, "down")):
+                    mutated = bytearray(base)
+                    mutated[at] = (mutated[at] + delta) & 0xFF
+                    add("signature %d byte %d shifted %s" % (index, at, label), mutated)
+            # The header bytes of each INTEGER, wherever the signature is long.
+            else_ = 2 + len(der_int(r))
+            for at in (2, 3, else_, else_ + 1):
+                mutated = bytearray(base)
+                mutated[at] ^= 0x40
+                add("signature %d byte %d flipped" % (index, at), mutated)
+
+    wide = der_seq(der_int(b"\x00" * 31 + b"\x01") + der_int(b"\xff" * 32))
+    for comment, value in (
+        ("long form sequence length", bytes([0x30, 0x81, len(wide) - 2]) + wide[2:]),
+        ("long form integer length", bytes([0x30, 0x07, 0x02, 0x81, 0x01, 0x05, 0x02, 0x01, 0x05])),
+        ("sequence with nothing in it", bytes([0x30, 0x00])),
+        ("one integer, not two", bytes([0x30, 0x03, 0x02, 0x01, 0x05])),
+        ("three integers", bytes([0x30, 0x09, 0x02, 0x01, 0x05, 0x02, 0x01, 0x06, 0x02, 0x01, 0x07])),
+        ("octet trailing the two integers", bytes([0x30, 0x07, 0x02, 0x01, 0x05, 0x02, 0x01, 0x06, 0x00])),
+        ("octet after the sequence", wide + b"\x99"),
+        ("integers with no content", bytes([0x30, 0x04, 0x02, 0x00, 0x02, 0x00])),
+        ("integer padded with a sign octet", bytes([0x30, 0x27, 0x02, 0x21, 0x00] + [0x80] * 32 +
+                                                   [0x02, 0x01, 0x05])),
+        ("integer padded past the sign octet", bytes([0x30, 0x27, 0x02, 0x21, 0x00, 0x00] +
+                                                     [0x80] * 31 + [0x02, 0x01, 0x05])),
+        ("integer that needs no padding but has it", bytes([0x30, 0x06, 0x02, 0x02, 0x00, 0x05,
+                                                            0x02, 0x01, 0x05])),
+        ("integer of 33 bytes after its padding", bytes([0x30, 0x26, 0x02, 0x22, 0x00] + [0x80] * 33 +
+                                                       [0x02, 0x01, 0x05])),
+        ("sequence length short of its contents", bytes([0x30, 0x04, 0x02, 0x01, 0x05, 0x02, 0x01, 0x06,
+                                                         0x99, 0x99])),
+        ("sequence length past the buffer", bytes([0x30, 0x08, 0x02, 0x01, 0x05, 0x02, 0x01, 0x06])),
+        ("sequence length one past the buffer", bytes([0x30, 0x07, 0x02, 0x01, 0x05, 0x02, 0x01, 0x06])),
+        ("sequence tag with the class bits changed", bytes([0x31, 0x05, 0x02, 0x01, 0x05, 0x02, 0x01, 0x06])),
+        ("integer tag replaced", bytes([0x30, 0x05, 0x03, 0x01, 0x05, 0x02, 0x01, 0x06])),
+        ("nothing at all", b""),
+        ("one byte", b"\x30"),
+    ):
+        add(comment, value)
+
+    for i in range(150):
+        add("random bytes %d" % i, bytes(rng.randrange(256) for _ in range(rng.randrange(1, 40))))
+
+    accepted = 0
+    for comment, value in rows:
+        ok, sig = der_model(value)
+        accepted += 1 if ok else 0
+        if ok:
+            strict = asn1_values(value)
+            if strict is not None:
+                assert sig == strict[0].to_bytes(32, "big") + strict[1].to_bytes(32, "big"), comment
+    for r, s in valid:
+        assert der_model(der_seq(der_int(r) + der_int(s)))[0], "a valid signature was refused"
+
+    c_rows = []
+    for comment, value in rows:
+        ok, sig = der_model(value)
+        c_rows.append("  {%s, %s, %d, %s}"
+                      % (cstr(comment), cstr(hexs(value)), 1 if ok else 0,
+                         cstr(hexs(sig)) if ok else "NULL"))
+
+    return """#ifndef VECTORS_ECDSA_DER_H
+#define VECTORS_ECDSA_DER_H
+
+/* DER signatures: %d rows, %d of them the encodings that parse. Expectations come from der_model()
+ * in generate.py, stated from X.690, and every row that asn1crypto's strict DER reader also accepts
+ * is checked against it during generation. */
+
+typedef struct {
+  const char* comment;
+  const char* hex;
+  int ok;
+  const char* sig;      /* the 64 bytes of r||s, NULL when the encoding must be refused */
+} der_case_t;
+
+static const der_case_t DER_CASES[] = {
+%s};
+
+#define DER_CASES_COUNT (sizeof(DER_CASES) / sizeof(DER_CASES[0]))
+
+#endif
+""" % (len(rows), accepted, ",\n".join(c_rows))
+
+
+
+
+# ---------------------------------------------------------------- sign reply
+SIGN_ECDSA = 0
+SIGN_SCHNORR = 3
+SIGN_PUBKEY_LEN = 65
+SIGN_SCHNORR_SIG_LEN = 64
+SIGN_RECOVERED_SIG_LEN = 65
+TLV_SIGN_TEMPLATE = 0xA0
+TLV_SIGN_PUB_KEY = 0x80
+TLV_SIGN_SCHNORR = 0x88
+
+
+def applet_sign_writes(java: str) -> dict:
+    """What the SIGN command writes into the response buffer, keyed by where it writes it."""
+    start = java.index("void sign(")
+    body = java[start:java.index("\n  }", start)]
+    found = {}
+    for offset, value in re.findall(r"apduBuffer\[((?:[^\[\]]|\[[^\]]*\])*?)\]\s*=\s*([^;]+);", body):
+        found[offset.replace("(short)", "").replace(" ", "")] = value.strip()
+    return found
+
+
+def ber_header(data: bytes, pos: int):
+    """(tag, tag_size, length, length_size) of the object at pos, per X.690 8.1.2 and 8.1.3, or None.
+
+    Indefinite length, more than two length octets and tag numbers over two octets are refused, which
+    is the reader's stated policy rather than BER's.
+    """
+    if pos >= len(data):
+        return None
+    tag, tag_size = data[pos], 1
+    if (tag & 0x1F) == 0x1F:
+        if pos + 1 >= len(data) or data[pos + 1] & 0x80:
+            return None
+        tag, tag_size = (tag << 8) | data[pos + 1], 2
+    pos += tag_size
+    if pos >= len(data):
+        return None
+    first = data[pos]
+    if first == 0x80:
+        return None
+    if first < 0x80:
+        return tag, tag_size, first, 1
+    octets = first - 0x80
+    if octets > 2 or pos + 1 + octets > len(data):
+        return None
+    return tag, tag_size, int.from_bytes(data[pos + 1:pos + 1 + octets], "big"), 1 + octets
+
+
+def sign_reply_model(reply: bytes, algo: int):
+    """Where the key and the signature of a SIGN reply are, derived from the layout the applet writes:
+    a template that declares its contents, holding a 0x80 public key and then the signature -- bare DER
+    for ECDSA, a 0x88 primitive for BIP-340.
+
+    Returns (parsed, key_off, sig_off, sig_len), leaving everything outside the declared template
+    alone, since that is what a template declaring its length means.
+    """
+    if algo not in (SIGN_ECDSA, SIGN_SCHNORR):
+        # The reply has a shape per algorithm -- bare DER, or a 0x88 primitive -- and an algorithm
+        # the card does not sign with has neither, so nothing here says where its signature is.
+        return False, 0, 0, 0
+
+    head = ber_header(reply, 0)
+    if head is None:
+        return False, None, 0, 0
+
+    if (algo == SIGN_ECDSA) and (head[0] == TLV_SIGN_PUB_KEY):
+        # The documented reply that needs no key: a bare 0x80 whose contents are the signature with
+        # its recovery id appended. key_off None is the parse answering "no public key came".
+        body = head[1] + head[3]
+        if (head[2] != SIGN_RECOVERED_SIG_LEN) or (body + head[2] > len(reply)):
+            return False, None, 0, 0
+        return True, None, body, head[2]
+
+    if head[0] != TLV_SIGN_TEMPLATE:
+        return False, None, 0, 0
+    declared, start = head[2], head[1] + head[3]
+    if start + declared > len(reply):
+        return False, 0, 0, 0
+    end = start + declared
+
+    key = ber_header(reply, start)
+    if key is None or key[0] != TLV_SIGN_PUB_KEY or key[2] != SIGN_PUBKEY_LEN:
+        return False, None, 0, 0
+    key_off = start + key[1] + key[3]
+    if key_off + SIGN_PUBKEY_LEN > end:
+        return False, None, 0, 0
+
+    body = key_off + SIGN_PUBKEY_LEN
+    if algo == SIGN_SCHNORR:
+        sig = ber_header(reply, body)
+        if sig is None or sig[0] != TLV_SIGN_SCHNORR or sig[2] != SIGN_SCHNORR_SIG_LEN:
+            return False, None, 0, 0
+        sig_off = body + sig[1] + sig[3]
+        if sig_off + SIGN_SCHNORR_SIG_LEN > end:
+            return False, None, 0, 0
+        return True, key_off, sig_off, SIGN_SCHNORR_SIG_LEN
+
+    if body >= end:
+        return False, None, 0, 0
+    return True, key_off, body, end - body
+
+
+def sign_reply(key: bytes, body: bytes, declared: int = None, template: int = TLV_SIGN_TEMPLATE) -> bytes:
+    content = bytes([TLV_SIGN_PUB_KEY, len(key)]) + key + body
+    if declared is None:
+        declared = len(content)
+    return bytes([template]) + bytes([0x81, declared]) + content
+
+
+
+BTC_DER_MAX = 72
+BTC_SIGHASH = 0x01
+BTC_COMPRESSED_LEN = 33
+
+
+def der_raw(length: int, value: bytes) -> bytes:
+    """An INTEGER declaring `length` and holding `value`, which need not agree: the record layer has to
+    cope with encodings a signer would never produce."""
+    return bytes([0x02, length]) + value
+
+
+def der_declared(body_len: int, body: bytes, sequence: int = 0x30) -> bytes:
+    """A DER sequence declaring body_len while holding len(body): the two are what the record layer
+    has to reconcile."""
+    return bytes([sequence, body_len]) + body
+
+
+def btc_sig_model(reply: bytes, algo: int, sighash: int):
+    """What BIP-174 wants from the reply, stated from the record rather than from the C: a partial
+    signature is keyed by the compressed form of the key the card named, and its value is the DER
+    followed by the sighash byte. A taproot key signature names no key and its value is the 64 bytes.
+
+    A reply that carries its own recovery id names no key, and a record keyed by nothing is not a
+    record, so those are refused here whatever the reply parser made of them.
+
+    Returns (written, key, value).
+    """
+    ok, key_off, sig_off, sig_len = sign_reply_model(reply, algo)
+    if not ok:
+        return False, None, None
+
+    if algo == SIGN_SCHNORR:
+        return True, None, reply[sig_off:sig_off + sig_len]
+    if key_off is None:
+        return False, None, None
+
+    key = reply[key_off:key_off + SIGN_PUBKEY_LEN]
+    der = reply[sig_off:sig_len + sig_off]
+    if len(der) < 2 or der[0] != 0x30:
+        return False, None, None
+    der_len = der[1] + 2
+    if der[1] > BTC_DER_MAX - 2 or der_len > len(der):
+        return False, None, None
+
+    compressed = bytes([0x02 | (key[64] & 1)]) + key[1:BTC_COMPRESSED_LEN]
+    return True, compressed, der[:der_len] + bytes([sighash])
+
+
+def btc_sig_rows(rows: list) -> list:
+    """The reply corpus as the record layer sees it, plus the DER lengths it has to make sense of and
+    the sighash byte it appends. Rows are (comment, reply, algo, sighash)."""
+    key = bytes([0x04]) + bytes(range(1, SIGN_PUBKEY_LEN))
+    widest = der_declared(70, der_raw(33, bytes(33)) + der_raw(33, bytes(33)))
+    typical = der_declared(69, der_raw(33, bytes(33)) + der_raw(32, bytes(32)))
+    narrow = der_declared(8, der_raw(2, b"\x05\x07") + der_raw(2, b"\x09\x0b"))
+
+    out = [(comment, reply, algo, BTC_SIGHASH) for comment, reply, algo in rows]
+    for der, label in (
+        (widest, "widest legitimate DER"),
+        (typical, "one integer padded, one not"),
+        (narrow, "small integers"),
+        (der_declared(71, der_raw(34, bytes(34)) + der_raw(33, bytes(33))),
+         "DER of 73 bytes, past the cap"),
+        (der_declared(74, bytes(70)), "DER declaring bytes it does not hold"),
+        (der_declared(6, der_raw(2, b"\x05\x07") + der_raw(3, b"\x00\x05\x07")),
+         "DER declaring less than the template holds"),
+        (der_declared(1, b"\x05"), "sequence holding one byte"),
+        (der_declared(6, der_raw(2, b"\x05\x07") + b"\x02\x02", sequence=0x31), "not a sequence"),
+        (b"\x30", "sequence tag alone"),
+        (b"", "no signature at all"),
+    ):
+        out.append(("BTC: %s" % label, sign_reply(key, der), SIGN_ECDSA, BTC_SIGHASH))
+
+    for sighash in (0x00, 0x02, 0x03, 0x81, 0xFF):
+        out.append(("BTC: sighash byte 0x%02x" % sighash, sign_reply(key, widest), SIGN_ECDSA, sighash))
+    return out
+
+
+def btc_sig_table(rows4: list) -> tuple:
+    c_rows, accepted = [], 0
+    for comment, reply, algo, sighash in rows4:
+        if algo not in (SIGN_ECDSA, SIGN_SCHNORR):
+            # The record layer fixes the algorithm by which it reads, so there is no record to expect
+            # from an algorithm it is never called with. Those replies stay in the reply table, where
+            # the gate is the question.
+            continue
+        ok, key, val = btc_sig_model(reply, algo, sighash)
+        accepted += 1 if ok else 0
+        c_rows.append("  {%s, %s, %d, 0x%02x, %d, %s, %s, %d}"
+                      % (cstr(comment), cstr(hexs(reply)), algo, sighash, 1 if ok else 0,
+                         "NULL" if not ok or key is None else cstr(hexs(key)),
+                         "NULL" if not ok or val is None else cstr(hexs(val)),
+                         0 if val is None else len(val)))
+    return ",\n".join(c_rows), accepted
+
+def sign_reply_vectors() -> str:
+    """The reply to SIGN, laid out as the applet writes it, plus the shapes around it."""
+    applet = fetch("keycard_applet_4.java")
+    writes = applet_sign_writes(applet)
+    assert writes["OFFSET_CDATA"] == "TLV_SIGNATURE_TEMPLATE", writes
+    assert writes["(OFFSET_CDATA+3)"] == "TLV_PUB_KEY", writes
+    assert writes["(OFFSET_CDATA+4)"] == "Crypto.KEY_PUB_SIZE", writes
+    assert writes["(OFFSET_CDATA+1)"] == "(byte) 0x81", writes
+    assert writes["(OFFSET_CDATA+2)"] == "(byte) (outLen - 3)", writes
+    # The signature begins where the template header, the key's header and the key itself end, and the
+    # applet states that offset instead of counting it out.
+    anchor = re.search(r"SIGN_HASH_OFF\s*=\s*\(OFFSET_CDATA\s*\+\s*(\d+)\s*\+\s*Crypto\.KEY_PUB_SIZE\)",
+                       applet)
+    assert anchor and int(anchor.group(1)) == 3 + 2, anchor and anchor.group(0)
+
+    constants = javacard_constants(applet)
+    assert constants["TLV_SIGNATURE_TEMPLATE"] == TLV_SIGN_TEMPLATE
+    assert constants["TLV_PUB_KEY"] == TLV_SIGN_PUB_KEY
+    # Crypto.KEY_PUB_SIZE is the Java Card platform's uncompressed point length; the card's own secure
+    # channel states the same number where it is not a platform constant.
+    assert javacard_constants(fetch("keycard_scv2.java"))["PUBKEY_SIZE"] == SIGN_PUBKEY_LEN
+
+    rng = random.Random(20250417)
+    key = bytes([0x04]) + bytes(rng.randrange(256) for _ in range(SIGN_PUBKEY_LEN - 1))
+    schnorr = bytes(rng.randrange(256) for _ in range(SIGN_SCHNORR_SIG_LEN))
+
+    def signature(r: bytes, s: bytes) -> bytes:
+        return der_seq(der_int(r) + der_int(s))
+
+    ecdsa = [
+        signature(bytes(rng.randrange(256) for _ in range(32)),
+                  bytes(rng.randrange(256) for _ in range(32))),
+        signature(b"\x00" * 31 + b"\x80", b"\xff" * 31 + b"\x01"),
+        signature(b"\x00" * 30 + b"\x05\x07", b"\x00" * 31 + b"\x7f"),
+    ]
+    for der in ecdsa:
+        assert der_model(der)[0], hexs(der)
+
+    rows = []
+
+    def add(comment: str, reply: bytes, algo: int) -> None:
+        rows.append((comment, bytes(reply), algo))
+
+    full = sign_reply(key, ecdsa[0])
+    add("ECDSA reply, %d byte DER" % len(ecdsa[0]), full, SIGN_ECDSA)
+    add("ECDSA reply, short r and s", sign_reply(key, ecdsa[2]), SIGN_ECDSA)
+    add("ECDSA reply, both integers padded", sign_reply(key, ecdsa[1]), SIGN_ECDSA)
+    taproot = sign_reply(key, tlv(TLV_SIGN_SCHNORR, schnorr))
+    add("BIP-340 reply", taproot, SIGN_SCHNORR)
+
+    for cut in range(len(full)):
+        add("ECDSA reply truncated to %d of %d" % (cut, len(full)), full[:cut], SIGN_ECDSA)
+    for cut in range(len(taproot)):
+        add("BIP-340 reply truncated to %d of %d" % (cut, len(taproot)), taproot[:cut], SIGN_SCHNORR)
+
+    for tag, label in ((0xA1, "template tag is 0xA1"), (0x80, "template tag is a bare public key"),
+                       (0x30, "template tag is a DER sequence")):
+        add(label, sign_reply(key, ecdsa[2], template=tag), SIGN_ECDSA)
+
+    small = sign_reply(key, ecdsa[2])
+    content = small[3:]
+    for form, label in ((bytes([len(content)]), "short form template length"),
+                        (bytes([0x80]), "indefinite template length 0x80"),
+                        (bytes([0x82, 0x00, len(content)]), "template length introduced by 0x82"),
+                        (bytes([0x83, 0x00, 0x00, len(content)]), "template length introduced by 0x83")):
+        add(label, bytes([TLV_SIGN_TEMPLATE]) + form + content, SIGN_ECDSA)
+
+    declared = len(full) - 3
+    for delta, label in ((1, "one past the reply"), (2, "two past the reply"),
+                         (-1, "one byte short of the DER"), (-2, "two bytes short of the DER")):
+        add("template declares %s" % label,
+            bytes([TLV_SIGN_TEMPLATE, 0x81, declared + delta]) + full[3:], SIGN_ECDSA)
+    add("template declares the key and nothing else",
+        bytes([TLV_SIGN_TEMPLATE, 0x81, 67]) + full[3:], SIGN_ECDSA)
+    add("template declares less than the key",
+        bytes([TLV_SIGN_TEMPLATE, 0x81, 66]) + full[3:], SIGN_ECDSA)
+    add("template declares nothing", bytes([TLV_SIGN_TEMPLATE, 0x81, 0x00]), SIGN_ECDSA)
+
+    for tag in (0x81, 0x88, 0x02):
+        add("public key carries tag 0x%02x" % tag,
+            bytes([TLV_SIGN_TEMPLATE, 0x81, declared, tag, 65]) + full[5:], SIGN_ECDSA)
+    for length, label in ((64, "64 bytes"), (66, "66 bytes"), (0, "no bytes")):
+        add("public key declares %s" % label,
+            bytes([TLV_SIGN_TEMPLATE, 0x81, declared, TLV_SIGN_PUB_KEY, length]) + full[5:], SIGN_ECDSA)
+    add("public key length in long form",
+        bytes([TLV_SIGN_TEMPLATE, 0x81, declared + 1, TLV_SIGN_PUB_KEY, 0x81, 65]) + full[5:],
+        SIGN_ECDSA)
+
+    add("ECDSA reply read as BIP-340", full, SIGN_SCHNORR)
+    add("BIP-340 reply read as ECDSA", taproot, SIGN_ECDSA)
+    add("ECDSA reply read as EdDSA", full, 1)
+    add("ECDSA reply read as BLS", full, 2)
+
+    for length, label in ((63, "one byte short"), (65, "one byte long"), (0, "empty")):
+        # The object declares what it holds, so the only reason left to refuse it is the length.
+        body = bytes([TLV_SIGN_SCHNORR, length]) + (schnorr + b"\x99")[:length]
+        add("BIP-340 signature is %s (%d bytes declared)" % (label, length),
+            sign_reply(key, body), SIGN_SCHNORR)
+    add("BIP-340 signature length in long form",
+        sign_reply(key, bytes([TLV_SIGN_SCHNORR, 0x81, 64]) + schnorr), SIGN_SCHNORR)
+    add("BIP-340 signature carries another tag", taproot[:70] + b"\x89" + taproot[71:], SIGN_SCHNORR)
+
+    # The reply that carries its recovery id instead of a public key: 0x80, and 65 bytes of r||s||v.
+    r, s_value = ecdsa[0][4:36], ecdsa[0][39:71]
+    detached = bytes([TLV_SIGN_PUB_KEY, SIGN_RECOVERED_SIG_LEN]) + r + s_value + b"\x00"
+    add("bare signature with its recovery id", detached, SIGN_ECDSA)
+    for cut in range(len(detached)):
+        add("bare signature truncated to %d of %d" % (cut, len(detached)), detached[:cut], SIGN_ECDSA)
+    for recovery_id in (0, 1, 2, 3, 0xFF):
+        add("bare signature, recovery id 0x%02x" % recovery_id, detached[:-1] + bytes([recovery_id]),
+            SIGN_ECDSA)
+    for length, label in ((SIGN_RECOVERED_SIG_LEN - 1, "one byte short"),
+                          (SIGN_RECOVERED_SIG_LEN + 1, "one byte long"), (0, "empty")):
+        add("bare signature declares %s" % label,
+            bytes([TLV_SIGN_PUB_KEY, length]) + (r + s_value)[:length], SIGN_ECDSA)
+    add("bare signature length in long form",
+        bytes([TLV_SIGN_PUB_KEY, 0x81, SIGN_RECOVERED_SIG_LEN]) + detached[2:], SIGN_ECDSA)
+    add("bare signature, indefinite length", bytes([TLV_SIGN_PUB_KEY, 0x80]) + detached[2:], SIGN_ECDSA)
+    add("bare signature read as BIP-340", detached, SIGN_SCHNORR)
+    add("bytes trail a bare signature", detached + b"\x90\x00", SIGN_ECDSA)
+
+    add("bytes trail the template", full + bytes([0x90, 0x00]), SIGN_ECDSA)
+    add("empty response", b"", SIGN_ECDSA)
+    add("template tag alone", bytes([TLV_SIGN_TEMPLATE]), SIGN_ECDSA)
+
+    accepted = [r for r in rows if sign_reply_model(r[1], r[2])[0]]
+
+    c_rows = []
+    for comment, reply, algo in rows:
+        ok, key_off, sig_off, sig_len = sign_reply_model(reply, algo)
+        detached_answer = ok and key_off is None
+        expect_key = "NULL" if not ok or detached_answer else cstr(
+            hexs(reply[key_off:key_off + SIGN_PUBKEY_LEN]))
+        expect_sig = "NULL" if not ok else cstr(hexs(reply[sig_off:sig_off + sig_len]))
+        # What the DER reader makes of the bytes the reply hands it, which is how the test notices a
+        # signature picked up at the wrong offset. -1 where the question does not arise.
+        verdict = -1
+        if ok and algo == SIGN_ECDSA and not detached_answer:
+            verdict = 1 if der_model(reply[sig_off:sig_off + sig_len])[0] else 0
+        c_rows.append("  {%s, %s, %d, %d, %s, %s, %d, %d, %d}"
+                      % (cstr(comment), cstr(hexs(reply)), algo, 1 if ok else 0,
+                         expect_key, expect_sig, sig_len, verdict, 1 if detached_answer else 0))
+
+    rows_c = ",\n".join(c_rows)
+    btc_c, btc_accepted = btc_sig_table(btc_sig_rows(rows))
+
+    return f"""#ifndef VECTORS_KEYCARD_SIGNATURE_H
+#define VECTORS_KEYCARD_SIGNATURE_H
+
+/* spec: {provenance('keycard_applet_4.java')}
+ *     {provenance('keycard_scv2.java')}
+ *
+ * The reply to SIGN, and what keycard_read_signature_reply has to answer about it. The layout is the
+ * applet's own: 0xA0 introducing a template that declares its length, holding 0x80 and the 65 byte
+ * public key, and the signature from wherever the key ends -- the offset the applet calls
+ * SIGN_HASH_OFF. The template always takes the 0x81 length form, because the applet writes that byte
+ * rather than choosing one.
+ *
+ * An ECDSA reply comes in a second documented shape, with no template and no public key: 0x80 and the
+ * signature with its recovery id appended, so nothing is left to recover and the reader names no key.
+ * Those 65 bytes are the length of a public key by arithmetic alone, and by nothing else.
+ *
+ * The signature is bare DER for ECDSA. For BIP-340 the card library wraps it in a 0x88 primitive,
+ * and that wrapping is the one shape rule here the applet source does not state: it happens inside
+ * the elliptic curve library, which is a separate artifact.
+ *
+ * Expectations come from sign_reply_model() in generate.py, written from the layout above and not
+ * from the C. A reply is judged on its shape; whether the DER inside it is a signature is the DER
+ * reader's question, asked in test_ecdsa_der.c.
+ */
+typedef struct {{
+  const char* comment;
+  const char* hex;
+  uint8_t algo;
+  int ok;
+  const char* key;      /* NULL when the reply is refused, or names no key */
+  const char* sig;
+  uint16_t sig_len;
+  int sig_der;          /* 1/0: whether that is a DER signature, -1 when the question does not arise */
+  int key_absent;       /* 1 when a reply of that shape is expected to name no key */
+}} sign_reply_case_t;
+
+static const sign_reply_case_t SIGN_REPLY_CASES[] = {{
+{rows_c}
+}};
+
+#define SIGN_REPLY_CASES_COUNT (sizeof(SIGN_REPLY_CASES) / sizeof(SIGN_REPLY_CASES[0]))
+#define SIGN_REPLY_ACCEPTED {len(accepted)}
+#define SIGN_REPLY_PUBKEY_LEN {SIGN_PUBKEY_LEN}
+
+/* The same replies as BIP-174 input records: {len(btc_c.split(chr(10)))} rows, {btc_accepted} of them
+ * a record. `key` is the compressed public key the record is filed under -- absent for taproot, and
+ * absent from a reply that carries its own recovery id, which is why no record is built from one.
+ * `val` is the DER with the sighash byte after it, or the 64 bytes of a BIP-340 signature. Expectations
+ * come from btc_sig_model(), stated from the record and not from the C. */
+typedef struct {{
+  const char* comment;
+  const char* hex;
+  uint8_t algo;
+  uint8_t sighash;
+  int ok;
+  const char* key;   /* NULL when the record carries no key, or none is written */
+  const char* val;
+  uint16_t val_len;
+}} btc_sig_case_t;
+
+static const btc_sig_case_t BTC_SIG_CASES[] = {{
+{btc_c}}};
+
+#define BTC_SIG_CASES_COUNT (sizeof(BTC_SIG_CASES) / sizeof(BTC_SIG_CASES[0]))
+#define BTC_SIG_ACCEPTED {btc_accepted}
+
+#endif\t/* VECTORS_KEYCARD_SIGNATURE_H */
+"""
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -4631,6 +5806,9 @@ def main() -> None:
         "vectors_bignum.h": bignum_vectors(),
         "vectors_ethereum.h": ethereum_vectors(),
         "vectors_shamir.h": shamir_vectors(),
+        "vectors_tlv.h": tlv_vectors(),
+        "vectors_ecdsa_der.h": ecdsa_der_vectors(),
+        "vectors_keycard_signature.h": sign_reply_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

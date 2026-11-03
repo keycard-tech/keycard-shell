@@ -354,5 +354,5 @@ int main(void) {
   RUN_TEST(test_recover_cases);
   RUN_TEST(test_split_recover_roundtrip);
   RUN_TEST(test_parameter_errors);
-  UNITY_END();
+  return UNITY_END();
 }

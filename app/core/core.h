@@ -5,6 +5,7 @@
 #include "keycard/command.h"
 #include "task.h"
 
+#include "crypto/bip32.h"
 #include "crypto/sha3.h"
 #include "ethereum/ethUstream.h"
 #include "ethereum/eip712.h"
@@ -17,12 +18,10 @@
 
 #define SIGNATURE_LEN 64
 #define PUBKEY_LEN 65
-#define PUBKEY_COMPRESSED_LEN 33
 #define CHAINCODE_LEN 32
 #define CBOR_SIG_MAX_LEN 192
 #define CBOR_KEY_MAX_LEN 192
 
-#define DER_ECDSA_MAX_SIGNATURE_LEN 72
 
 typedef struct {
   txContext_t ctx;

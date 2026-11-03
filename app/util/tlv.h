@@ -23,84 +23,41 @@
 #ifndef TLV_H
 #define	TLV_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
-#define TLV_INVALID 0xffff
+/* A cursor over a response from the secure element, [p, end). Every read is checked against end and
+ * advances p only on success, so a malformed response stops the parse instead of moving the parse
+ * past the buffer. */
+typedef struct {
+  const uint8_t* p;
+  const uint8_t* end;
+} tlv_t;
 
-/**
- * Reads the TLV tag in the buffer and stores it in the out_tag parameter.
- *
- * @param buf the buffer
- * @param out_tag the output tag
- * @return the length, in bytes of the read tag
- */
-uint16_t tlv_read_tag(uint8_t *buf, uint16_t *out_tag);
+void tlv_open(tlv_t* tlv, const uint8_t* buf, size_t len);
 
-/**
- * Reads the TLV length in the buffer and stores it in the out_len parameter.
- *
- * @param buf the buffer
- * @param out_len the output length
- * @return the length, in bytes of the read length
- */
-uint16_t tlv_read_length(uint8_t *buf, uint16_t *out_len);
+/* The next object's tag, or false if the buffer ends or the tag needs more than two octets. */
+bool tlv_read_tag(tlv_t* tlv, uint16_t* out_tag);
 
-/**
- * Reads the TLV data in the buffer and stores it in the out parameter.
- *
- * @param tag the expected tag
- * @param len the expected len
- * @param buf the buffer
- * @param out the output data
- * @return the length, in bytes of the read length or TLV_INVALID if invalid
- */
-uint16_t tlv_read_fixed_primitive(uint16_t tag, uint16_t len, uint8_t *buf, uint8_t *out);
+/* The next object's tag, which has to be tag. */
+bool tlv_expect_tag(tlv_t* tlv, uint16_t tag);
 
-/**
- * Reads the TLV data in the buffer and stores it in the out parameter.
- *
- * @param tag the expected tag
- * @param max_len the max len
- * @param buf the buffer
- * @param out the output data
- * @param len the output len
- * @return the length, in bytes of the read length or TLV_INVALID if invalid
- */
-uint16_t tlv_read_primitive(uint16_t tag, uint16_t max_len, uint8_t *buf, uint8_t *out, uint16_t *len);
+/* The next object's length, or false if the buffer ends, the length is indefinite, or it needs more
+ * than two octets. Non-minimal encodings are accepted. */
+bool tlv_read_length(tlv_t* tlv, uint16_t* out_len);
 
-/**
- * Writes the given TLV tag in the given buffer.
- *
- * @param buf the buffer
- * @param in_tag the tag to write
- * @return the length of the written tag
- */
-uint16_t tlv_write_tag(uint8_t *buf, uint16_t in_tag);
+/* A constructed object with the given tag, as a cursor over its contents. */
+bool tlv_enter(tlv_t* tlv, uint16_t tag, tlv_t* out);
 
-/**
- * Writes the given TLV length in the given buffer.
- *
- * @param buf the buffer
- * @param in_len the length to write
- * @return the length of the written length
- */
-uint16_t tlv_write_length(uint8_t *buf, uint16_t in_len);
+/* A primitive object with the given tag, borrowed rather than copied. The caller that writes into
+ * what it borrowed is patching the response buffer itself. */
+bool tlv_read_value(tlv_t* tlv, uint16_t tag, const uint8_t** out, uint16_t* out_len);
 
-/**
- * Writes the undefined length tag in the given buffer.
- *
- * @param buf the buffer
- * @return the length of the written length
- */
-uint16_t tlv_write_undefined_length(uint8_t *buf);
+/* A primitive object with the given tag, copied to out, which holds max_len bytes. */
+bool tlv_read_primitive(tlv_t* tlv, uint16_t tag, uint16_t max_len, uint8_t* out, uint16_t* out_len);
 
-/**
- * Writes the terminator of the undefined length tag in the given buffer.
- *
- * @param buf the buffer
- * @return the length of the written length
- */
-uint16_t tlv_write_undefined_length_terminator(uint8_t *buf);
+/* A primitive object with the given tag and exactly len bytes, copied to out. */
+bool tlv_read_fixed(tlv_t* tlv, uint16_t tag, uint16_t len, uint8_t* out);
 
 #endif	/* TLV_H */

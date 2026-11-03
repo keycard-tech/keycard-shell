@@ -48,6 +48,6 @@ typedef struct {
   uint8_t has_key;
 } app_status_t;
 
-app_err_t application_info_parse(uint8_t* buf, app_info_t* info);
-app_err_t application_status_parse(uint8_t* buf, app_status_t* status);
+app_err_t application_info_parse(uint8_t* buf, uint16_t len, app_info_t* info);
+app_err_t application_status_parse(uint8_t* buf, uint16_t len, app_status_t* status);
 #endif

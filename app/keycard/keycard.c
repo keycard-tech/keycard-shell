@@ -6,6 +6,7 @@
 #include "application_info.h"
 #include "pairing.h"
 #include "scv2_whitelist.h"
+#include "signature.h"
 #include "error.h"
 #include "ui/ui.h"
 #include "util/tlv.h"
@@ -113,30 +114,22 @@ static app_err_t keycard_verify_cert_ca(const uint8_t* cert) {
   return ERR_OK;
 }
 
-static app_err_t keycard_check_genuine(uint8_t* data, const uint8_t* challenge) {
-  uint16_t len;
-  uint16_t tag;
-  uint16_t off = tlv_read_tag(data, &tag);
-  if (tag != 0xa0) {
+static app_err_t keycard_check_genuine(uint8_t* data, uint16_t len, const uint8_t* challenge) {
+  tlv_t tlv;
+  tlv_open(&tlv, data, len);
+
+  tlv_t signed_cert;
+  const uint8_t* cert;
+  uint16_t cert_len;
+  if (!tlv_enter(&tlv, 0xa0, &signed_cert) ||
+      !tlv_read_value(&signed_cert, 0x8a, &cert, &cert_len) ||
+      (cert_len != APP_INFO_CERT_SIZE)) {
     return ERR_DATA;
   }
 
-  off += tlv_read_length(&data[off], &len);
-
-  off += tlv_read_tag(&data[off], &tag);
-  if (tag != 0x8a) {
-    return ERR_DATA;
-  }
-
-  off += tlv_read_length(&data[off], &len);
-  if (len != 98) {
-    return ERR_DATA;
-  }
-
-  uint8_t* cert = &data[off];
   uint8_t challenge_sig[64];
 
-  if (ecdsa_sig_from_der(&cert[98], 72, challenge_sig)) {
+  if (ecdsa_sig_from_der(signed_cert.p, signed_cert.end - signed_cert.p, challenge_sig)) {
     return ERR_DATA;
   }
 
@@ -183,7 +176,7 @@ static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instan
   APDU_ASSERT_OK(&kc->apdu);
   uint8_t* data = APDU_RESP(&kc->apdu);
 
-  if (keycard_check_genuine(data, tmp) != ERR_OK) {
+  if (keycard_check_genuine(data, APDU_RESP_LEN(&kc->apdu), tmp) != ERR_OK) {
     if (ui_keycard_not_genuine() != CORE_EVT_UI_OK) {
       return ERR_CANCEL;
     }
@@ -272,7 +265,7 @@ static app_err_t keycard_authenticate(keycard_t* kc, uint8_t* pin, uint8_t* cach
 
   APDU_ASSERT_OK(&kc->apdu);
   app_status_t pinStatus;
-  if (application_status_parse(APDU_RESP(&kc->apdu), &pinStatus) != ERR_OK) {
+  if (application_status_parse(APDU_RESP(&kc->apdu), APDU_RESP_LEN(&kc->apdu), &pinStatus) != ERR_OK) {
     return ERR_DATA;
   }
 
@@ -487,12 +480,13 @@ static app_err_t keycard_read_name(keycard_t* kc) {
   }
 
   size_t name_len = data[0] & 0x1f;
+  if (APDU_RESP_LEN(&kc->apdu) < 1 + name_len) {
+    return ERR_OK;
+  }
 
-  char *title = (char *) &data[1];
-  data[1 + name_len] = '\0';
-
-  strncpy(kc->name, title, KEYCARD_NAME_MAX_LEN);
-  kc->name[KEYCARD_NAME_MAX_LEN] = '\0';
+  size_t copy_len = APP_MIN(name_len, (size_t)KEYCARD_NAME_MAX_LEN);
+  memcpy(kc->name, &data[1], copy_len);
+  kc->name[copy_len] = '\0';
   
   return ERR_OK;
 }
@@ -510,7 +504,7 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
   }
 
   app_info_t info;
-  if (application_info_parse(APDU_RESP(&kc->apdu), &info) != ERR_OK) {
+  if (application_info_parse(APDU_RESP(&kc->apdu), APDU_RESP_LEN(&kc->apdu), &info) != ERR_OK) {
     ui_keycard_wrong_card();
     return ERR_DATA;
   }
@@ -638,61 +632,26 @@ void keycard_activate(keycard_t* kc) {
 }
 
 app_err_t keycard_read_signature(uint8_t* data, uint16_t data_len, uint8_t* digest, uint8_t* out_sig) {
-  if (data_len < 2) {
+  keycard_signature_t reply;
+  if (!keycard_read_signature_reply(data, data_len, KEYCARD_SIGN_ECDSA_SECP256K1, &reply)) {
     return ERR_DATA;
   }
 
-  if (tlv_read_fixed_primitive(0x80, 65, data, out_sig) != TLV_INVALID) {
+  if (reply.key == NULL) {
+    /* The recovery id came with the signature, so there is nothing to recover. */
+    memcpy(out_sig, reply.sig, KEYCARD_RECOVERED_SIG_LEN);
     return ERR_OK;
   }
 
-  uint16_t len;
-  uint16_t tag;
-  uint16_t off = tlv_read_tag(data, &tag);
-
-  if (tag != 0xa0 || off > data_len) {
+  if (ecdsa_sig_from_der(reply.sig, reply.sig_len, out_sig)) {
     return ERR_DATA;
   }
 
-  if (off >= data_len) {
-    return ERR_DATA;
-  }
-  off += tlv_read_length(&data[off], &len);
-  if (off > data_len) {
-    return ERR_DATA;
-  }
-
-  if (off >= data_len) {
-    return ERR_DATA;
-  }
-  off += tlv_read_tag(&data[off], &tag);
-  if (tag != 0x80 || off > data_len) {
-    return ERR_DATA;
-  }
-
-  if (off >= data_len) {
-    return ERR_DATA;
-  }
-  off += tlv_read_length(&data[off], &len);
-  if (off > data_len) {
-    return ERR_DATA;
-  }
-
-  if (len > data_len - off || 72 > data_len - off - len) {
-    return ERR_DATA;
-  }
-
-  uint8_t* pub = &data[off];
-
-  if (ecdsa_sig_from_der(&pub[len], 72, out_sig)) {
-    return ERR_DATA;
-  }
-
-  uint8_t* pub_tmp = &pub[len];
+  uint8_t recovered[KEYCARD_PUBKEY_LEN];
 
   for (int i = 0; i < 4; i++) {
-    if (!ecdsa_recover_pub_from_sig(&secp256k1, pub_tmp, out_sig, digest, i)) {
-      if (!memcmp(pub_tmp, pub, 65)) {
+    if (!ecdsa_recover_pub_from_sig(&secp256k1, recovered, out_sig, digest, i)) {
+      if (!memcmp(recovered, reply.key, KEYCARD_PUBKEY_LEN)) {
         out_sig[64] = i;
         return ERR_OK;
       }
@@ -726,7 +685,7 @@ app_err_t keycard_set_name(keycard_t* kc, const char* name) {
 
   if (kc->apdu.lr > 2) {
     uint8_t* data = APDU_RESP(&kc->apdu);
-    uint8_t data_len = kc->apdu.lr - 2;
+    uint8_t data_len = APDU_RESP_LEN(&kc->apdu);
 
     if ((data[0] >> 5) == 1) {
       uint8_t copy_off =  1 + (data[0] & 0x1f);

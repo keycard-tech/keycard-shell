@@ -10,6 +10,7 @@
 #include "crypto/sha2_soft.h"
 #include "crypto/util.h"
 #include "keycard/keycard_cmdset.h"
+#include "core/core_btc_sig.h"
 #include "ur/ur_encode.h"
 #include "util/tlv.h"
 
@@ -19,84 +20,6 @@
 #define BTC_MESSAGE_SIG_HEADER (27 + 4)
 
 const uint8_t *const BTC_MSG_MAGIC = (uint8_t *) "\030Bitcoin Signed Message:\n";
-
-static app_err_t core_btc_read_signature(uint8_t* data, uint8_t sighash, psbt_record_t* rec) {
-  uint16_t len;
-  uint16_t tag;
-  uint16_t off = tlv_read_tag(data, &tag);
-
-  if (tag != 0xa0) {
-    return ERR_DATA;
-  }
-
-  off += tlv_read_length(&data[off], &len);
-
-  off += tlv_read_tag(&data[off], &tag);
-  if (tag != 0x80) {
-    return ERR_DATA;
-  }
-  off += tlv_read_length(&data[off], &len);
-
-  rec->scope = PSBT_SCOPE_INPUTS;
-  rec->type = PSBT_IN_PARTIAL_SIG;
-
-  rec->key = &data[off];
-  rec->key_size = PUBKEY_COMPRESSED_LEN;
-  rec->key[0] = 0x02 | (rec->key[64] & 1);
-
-  rec->val = &rec->key[len];
-
-  if (rec->val[0] != 0x30) {
-    return ERR_DATA;
-  }
-
-  if (rec->val[1] > DER_ECDSA_MAX_SIGNATURE_LEN) {
-    return ERR_DATA;
-  }
-
-  rec->val_size = 3 + rec->val[1];
-  rec->val[rec->val_size - 1] = sighash;
-
-  return ERR_OK;
-}
-
-static app_err_t core_btc_read_schnorr_signature(uint8_t* data, psbt_record_t* rec) {
-  uint16_t len;
-  uint16_t tag;
-  uint16_t off = tlv_read_tag(data, &tag);
-
-  if (tag != 0xa0) {
-    return ERR_DATA;
-  }
-
-  off += tlv_read_length(&data[off], &len);
-
-  off += tlv_read_tag(&data[off], &tag);
-  if (tag != 0x80) {
-    return ERR_DATA;
-  }
-  off += tlv_read_length(&data[off], &len);
-  off += len;
-
-  off += tlv_read_tag(&data[off], &tag);
-  if (tag != 0x88) {
-    return ERR_DATA;
-  }
-
-  off += tlv_read_length(&data[off], &len);
-  if (len != 64) {
-    return ERR_DATA;
-  }
-
-  rec->scope = PSBT_SCOPE_INPUTS;
-  rec->type = PSBT_IN_TAP_KEY_SIG;
-  rec->key = NULL;
-  rec->key_size = 0;
-  rec->val = &data[off];
-  rec->val_size = 64;
-
-  return ERR_OK;
-}
 
 static app_err_t core_btc_set_path(uint8_t* btc_bip32_path, uint32_t btc_bip32_path_len) {
   if ((btc_bip32_path_len > BIP44_MAX_PATH_LEN) || ((btc_bip32_path_len % 4) != 0)) {
@@ -150,6 +73,7 @@ static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
   }
 
   psbt_record_t signature;
+  uint8_t sig_val[DER_ECDSA_MAX_SIGNATURE_LEN + 1];
 
   if (tx_ctx->input_data[index].input_type == BTC_INPUT_TYPE_P2TR) {
     if (!tx_ctx->input_data[index].has_taproot_internal_key) {
@@ -177,7 +101,7 @@ static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
     }
 
     uint8_t* data = APDU_RESP(&kc->apdu);
-    if (core_btc_read_schnorr_signature(data, &signature) != ERR_OK) {
+    if (core_btc_read_schnorr_signature(data, APDU_RESP_LEN(&kc->apdu), &signature) != ERR_OK) {
       return ERR_DATA;
     }
   } else {
@@ -186,7 +110,7 @@ static app_err_t core_btc_sign_input(btc_tx_ctx_t* tx_ctx, size_t index) {
     }
 
     uint8_t* data = APDU_RESP(&kc->apdu);
-    if (core_btc_read_signature(data, tx_ctx->input_data[index].sighash_flag, &signature) != ERR_OK) {
+    if (core_btc_read_signature(data, APDU_RESP_LEN(&kc->apdu), tx_ctx->input_data[index].sighash_flag, sig_val, &signature) != ERR_OK) {
       return ERR_DATA;
     }
   }
@@ -407,7 +331,7 @@ app_err_t core_btc_sign_msg_run(const uint8_t* msg, size_t msg_len, uint32_t exp
 
   uint8_t* data = APDU_RESP(&kc->apdu);
 
-  if (keycard_read_signature(data, kc->apdu.lr, digest, &out[1]) != ERR_OK) {
+  if (keycard_read_signature(data, APDU_RESP_LEN(&kc->apdu), digest, &out[1]) != ERR_OK) {
     ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
     return ERR_DATA;
   }

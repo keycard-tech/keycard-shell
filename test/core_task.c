@@ -166,7 +166,7 @@ static void core_card_test(apdu_t* apdu) {
   }
 
   app_info_t info;
-  if (application_info_parse(APDU_RESP(&g_core.keycard.apdu), &info) != ERR_OK) {
+  if (application_info_parse(APDU_RESP(&g_core.keycard.apdu), APDU_RESP_LEN(&g_core.keycard.apdu), &info) != ERR_OK) {
     core_usb_err_sw(apdu, 0x6f, 0x05);
     return;
   }

@@ -88,7 +88,7 @@ app_err_t securechannel_v2_open(secure_channel_v2_t* sc, smartcard_t* card, apdu
 
   /* 4. Parse response: card_eph_pub(65) || signature(DER) */
   uint8_t* resp = APDU_RESP(apdu);
-  uint16_t resp_len = apdu->lr;
+  uint16_t resp_len = APDU_RESP_LEN(apdu);
 
   if (resp_len < SCV2_PUBKEY_SIZE + 2) {
     memzero(client_priv, SECP256K1_KEYLEN);

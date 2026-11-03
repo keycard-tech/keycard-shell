@@ -136,6 +136,7 @@ set(APP_SOURCES
     app/keycard/keycard_cmdset.c
     app/keycard/pairing.c
     app/keycard/scv2_whitelist.c
+    app/keycard/signature.c
     app/keycard/secure_channel.c
     app/keycard/secure_channel_v1.c
     app/keycard/secure_channel_v2.c
@@ -195,6 +196,7 @@ set(APP_SOURCES
     app/core/core_openpgp.c
     app/core/core_multisig.c
     app/core/core_btc.c
+    app/core/core_btc_sig.c
     app/core/core_eth.c
     app/core/settings.c
     app/core/updater.c

@@ -21,6 +21,7 @@
 #define APDU_SW1(__APDU__) ((__APDU__)->data[(__APDU__)->lr - 2])
 #define APDU_SW2(__APDU__) ((__APDU__)->data[(__APDU__)->lr - 1])
 #define APDU_SW(__APDU__) ((APDU_SW1(__APDU__) << 8) | APDU_SW2(__APDU__))
+#define APDU_RESP_LEN(__APDU__) ((__APDU__)->lr >= 2 ? (__APDU__)->lr - 2 : 0)
 #define APDU_BUF_LEN (255 + 6)
 
 #define APDU_ASSERT_SW(__APDU__, __SW__) if (APDU_SW(__APDU__) != __SW__) return ERR_HW;

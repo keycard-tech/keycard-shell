@@ -72,6 +72,8 @@ add_library(app_crypto STATIC
     ${SHELLOS_ROOT}/app/crypto/bip39.c
     ${SHELLOS_ROOT}/app/crypto/bip39_english.c
     ${SHELLOS_ROOT}/app/crypto/crc32.c
+    ${SHELLOS_ROOT}/app/crypto/ecdsa.c
+    ${SHELLOS_ROOT}/app/crypto/rfc6979.c
     ${SHELLOS_ROOT}/app/crypto/hkdf.c
     ${SHELLOS_ROOT}/app/crypto/hmac.c
     ${SHELLOS_ROOT}/app/crypto/memzero.c
@@ -113,6 +115,25 @@ add_library(app_ethereum STATIC
 )
 target_include_directories(app_ethereum PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_ethereum PRIVATE ${SHELLOS_COMMON_FLAGS})
+
+# The secure element's answer parsers. The bytes they are fed are the applet's own, which is the
+# only way to know where "what a genuine card sends" ends and "what a hostile one can send" starts.
+add_library(app_keycard STATIC
+    ${SHELLOS_ROOT}/app/util/tlv.c
+    ${SHELLOS_ROOT}/app/keycard/application_info.c
+    ${SHELLOS_ROOT}/app/keycard/signature.c
+)
+target_include_directories(app_keycard PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_keycard PRIVATE ${SHELLOS_COMMON_FLAGS})
+
+# What a SIGN reply becomes once it is a PSBT input record: BIP-174's key and value, assembled from
+# the reply that test_keycard_signature pins. Kept apart from core_btc.c, which cannot be linked
+# here, so that a record built wrong is a failing test and not a device symptom.
+add_library(app_btc_sig STATIC
+    ${SHELLOS_ROOT}/app/core/core_btc_sig.c
+)
+target_include_directories(app_btc_sig PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_btc_sig PRIVATE ${SHELLOS_COMMON_FLAGS})
 
 add_library(app_ur STATIC
     ${SHELLOS_ROOT}/app/ur/bytewords.c
@@ -156,6 +177,9 @@ function(shellos_test name)
   # has to come after them on the link line.
   target_link_libraries(test_${name} PRIVATE ${TEST_LIBS} test_framework)
   add_test(NAME ${name} COMMAND test_${name})
+  # The exit code is the verdict, but a test whose main() forgets to return UNITY_END() exits 0
+  # whatever it found, so the summary line is checked as well.
+  set_tests_properties(${name} PROPERTIES PASS_REGULAR_EXPRESSION "0 Failures 0 Ignored")
   if(HOST_TESTS_SANITIZERS)
     # Leak checking is off: this firmware has no heap to leak, LeakSanitizer needs ptrace
     # permissions containers often deny, and ASan's overflows and UBSan's traps are the point.
@@ -184,4 +208,9 @@ shellos_test(sighash LIBS app_bitcoin app_crypto)
 shellos_test(bytewords LIBS app_ur app_crypto)
 shellos_test(ur LIBS app_ur app_crypto)
 shellos_test(qrcode LIBS app_qrcode)
+shellos_test(tlv LIBS app_keycard)
+shellos_test(ecdsa_der LIBS app_crypto app_keycard)
+shellos_test(keycard_signature LIBS app_crypto app_keycard)
+shellos_test(btc_sig LIBS app_btc_sig app_keycard)
+
 shellos_test(shamir LIBS app_crypto)

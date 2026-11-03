@@ -22,109 +22,137 @@
 
 #include <string.h>
 #include "tlv.h"
-#include "common.h"
 
-uint16_t tlv_read_tag(uint8_t *buf, uint16_t *out_tag) {
-  uint16_t i = 0;
-
-  *out_tag = buf[i++];
-
-  if((*out_tag & 0x1F) == 0x1F) {
-    *out_tag = *out_tag << 8 | buf[i++];
-  }
-
-  return i;
+void tlv_open(tlv_t* tlv, const uint8_t* buf, size_t len) {
+  tlv->p = buf;
+  tlv->end = buf + len;
 }
 
-uint16_t tlv_read_length(uint8_t *buf, uint16_t *out_len) {
-  uint16_t i = 0;
-  *out_len = buf[i++];
-
-  if (*out_len > 0x7f) {
-    uint16_t lenOfLen = APP_MIN((*out_len & 0x7f), 2);
-    *out_len = 0;
-
-    while(lenOfLen--) {
-      *out_len = (*out_len << 8) | buf[i++];
-    }
-  }
-
-  return i;
+static bool tlv_has(const tlv_t* tlv, uint16_t count) {
+  return (uint16_t)(tlv->end - tlv->p) >= count;
 }
 
-uint16_t tlv_read_fixed_primitive(uint16_t tag, uint16_t len, uint8_t *buf, uint8_t *out) {
-  uint16_t _len;
-  uint16_t off = tlv_read_primitive(tag, len, buf, out, &_len);
-  if (_len != len) {
-    return TLV_INVALID;
+bool tlv_read_tag(tlv_t* tlv, uint16_t* out_tag) {
+  if (!tlv_has(tlv, 1)) {
+    return false;
   }
 
-  return off;
+  const uint8_t first = tlv->p[0];
+  if ((first & 0x1F) != 0x1F) {
+    *out_tag = first;
+    tlv->p++;
+    return true;
+  }
+
+  if (!tlv_has(tlv, 2) || (tlv->p[1] & 0x80)) {
+    /* More than two tag octets: unsupported as not used by Keycard. */
+    return false;
+  }
+
+  *out_tag = ((uint16_t)first << 8) | tlv->p[1];
+  tlv->p += 2;
+  return true;
 }
 
-uint16_t tlv_read_primitive(uint16_t tag, uint16_t max_len, uint8_t *buf, uint8_t *out, uint16_t *len) {
-  uint16_t _tag;
-  uint16_t off = tlv_read_tag(buf, &_tag);
-
-  if (tag != _tag) {
-    *len = TLV_INVALID;
-    return TLV_INVALID;
-  }
-
-  off += tlv_read_length(&buf[off], len);
-  
-  if (max_len < *len) {
-    return TLV_INVALID;
-  }
-
-  memcpy(out, &buf[off], *len);    
-  off += *len;
-
-  return off;
+bool tlv_expect_tag(tlv_t* tlv, uint16_t tag) {
+  uint16_t read;
+  return tlv_read_tag(tlv, &read) && (read == tag);
 }
 
-uint16_t tlv_write_tag(uint8_t *buf, uint16_t in_tag) {
-  int max_shift = (sizeof(uint16_t) - 1) * 8;
-  uint16_t i = 0;
-
-  while((in_tag >> max_shift) == 0x00) {
-    max_shift -= 8;
+bool tlv_read_length(tlv_t* tlv, uint16_t* out_len) {
+  if (!tlv_has(tlv, 1)) {
+    return false;
   }
 
-  while(max_shift >= 0) {
-    buf[i++] = ((in_tag >> max_shift) & 0xff);
-    max_shift -= 8;
+  const uint8_t first = tlv->p[0];
+  if (first < 0x80) {
+    *out_len = first;
+    tlv->p++;
+    return true;
   }
 
-  return i;
-}
-
-uint16_t tlv_write_length(uint8_t *buf, uint16_t in_len) {
-  uint16_t i = 0;
-
-  if (in_len <= 0x7f) {
-    buf[i++] = in_len;
-  } else if (in_len <= 0xff) {
-    buf[i++] = 0x81;
-    buf[i++] = in_len;
-  } else {
-    buf[i++] = 0x82;
-    buf[i++] = in_len >> 8;
-    buf[i++] = in_len & 0xff;
+  if (first == 0x80) {
+    /* Indefinite length: unsupported as not used by Keycard. */
+    return false;
   }
 
-  return i;
+  const uint16_t octets = first & 0x7F;
+  if (octets > 2) {
+    /* Lengths of more than 65535: unsupported as not used by Keycard. */
+    return false;
+  }
+
+  if (!tlv_has(tlv, 1 + octets)) {
+    return false;
+  }
+
+  uint16_t len = 0;
+  for (uint16_t i = 0; i < octets; i++) {
+    len = (len << 8) | tlv->p[1 + i];
+  }
+
+  *out_len = len;
+  tlv->p += 1 + octets;
+  return true;
 }
 
-uint16_t tlv_write_undefined_length(uint8_t *buf) {
-  buf[0] = 0x80;
-  
-  return 1;
+bool tlv_enter(tlv_t* tlv, uint16_t tag, tlv_t* out) {
+  const uint8_t* const start = tlv->p;
+  uint16_t len;
+  if (!tlv_expect_tag(tlv, tag) || !tlv_read_length(tlv, &len) || !tlv_has(tlv, len)) {
+    tlv->p = start;
+    return false;
+  }
+
+  out->p = tlv->p;
+  out->end = tlv->p + len;
+  tlv->p += len;
+  return true;
 }
 
-uint16_t tlv_write_undefined_length_terminator(uint8_t *buf) {
-  buf[0] = 0x00;
-  buf[1] = 0x00;
+bool tlv_read_value(tlv_t* tlv, uint16_t tag, const uint8_t** out, uint16_t* out_len) {
+  const uint8_t* const start = tlv->p;
+  uint16_t len;
+  if (!tlv_expect_tag(tlv, tag) || !tlv_read_length(tlv, &len) || !tlv_has(tlv, len)) {
+    tlv->p = start;
+    return false;
+  }
 
-  return 2;
+  *out = tlv->p;
+  *out_len = len;
+  tlv->p += len;
+  return true;
+}
+
+bool tlv_read_primitive(tlv_t* tlv, uint16_t tag, uint16_t max_len, uint8_t* out, uint16_t* out_len) {
+  const uint8_t* const start = tlv->p;
+  const uint8_t* value;
+  uint16_t len;
+  if (!tlv_read_value(tlv, tag, &value, &len)) {
+    return false;
+  }
+  if (len > max_len) {
+    tlv->p = start;
+    return false;
+  }
+
+  memcpy(out, value, len);
+  *out_len = len;
+  return true;
+}
+
+bool tlv_read_fixed(tlv_t* tlv, uint16_t tag, uint16_t len, uint8_t* out) {
+  const uint8_t* const start = tlv->p;
+  const uint8_t* value;
+  uint16_t read;
+  if (!tlv_read_value(tlv, tag, &value, &read)) {
+    return false;
+  }
+  if (read != len) {
+    tlv->p = start;
+    return false;
+  }
+
+  memcpy(out, value, len);
+  return true;
 }

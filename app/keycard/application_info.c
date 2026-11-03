@@ -12,43 +12,27 @@
 #define TLV_CAPABILITIES 0x8d
 #define TLV_CERT 0x8a
 
-static app_err_t app_info_parse_v3(uint8_t* buf, uint16_t off, app_info_t* info) {
-  uint16_t len;
+static app_err_t app_info_parse_v3(tlv_t* tlv, app_info_t* info) {
+  uint16_t key_uid_len;
 
-  /* instanceUID (0x8F) — 16 bytes */
-  if ((len = tlv_read_fixed_primitive(TLV_UID, APP_INFO_INSTANCE_UID_LEN, &buf[off], info->v3.instance_uid)) == TLV_INVALID) {
+  if (!tlv_read_fixed(tlv, TLV_UID, APP_INFO_INSTANCE_UID_LEN, info->v3.instance_uid)) {
     return ERR_DATA;
   }
-  off += len;
-
-  /* secureChannelPubKey (0x80) — 65 bytes */
-  if ((len = tlv_read_fixed_primitive(TLV_PUB_KEY, APP_INFO_PUBKEY_LEN, &buf[off], info->v3.sc_key)) == TLV_INVALID) {
+  if (!tlv_read_fixed(tlv, TLV_PUB_KEY, APP_INFO_PUBKEY_LEN, info->v3.sc_key)) {
     return ERR_DATA;
   }
-  off += len;
-
-  /* appVersion (INTEGER 0x02) — 2 bytes, big-endian */
-  if ((len = tlv_read_fixed_primitive(TLV_INT, sizeof(uint16_t), &buf[off], (uint8_t*)(&info->version))) == TLV_INVALID) {
+  if (!tlv_read_fixed(tlv, TLV_INT, sizeof(uint16_t), (uint8_t*)&info->version)) {
     return ERR_DATA;
   }
   info->version = (info->version >> 8) | (info->version << 8);
-  off += len;
 
-  /* freePairingSlots (INTEGER 0x02) — 1 byte */
-  if ((len = tlv_read_fixed_primitive(TLV_INT, sizeof(uint8_t), &buf[off], &info->v3.free_pairing)) == TLV_INVALID) {
+  if (!tlv_read_fixed(tlv, TLV_INT, sizeof(uint8_t), &info->v3.free_pairing)) {
     return ERR_DATA;
   }
-  off += len;
-
-  /* keyUID (0x8E) — 0 or 32 bytes */
-  uint16_t key_uid_len;
-  if ((len = tlv_read_primitive(TLV_KEY_UID, APP_INFO_KEY_UID_LEN, &buf[off], info->key_uid, &key_uid_len)) == TLV_INVALID) {
+  if (!tlv_read_primitive(tlv, TLV_KEY_UID, APP_INFO_KEY_UID_LEN, info->key_uid, &key_uid_len)) {
     return ERR_DATA;
   }
-  off += len;
-
-  /* capabilities (0x8D) — 1 byte */
-  if ((len = tlv_read_fixed_primitive(TLV_CAPABILITIES, sizeof(uint8_t), &buf[off], &info->capabilities)) == TLV_INVALID) {
+  if (!tlv_read_fixed(tlv, TLV_CAPABILITIES, sizeof(uint8_t), &info->capabilities)) {
     return ERR_DATA;
   }
 
@@ -57,37 +41,24 @@ static app_err_t app_info_parse_v3(uint8_t* buf, uint16_t off, app_info_t* info)
   return ERR_OK;
 }
 
-static app_err_t app_info_parse_v4(uint8_t* buf, uint16_t off, app_info_t* info) {
-  uint16_t len;
+static app_err_t app_info_parse_v4(tlv_t* tlv, app_info_t* info) {
+  uint16_t key_uid_len;
 
-  /* appVersion (INTEGER 0x02) — 2 bytes, big-endian */
-  if ((len = tlv_read_fixed_primitive(TLV_INT, sizeof(uint16_t), &buf[off], (uint8_t*)(&info->version))) == TLV_INVALID) {
+  if (!tlv_read_fixed(tlv, TLV_INT, sizeof(uint16_t), (uint8_t*)&info->version)) {
     return ERR_DATA;
   }
   info->version = (info->version >> 8) | (info->version << 8);
-  off += len;
 
-  /* appStatus (0x8C) — 1 byte */
-  if ((len = tlv_read_fixed_primitive(TLV_STATUS, sizeof(uint8_t), &buf[off], &info->v4.app_status)) == TLV_INVALID) {
+  if (!tlv_read_fixed(tlv, TLV_STATUS, sizeof(uint8_t), &info->v4.app_status)) {
     return ERR_DATA;
   }
-  off += len;
-
-  /* keyUID (0x8E) — 0 or 32 bytes */
-  uint16_t key_uid_len;
-  if ((len = tlv_read_primitive(TLV_KEY_UID, APP_INFO_KEY_UID_LEN, &buf[off], info->key_uid, &key_uid_len)) == TLV_INVALID) {
+  if (!tlv_read_primitive(tlv, TLV_KEY_UID, APP_INFO_KEY_UID_LEN, info->key_uid, &key_uid_len)) {
     return ERR_DATA;
   }
-  off += len;
-
-  /* capabilities (0x8D) — 1 byte */
-  if ((len = tlv_read_fixed_primitive(TLV_CAPABILITIES, sizeof(uint8_t), &buf[off], &info->capabilities)) == TLV_INVALID) {
+  if (!tlv_read_fixed(tlv, TLV_CAPABILITIES, sizeof(uint8_t), &info->capabilities)) {
     return ERR_DATA;
   }
-  off += len;
-
-  /* certData (0x8A) — 98 bytes */
-  if ((len = tlv_read_fixed_primitive(TLV_CERT, APP_INFO_CERT_SIZE, &buf[off], info->v4.cert_data)) == TLV_INVALID) {
+  if (!tlv_read_fixed(tlv, TLV_CERT, APP_INFO_CERT_SIZE, info->v4.cert_data)) {
     return ERR_DATA;
   }
 
@@ -100,13 +71,19 @@ static app_err_t app_info_parse_v4(uint8_t* buf, uint16_t off, app_info_t* info)
   return ERR_OK;
 }
 
-app_err_t application_info_parse(uint8_t* buf, app_info_t* info) {
+app_err_t application_info_parse(uint8_t* buf, uint16_t len, app_info_t* info) {
+  tlv_t tlv;
+  tlv_open(&tlv, buf, len);
+
+  tlv_t probe = tlv;
   uint16_t tag;
-  uint16_t off = tlv_read_tag(buf, &tag);
+  if (!tlv_read_tag(&probe, &tag)) {
+    return ERR_DATA;
+  }
 
   if (tag == TLV_PUB_KEY) {
     /* Uninitialized card: bare TLV_PUB_KEY (V3-style) */
-    if (tlv_read_fixed_primitive(TLV_PUB_KEY, APP_INFO_PUBKEY_LEN, buf, info->v3.sc_key) == TLV_INVALID) {
+    if (!tlv_read_fixed(&tlv, TLV_PUB_KEY, APP_INFO_PUBKEY_LEN, info->v3.sc_key)) {
       return ERR_DATA;
     }
     info->status = NOT_INITIALIZED;
@@ -114,47 +91,43 @@ app_err_t application_info_parse(uint8_t* buf, app_info_t* info) {
     return ERR_OK;
   }
 
-  if (tag != TLV_APPLICATION_INFO_TEMPLATE) {
+  /* Initialized card: constructed TLV_APPLICATION_INFO_TEMPLATE */
+  tlv_t inner;
+  if (!tlv_enter(&tlv, TLV_APPLICATION_INFO_TEMPLATE, &inner)) {
     return ERR_DATA;
   }
 
-  /* Initialized card: constructed TLV_APPLICATION_INFO_TEMPLATE */
-  uint16_t len;
-  off += tlv_read_length(&buf[off], &len);
-
   /* Detect version by first inner tag:
    * V3 starts with 0x8F (instanceUID), V4 starts with 0x02 (appVersion INTEGER) */
-  if (buf[off] == TLV_UID) {
-    return app_info_parse_v3(buf, off, info);
-  } else if (buf[off] == TLV_INT) {
-    return app_info_parse_v4(buf, off, info);
+  probe = inner;
+  if (!tlv_read_tag(&probe, &tag)) {
+    return ERR_DATA;
+  }
+  if (tag == TLV_UID) {
+    return app_info_parse_v3(&inner, info);
+  }
+  if (tag == TLV_INT) {
+    return app_info_parse_v4(&inner, info);
   }
 
   return ERR_DATA;
 }
 
-app_err_t application_status_parse(uint8_t* buf, app_status_t* status) {
-  uint16_t tag;
-  uint16_t off = tlv_read_tag(buf, &tag);
+app_err_t application_status_parse(uint8_t* buf, uint16_t len, app_status_t* status) {
+  tlv_t tlv;
+  tlv_open(&tlv, buf, len);
 
-  if (tag != TLV_APPLICATION_STATUS_TEMPLATE) {
+  tlv_t inner;
+  if (!tlv_enter(&tlv, TLV_APPLICATION_STATUS_TEMPLATE, &inner)) {
     return ERR_DATA;
   }
-
-  uint16_t len;
-  off += tlv_read_length(&buf[off], &len);
-
-  if ((len = tlv_read_fixed_primitive(TLV_INT, sizeof(uint8_t), &buf[off], &status->pin_retries)) == TLV_INVALID) {
+  if (!tlv_read_fixed(&inner, TLV_INT, sizeof(uint8_t), &status->pin_retries)) {
     return ERR_DATA;
   }
-  off += len;
-
-  if ((len = tlv_read_fixed_primitive(TLV_INT, sizeof(uint8_t), &buf[off], &status->puk_retries)) == TLV_INVALID) {
+  if (!tlv_read_fixed(&inner, TLV_INT, sizeof(uint8_t), &status->puk_retries)) {
     return ERR_DATA;
   }
-  off += len;
-
-  if ((len = tlv_read_fixed_primitive(TLV_BOOL, sizeof(uint8_t), &buf[off], &status->has_key)) == TLV_INVALID) {
+  if (!tlv_read_fixed(&inner, TLV_BOOL, sizeof(uint8_t), &status->has_key)) {
     return ERR_DATA;
   }
 

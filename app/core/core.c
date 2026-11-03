@@ -89,25 +89,19 @@ app_err_t core_export_key(keycard_t* kc, uint8_t* path, uint16_t len, uint8_t* o
     return ERR_CRYPTO;
   }
 
-  uint8_t* data = APDU_RESP(&kc->apdu);
+  tlv_t tlv;
+  tlv_open(&tlv, APDU_RESP(&kc->apdu), APDU_RESP_LEN(&kc->apdu));
 
-  uint16_t tag;
-  uint16_t off = tlv_read_tag(data, &tag);
-  if (tag != 0xa1) {
+  tlv_t exported_key;
+  if (!tlv_enter(&tlv, 0xa1, &exported_key)) {
+    return ERR_DATA;
+  }
+  if (!tlv_read_fixed(&exported_key, 0x80, PUBKEY_LEN, out_pub)) {
     return ERR_DATA;
   }
 
-  off += tlv_read_length(&data[off], &len);
-  len = tlv_read_fixed_primitive(0x80, PUBKEY_LEN, &data[off], out_pub);
-  if (len == TLV_INVALID) {
+  if (out_chain && !tlv_read_fixed(&exported_key, 0x82, CHAINCODE_LEN, out_chain)) {
     return ERR_DATA;
-  }
-  off += len;
-
-  if (out_chain) {
-    if (tlv_read_fixed_primitive(0x82, CHAINCODE_LEN, &data[off], out_chain) == TLV_INVALID) {
-      return ERR_DATA;
-    }
   }
 
   return ERR_OK;
@@ -120,17 +114,14 @@ app_err_t core_export_private(keycard_t* kc, uint8_t* path, uint16_t len, uint8_
     return ERR_CRYPTO;
   }
 
-  uint8_t* data = APDU_RESP(&kc->apdu);
+  tlv_t tlv;
+  tlv_open(&tlv, APDU_RESP(&kc->apdu), APDU_RESP_LEN(&kc->apdu));
 
-  uint16_t tag;
-  uint16_t off = tlv_read_tag(data, &tag);
-  if (tag != 0xa1) {
+  tlv_t exported_key;
+  if (!tlv_enter(&tlv, 0xa1, &exported_key)) {
     return ERR_DATA;
   }
-
-  off += tlv_read_length(&data[off], &len);
-
-  if (tlv_read_fixed_primitive(0x81, 32, &data[off], out_priv) == TLV_INVALID) {
+  if (!tlv_read_fixed(&exported_key, 0x81, 32, out_priv)) {
     return ERR_DATA;
   }
 

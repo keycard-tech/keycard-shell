@@ -521,7 +521,7 @@ static app_err_t core_openpgp_sign_message_at_path(core_openpgp_message_t *messa
         return ERR_CRYPTO;
     }
 
-    if (keycard_read_signature(APDU_RESP(&kc->apdu), kc->apdu.lr, message->digest, card_signature) != ERR_OK) {
+    if (keycard_read_signature(APDU_RESP(&kc->apdu), APDU_RESP_LEN(&kc->apdu), message->digest, card_signature) != ERR_OK) {
         memzero(card_signature, sizeof(card_signature));
         return ERR_DATA;
     }
@@ -586,7 +586,7 @@ static app_err_t core_openpgp_certify_uid(core_openpgp_identity_t *identity) {
         return ERR_CRYPTO;
     }
 
-    if (keycard_read_signature(APDU_RESP(&kc->apdu), kc->apdu.lr, certification->digest, card_signature) != ERR_OK) {
+    if (keycard_read_signature(APDU_RESP(&kc->apdu), APDU_RESP_LEN(&kc->apdu), certification->digest, card_signature) != ERR_OK) {
         memzero(card_signature, sizeof(card_signature));
         return ERR_DATA;
     }

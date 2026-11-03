@@ -63,6 +63,11 @@ app_err_t securechannel_v1_open(secure_channel_v1_t* sc, smartcard_t* card, apdu
 
   APDU_ASSERT_OK(apdu);
 
+  if (APDU_RESP_LEN(apdu) < (SHA256_DIGEST_LENGTH + AES_IV_SIZE)) {
+    memzero(priv, SECP256K1_KEYLEN);
+    return ERR_CRYPTO;
+  }
+
   uint8_t secret[SECP256K1_PUBLEN];
 
   uint8_t res = ecdh_multiply(&secp256k1, priv, sc_pub, secret);

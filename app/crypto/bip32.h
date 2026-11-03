@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #define BIP32_PUBKEY_LEN 65     /* uncompressed (0x04 || x || y) */
+#define PUBKEY_COMPRESSED_LEN 33  /* 0x02|parity || x */
 #define BIP32_CHAINCODE_LEN 32
 
 /*
