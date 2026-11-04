@@ -124,6 +124,11 @@ void btc_psbt_input_record(btc_tx_ctx_t* tx_ctx, size_t index, psbt_record_t* re
       tx_ctx->error = ERR_DECODE;
       return;
     }
+
+    /* BIP-371 puts the fingerprint behind the leaf hashes, and key path is all this device signs. */
+    if (rec->val[0] != 0) {
+      break;
+    }
     if (tx_ctx->input_data[index].master_fingerprint != tx_ctx->mfp) {
       memcpy(&tx_ctx->input_data[index].master_fingerprint, &rec->val[1], sizeof(uint32_t));
       tx_ctx->input_data[index].bip32_path = &rec->val[5];

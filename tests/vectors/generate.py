@@ -55,6 +55,7 @@ SOURCES = {
     "rfc4231.txt": "https://www.rfc-editor.org/rfc/rfc4231.txt",
     "rfc5869.txt": "https://www.rfc-editor.org/rfc/rfc5869.txt",
     "bip174.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0174.mediawiki",
+    "bip371.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0371.mediawiki",
     "bip143.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0143.mediawiki",
     "bip341_wallet.json": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0341/wallet-test-vectors.json",
     "bip340_vectors.csv": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0340/test-vectors.csv",
@@ -2365,14 +2366,266 @@ def ctx_vectors() -> str:
         blob = psbt_of(unsigned_tx, inputs, outputs)
         arrays.append(tx_c_array(f"psbt_ctx_{i}", blob))
         rows.append(
-            f'    {{ "{name}", psbt_ctx_{i}, sizeof(psbt_ctx_{i}), {accept},\n'
+            f'    {{ {cstr(name)}, psbt_ctx_{i}, sizeof(psbt_ctx_{i}), {accept},\n'
             f'      {kind if kind else "-1"}, {amount}ULL, "{hexs(script)}" }},')
+
+    # ---- the fields themselves -------------------------------------------------------------
+    #
+    # BIP-174 stops at the pre-taproot key types; BIP-371 is what defines the taproot ones, and it
+    # states their value layouts in the same table. Both are asserted here rather than trusted.
+    bip371 = fetch("bip371.mediawiki")
+    for token, num in (("PSBT_IN_TAP_BIP32_DERIVATION", "0x16"), ("PSBT_IN_TAP_INTERNAL_KEY", "0x17"),
+                       ("PSBT_IN_TAP_MERKLE_ROOT", "0x18"), ("PSBT_OUT_TAP_INTERNAL_KEY", "0x05"),
+                       ("PSBT_OUT_TAP_TREE", "0x06"), ("PSBT_OUT_TAP_BIP32_DERIVATION", "0x07")):
+        assert f"<tt>{token} = {num}</tt>" in bip371, f"BIP-371 no longer numbers {token} {num}"
+    assert ("<compact size uint number of hashes> <32 byte leaf hash>* <4 byte fingerprint> "
+            "<32-bit little endian uint path element>*") in bip371
+    assert "<tt><32 byte xonlypubkey></tt>" in bip371
+    bip174 = fetch("bip174.mediawiki")
+    assert "<tt><32-bit little endian uint sighash type></tt>" in bip174
+    assert "Signers who cannot produce signatures with the sighash type must not provide a signature." in bip174
+
+    prev_p2tr, id_p2tr = prevtx(50000, CTX_P2TR)
+
+    INTERNAL_KEY = bytes.fromhex("77" * 32)
+    MERKLE_ROOT = bytes.fromhex("88" * 32)
+    LEAF_PUBKEY = bytes.fromhex("99" * 32)
+    LEAF_HASH = bytes.fromhex("aa" * 32)
+    PATH_M86 = [0x80000056, 0x80000000, 0x80000000, 0, 0]
+    PATH_OTHER = [0x8000002C, 0x80000000, 0, 7]
+    PATH_ONE = (0x80000000).to_bytes(4, "little")  # what the existing derivation() helper carries
+    M86 = b"".join(e.to_bytes(4, "little") for e in PATH_M86)
+    OTHER = b"".join(e.to_bytes(4, "little") for e in PATH_OTHER)
+    def tap_derivation(fingerprint: bytes, path: list, leaf_hashes: list = ()) -> bytes:
+        value = csb(len(leaf_hashes)) + b"".join(leaf_hashes) + fingerprint
+        return key_record(0x16, value + b"".join(e.to_bytes(4, "little") for e in path), LEAF_PUBKEY)
+
+    def out_derivation(fingerprint: bytes, path: list, kind: int = 2) -> bytes:
+        value = fingerprint + b"".join(e.to_bytes(4, "little") for e in path)
+        return key_record(kind, value, CTX_PUBKEY)
+
+    def witness(value: bytes) -> bytes:
+        return key_record(1, value)
+
+    def sighash_record(value: bytes) -> bytes:
+        return key_record(3, value)
+
+    def unsigned_n(prev_id: bytes, n_in: int, n_out: int) -> bytes:
+        raw, _ = tx_assemble([(prev_id, i % 2, b"", b"\xff\xff\xff\xff") for i in range(n_in)],
+                             [(90000000, CTX_P2WPKH) for _ in range(n_out)])
+        return raw
+
+    tap_in = [witness(ctx_out(50000, CTX_P2TR)), key_record(0x17, INTERNAL_KEY),
+              tap_derivation(MFP_OURS, PATH_M86)]
+
+    R = []
+
+    def rec(name, inputs, outputs=(), *, unsigned_tx=None, stage=3, err="ERR_OK", n_in=1, n_out=1,
+            itype=-1, sighash=0, mfp=None, path=None, internal=None, merkle=None, can_sign=0,
+            out_mfp=None, out_path=None):
+        R.append((name, psbt_of(unsigned_tx if unsigned_tx is not None else unsigned(id_p2tr),
+                                inputs, outputs), stage, err, n_in, n_out, itype, sighash, mfp,
+                  path, internal, merkle, can_sign, out_mfp, out_path))
+
+    def rin(*records):
+        return [list(records)]
+
+    # What the taproot fields choose: BIP-371 hands the signer the internal key to tweak and the
+    # derivation to sign with, and the device hashes both into the signature it asks the card for.
+    rec("taproot key path", rin(*tap_in), itype="BTC_INPUT_TYPE_P2TR", mfp=MFP_OURS, path=M86,
+        internal=INTERNAL_KEY, merkle=b"", can_sign=1)
+    rec("taproot with a merkle root", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY), key_record(0x18, MERKLE_ROOT),
+        tap_derivation(MFP_OURS, PATH_M86)), itype="BTC_INPUT_TYPE_P2TR", mfp=MFP_OURS, path=M86,
+        internal=INTERNAL_KEY, merkle=MERKLE_ROOT, can_sign=1)
+    rec("taproot internal key of 31 bytes", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY[:-1]), tap_derivation(MFP_OURS, PATH_M86)), stage=1,
+        err="ERR_DECODE")
+    rec("taproot internal key of 33 bytes", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY + b"\x00"), tap_derivation(MFP_OURS, PATH_M86)), stage=1,
+        err="ERR_DECODE")
+    rec("taproot merkle root of 31 bytes", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY), key_record(0x18, MERKLE_ROOT[:-1]),
+        tap_derivation(MFP_OURS, PATH_M86)), stage=1, err="ERR_DECODE")
+    rec("taproot derivation with no room for a fingerprint", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY), key_record(0x16, b"\x00" + MFP_OURS[:3], LEAF_PUBKEY)),
+        stage=1, err="ERR_DECODE")
+    rec("taproot derivation with an empty path", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY), key_record(0x16, b"\x00" + MFP_OURS, LEAF_PUBKEY)),
+        itype="BTC_INPUT_TYPE_P2TR", mfp=MFP_OURS, path=b"", internal=INTERNAL_KEY, can_sign=1)
+    # A derivation carrying leaf hashes describes a script path, which this device cannot sign, and
+    # BIP-371 puts the fingerprint behind those hashes: reading the record from the offsets a zero
+    # count would put them at is what has to be impossible. It is passed over instead -- see the row
+    # below for why that rather than a refusal.
+    rec("taproot derivation carrying one leaf hash", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY), tap_derivation(MFP_OURS, PATH_M86, [LEAF_HASH])),
+        mfp=bytes(4), path=b"", can_sign=0)
+    # The leaf hash that starts with our own fingerprint is the one that matters: read at the zero-count
+    # offsets it claims the input for us, with the bytes behind it -- still inside the hash -- as the
+    # derivation path. Nothing is recorded here, so nothing is signed.
+    rec("taproot derivation whose leaf hash starts with our fingerprint", rin(
+        witness(ctx_out(50000, CTX_P2TR)), key_record(0x17, INTERNAL_KEY),
+        tap_derivation(MFP_OURS, PATH_M86, [MFP_OURS + bytes.fromhex("bb" * 28)])),
+        mfp=bytes(4), path=b"", can_sign=0)
+    rec("taproot derivation carrying three leaf hashes", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY),
+        tap_derivation(MFP_OURS, PATH_M86, [LEAF_HASH, LEAF_HASH, LEAF_HASH])),
+        mfp=bytes(4), path=b"", can_sign=0)
+    rec("taproot derivation with a long-form leaf-hash count", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY),
+        key_record(0x16, b"\xfd\x01\x00" + LEAF_HASH + MFP_OURS + M86, LEAF_PUBKEY)),
+        mfp=bytes(4), path=b"", can_sign=0)
+    # A miniscript or taproot-multisig wallet describes the other signers' script paths in the same
+    # PSBT. Those records are the wallet's business and not this device's: its own input still signs.
+    rec("our key path beside another signer's script path", [
+        [witness(ctx_out(50000, CTX_P2TR)), key_record(0x17, INTERNAL_KEY),
+         tap_derivation(MFP_OURS, PATH_M86)],
+        [witness(ctx_out(60000, CTX_P2TR)),
+         tap_derivation(MFP_OTHER, PATH_OTHER, [LEAF_HASH])]],
+        unsigned_tx=unsigned_n(id_p2tr, 2, 1), itype="BTC_INPUT_TYPE_P2TR", mfp=MFP_OURS, path=M86,
+        internal=INTERNAL_KEY, n_in=2, can_sign=1)
+    # The internal key is only demanded when the signature is made, so validation lets this through:
+    # the flow approves the transaction and then fails to sign it. Pinned as it stands.
+    rec("taproot input with no internal key", rin(witness(ctx_out(50000, CTX_P2TR)),
+        tap_derivation(MFP_OURS, PATH_M86)), itype="BTC_INPUT_TYPE_P2TR", mfp=MFP_OURS, path=M86,
+        internal=b"", merkle=b"", can_sign=1)
+    rec("taproot derivation in BIP-174's ordinary field", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY), key_record(6, MFP_OURS + M86, CTX_PUBKEY)),
+        itype="BTC_INPUT_TYPE_P2TR", mfp=MFP_OURS, path=M86, internal=INTERNAL_KEY, can_sign=1)
+    # Whichever derivation record arrives first claims the input: a second one is ignored once the
+    # fingerprint is ours, so the two fields must not be able to disagree about the path.
+    rec("both derivation fields, BIP-371's first", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY), tap_derivation(MFP_OURS, PATH_M86),
+        key_record(6, MFP_OURS + OTHER, CTX_PUBKEY)), itype="BTC_INPUT_TYPE_P2TR", mfp=MFP_OURS,
+        path=M86, internal=INTERNAL_KEY, can_sign=1)
+    rec("both derivation fields, BIP-174's first", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY), key_record(6, MFP_OURS + OTHER, CTX_PUBKEY),
+        tap_derivation(MFP_OURS, PATH_M86)), itype="BTC_INPUT_TYPE_P2TR", mfp=MFP_OURS, path=OTHER,
+        internal=INTERNAL_KEY, can_sign=1)
+
+    # The sighash type is copied to the record that decides the digest, unvalidated.
+    legacy_in = [key_record(0, prev_legacy), derivation(MFP_OURS)]
+    rec("sighash type NONE", rin(sighash_record((2).to_bytes(4, "little")), *legacy_in),
+        unsigned_tx=unsigned(id_legacy), itype="BTC_INPUT_TYPE_LEGACY", sighash=2, mfp=MFP_OURS,
+        path=PATH_ONE, can_sign=1)
+    rec("sighash type 0x05, which no scheme defines", rin(sighash_record((5).to_bytes(4, "little")),
+        *legacy_in), unsigned_tx=unsigned(id_legacy), itype="BTC_INPUT_TYPE_LEGACY", sighash=5,
+        mfp=MFP_OURS, path=PATH_ONE, can_sign=1)
+    rec("sighash type of 3 bytes", rin(sighash_record(b"\x01\x00\x00"), *legacy_in),
+        unsigned_tx=unsigned(id_legacy), stage=1, err="ERR_DECODE")
+    rec("no sighash type on a legacy input", rin(*legacy_in), unsigned_tx=unsigned(id_legacy),
+        itype="BTC_INPUT_TYPE_LEGACY", sighash=1, mfp=MFP_OURS, path=PATH_ONE,
+        can_sign=1)
+
+    rec("non_witness_utxo that does not parse", rin(key_record(0, prev_legacy[:-3]),
+        derivation(MFP_OURS)), unsigned_tx=unsigned(id_legacy), stage=1, err="ERR_DECODE")
+    rec("a record type the device does not know", rin(witness(ctx_out(100000000, CTX_P2WPKH)),
+        key_record(0x7F, b"\x01\x02"), derivation(MFP_OURS)), unsigned_tx=unsigned(id_segwit),
+        itype="BTC_INPUT_TYPE_P2WPKH", sighash=1, mfp=MFP_OURS, path=PATH_ONE, can_sign=1)
+
+    # The two remaining length refusals, and the scripts a witness input may carry.
+    rec("witness_utxo of 8 bytes", rin(key_record(1, b"\x00" * 8), derivation(MFP_OURS)),
+        unsigned_tx=unsigned(id_segwit), stage=1, err="ERR_DECODE")
+    rec("derivation of 3 bytes", rin(witness(ctx_out(100000000, CTX_P2WPKH)),
+        key_record(6, MFP_OURS[:3], CTX_PUBKEY)), unsigned_tx=unsigned(id_segwit), stage=1,
+        err="ERR_DECODE")
+
+    NESTED_REDEEM = bytes.fromhex("0014") + hash160(bytes.fromhex("03" + "12" * 32))
+    NESTED_P2SH = bytes.fromhex("a914") + hash160(NESTED_REDEEM) + bytes.fromhex("87")
+    rec("nested P2SH-P2WPKH", rin(witness(ctx_out(1000000, NESTED_P2SH)),
+        key_record(4, NESTED_REDEEM), derivation(MFP_OURS)), unsigned_tx=unsigned(id_segwit),
+        itype="BTC_INPUT_TYPE_P2WPKH", sighash=1, mfp=MFP_OURS, path=PATH_ONE, can_sign=1)
+    rec("nested P2SH whose redeem script hashes elsewhere", rin(witness(ctx_out(1000000, NESTED_P2SH)),
+        key_record(4, NESTED_REDEEM[:-1] + b"\x00"), derivation(MFP_OURS)),
+        unsigned_tx=unsigned(id_segwit), stage=2, err="ERR_DATA", can_sign=1)
+    # Validation marks an input as ours from its fingerprint and only then proves the scripts, so a
+    # refused input is still "can sign": btc_psbt_any_can_sign() answers whose key it is, not whether
+    # the PSBT is signable. core_btc_validate acts on the error, not on the flag.
+    # A redeem script is only a proof when the output is P2SH, and a witness script only when it is
+    # P2WSH; anything else has to be refused rather than classified by the script next to it.
+    rec("witness input with a redeem script and a P2WPKH output", rin(
+        witness(ctx_out(100000000, CTX_P2WPKH)), key_record(4, NESTED_REDEEM),
+        derivation(MFP_OURS)), unsigned_tx=unsigned(id_segwit), stage=2, err="ERR_DATA", can_sign=1)
+    rec("witness input with a witness script and a P2SH output", rin(
+        witness(ctx_out(1000000, NESTED_P2SH)), key_record(5, CTX_WITNESS_SCRIPT),
+        derivation(MFP_OURS)), unsigned_tx=unsigned(id_segwit), stage=2, err="ERR_DATA", can_sign=1)
+
+    # The two above refuse on a hash that does not match, which a matcher that skipped the script
+    # type test would also do. These two match: a redeem script whose hash160 is the witness program
+    # of a P2WPKH output, and a witness script whose sha256 lands in a P2SH output. Only the rule
+    # about which proof fits which output separates them, and the answer is still refusal.
+    # The redeem script is itself a P2WPKH script here, so a matcher that ignored the output type
+    # would not merely hash the same answer: it would take the redeem script as the spending script,
+    # classify the input P2WPKH and sign.
+    P2WPKH_REDEEM = bytes.fromhex("0014") + hash160(bytes.fromhex("03" + "13" * 32))
+    rec("a redeem script hashing to a P2WPKH witness program", rin(
+        witness(ctx_out(100000000, bytes.fromhex("0014") + hash160(P2WPKH_REDEEM))),
+        key_record(4, P2WPKH_REDEEM), derivation(MFP_OURS)), unsigned_tx=unsigned(id_segwit),
+        stage=2, err="ERR_DATA", can_sign=1)
+    rec("a witness script hashing into a P2SH output", rin(
+        witness(ctx_out(1000000, bytes.fromhex("a914") +
+                        hashlib.sha256(CTX_WITNESS_SCRIPT).digest()[:20] + bytes.fromhex("87"))),
+        key_record(5, CTX_WITNESS_SCRIPT), derivation(MFP_OURS)), unsigned_tx=unsigned(id_segwit),
+        stage=2, err="ERR_DATA", can_sign=1)
+    rec("taproot merkle root of 33 bytes", rin(witness(ctx_out(50000, CTX_P2TR)),
+        key_record(0x17, INTERNAL_KEY), key_record(0x18, MERKLE_ROOT + b"\x00"),
+        tap_derivation(MFP_OURS, PATH_M86)), stage=1, err="ERR_DECODE")
+
+    # BIP-174: the global unsigned transaction "must be in the old serialization format (without
+    # witnesses)", so a witness serialization there is not a PSBT at all.
+    witness_tx, _ = tx_assemble([(id_segwit, 0, b"", b"\xff\xff\xff\xff")],
+                                [(90000000, CTX_P2WPKH)], stacks=[[b"\x01"]])
+    rec("global unsigned tx in the witness serialization", rin(witness(ctx_out(100000000, CTX_P2WPKH)),
+        derivation(MFP_OURS)), unsigned_tx=witness_tx, stage=0, err="ERR_DATA", n_in=0, n_out=0)
+
+    # BTC_MAX_INPUTS and BTC_MAX_OUTPUTS bound the context, and the limit is reached by the unsigned
+    # transaction's own counts, which arrive before any map.
+    rec("more inputs than the context holds", [[derivation(MFP_OURS)]] + [[] for _ in range(40)],
+        unsigned_tx=unsigned_n(id_segwit, 41, 1), stage=1, err="ERR_FULL", n_in=40)
+    rec("more outputs than the context holds", rin(witness(ctx_out(100000000, CTX_P2WPKH)),
+        derivation(MFP_OURS)), [[] for _ in range(41)], unsigned_tx=unsigned_n(id_segwit, 1, 41),
+        stage=1, err="ERR_FULL", n_out=40)
+
+    # Output records: the derivation is what the change check runs on.
+    rec("output derivation, ours", [[]], rin(out_derivation(MFP_OURS, PATH_M86)),
+        unsigned_tx=unsigned(id_segwit), out_mfp=MFP_OURS, out_path=M86)
+    rec("output derivation, another device", [[]], rin(out_derivation(MFP_OTHER, PATH_OTHER)),
+        unsigned_tx=unsigned(id_segwit), out_mfp=MFP_OTHER, out_path=OTHER)
+    rec("output derivation of 3 bytes", [[]], rin(key_record(2, MFP_OURS[:3], CTX_PUBKEY)),
+        unsigned_tx=unsigned(id_segwit), stage=1, err="ERR_DECODE")
+    # A P2TR change output carries its derivation in BIP-371's field, which this record handler does
+    # not read: the output is left unattributed and the change check never runs on it.
+    rec("P2TR change output, derivation in BIP-371's field", [[]],
+        rin(out_derivation(MFP_OURS, PATH_M86, kind=7)), unsigned_tx=unsigned(id_segwit), out_mfp=bytes(4), out_path=b"")
+    rec("unknown output record type", [[]], rin(key_record(0x7F, b"\x01\x02")),
+        unsigned_tx=unsigned(id_segwit), out_mfp=bytes(4), out_path=b"")
+
+    def opt(value):
+        """NULL for a field the case does not answer; the record's own bytes for one it does."""
+        return "NULL" if value is None else f'"{hexs(value)}"' 
+
+    rec_arrays = []
+    rec_rows = []
+    for i, (name, blob, stage, err, n_in, n_out, itype, sighash, mfp, path, internal, merkle,
+            can_sign, out_mfp, out_path) in enumerate(R):
+        rec_arrays.append(tx_c_array(f"psbt_rec_{i}", blob))
+        rec_rows.append(
+            f'    {{ {cstr(name)}, psbt_rec_{i}, sizeof(psbt_rec_{i}), {stage}, {err},\n'
+            f'      {n_in}, {n_out}, {itype}, {sighash}, {opt(mfp)}, {opt(path)},\n'
+            f'      {opt(internal)}, {opt(merkle)}, {can_sign}, {opt(out_mfp)}, '
+            f'{opt(out_path)} }},')
 
     return """/* Generated by tests/vectors/generate.py -- do not edit.
  *
  * PSBTs built from BIP-174's grammar to pin what the device takes an input to be. Where two utxo
  * fields describe one input, the prevtx is authoritative -- the answer a verifying node computes --
  * whichever record the wallet wrote last.
+ *
+ * The second table pins the individual records, and for the taproot ones it is BIP-371 that numbers
+ * the key types and states the value layouts: a taproot derivation is leaf hashes, then the 4 byte
+ * master fingerprint, then the path as 32-bit little endian indices, and the internal key and the
+ * merkle root are each exactly 32 bytes. The sighash type is BIP-174's 32-bit little endian
+ * unsigned integer, which that document says a signer who cannot sign with it must not sign at all.
  */
 
 #ifndef VECTORS_PSBT_CTX_H
@@ -2399,8 +2652,38 @@ static const psbt_ctx_case_t PSBT_CTX_CASES[] = {
 
 #define PSBT_CTX_CASE_COUNT (sizeof(PSBT_CTX_CASES) / sizeof(PSBT_CTX_CASES[0]))
 
+/* One PSBT per case, and where the device is expected to stop: 0 in psbt_read, 1 while the records
+ * are taken in, 2 in btc_psbt_validate_inputs, 3 nowhere. Fields left NULL are not answered by the
+ * case -- a record that never arrived is a different statement from one that resolved to nothing. */
+typedef struct {
+  const char* name;
+  const uint8_t* psbt;
+  size_t psbt_len;
+  int stage;
+  int err;                 /* app_err_t expected from that stage */
+  int input_count;         /* what the context counted before it stopped */
+  int output_count;
+  int input_type;          /* -1 unless the case classifies input 0 */
+  uint8_t sighash;         /* input 0's sighash_flag once validation has run */
+  const char* in_mfp;    /* the four bytes a derivation record filed, compared as bytes */
+  const char* in_path;     /* the bytes bip32_path points at; "" is a path of no elements */
+  const char* in_internal_key;
+  const char* in_merkle_root;
+  int can_sign;            /* btc_psbt_any_can_sign */
+  const char* out_mfp;     /* output 0 */
+  const char* out_path;
+} psbt_ctx_record_t;
+
+%s
+
+static const psbt_ctx_record_t PSBT_CTX_RECORDS[] = {
+%s
+};
+
+#define PSBT_CTX_RECORD_COUNT (sizeof(PSBT_CTX_RECORDS) / sizeof(PSBT_CTX_RECORDS[0]))
+
 #endif
-""" % ("\n\n".join(arrays), "\n".join(rows))
+""" % ("\n\n".join(arrays), "\n".join(rows), "\n\n".join(rec_arrays), "\n".join(rec_rows))
 
 # ------------------------------------------------------- signature hashes (sighash.c)
 
