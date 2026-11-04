@@ -21,7 +21,11 @@ size_t strnlen(const char *s, size_t maxlen);
 /* decode consumes hex_len characters and yields hex_len / 2 bytes; encode takes a byte count */
 bool base16_decode(const char* s, uint8_t* out, size_t hex_len);
 void base16_encode(const uint8_t* data, char* out, size_t len);
-bool atoi256BE(const char* str, size_t len, uint8_t out[32]);
+bool decimal_to_256(const char* digits, size_t len, uint8_t out[32]);
+int compare_256(const uint8_t a[32], const uint8_t b[32]);
+bool str_to_int256(const char* str, size_t len, uint8_t mag[32], bool* negative);
+void negate_256(uint8_t v[32]);
+size_t significant_256(const uint8_t v[32]);
 
 static inline int memcmp_ct(const uint8_t* a, const uint8_t* b, size_t length) {
   int compareSum = 0;

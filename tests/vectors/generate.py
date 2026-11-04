@@ -7,6 +7,8 @@ Every value in the emitted headers comes from one of two places, and each header
             header can be audited against the same source
   reference computed by an independent implementation (CPython hashlib/hmac/zlib,
             pycryptodome, or the BIP's own reference code)
+  oracle    computed by a released implementation run for the purpose, which is how a header can
+            pin behaviour nobody else publishes; see oracle/ and the header that uses it
 
 Run from anywhere; requires network unless the sources are already in tests/vectors/.cache/.
 
@@ -20,6 +22,7 @@ import itertools
 import json
 import os
 import random
+import struct
 
 from asn1crypto import core as asn1_core
 import re
@@ -63,6 +66,9 @@ SOURCES = {
     "bip86.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0086.mediawiki",
     "bip141.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0141.mediawiki",
     "bip341.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0341.mediawiki",
+    "eth_sig_util_sign_typed_data.test.ts": "https://raw.githubusercontent.com/MetaMask/eth-sig-util/main/src/sign-typed-data.test.ts",
+    "eth_sig_util_sign_typed_data.snap": "https://raw.githubusercontent.com/MetaMask/eth-sig-util/main/src/__snapshots__/sign-typed-data.test.ts.snap",
+    "eip712_example.js": "https://raw.githubusercontent.com/ethereum/EIPs/master/assets/eip-712/Example.js",
     "key_io_valid.json": "https://raw.githubusercontent.com/bitcoin/bitcoin/master/src/test/data/key_io_valid.json",
     "bip340_vectors.csv": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0340/test-vectors.csv",
     "bc_bytewords.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/src/bc-bytewords.c",
@@ -6402,6 +6408,995 @@ static const btc_sig_case_t BTC_SIG_CASES[] = {{
 #endif\t/* VECTORS_KEYCARD_SIGNATURE_H */
 """
 
+# ---------------------------------------------------------------- eip712
+#
+# The device turns an EIP-712 typed-data document into the 32 bytes the card signs. What those
+# bytes should be is taken from MetaMask's eth-sig-util, because that is what the dapps handing
+# this document to the device compute with, and so what the contract checking the signature agrees
+# with. The EIP text does not say what a `bytes` value arrives as without its 0x, whether a number
+# outside its type's range is encoded or refused, in what order a struct's dependencies are
+# appended, or what a value of the wrong JSON type does; the implementation settles all of that.
+#
+#   eth_sig_util_sign_typed_data.test.ts   the fixtures: inputs, and the typed data of each case
+#   eth_sig_util_sign_typed_data.snap      the encodeData / eip712Hash the suite expects
+#
+# A snapshot key carries the case title, the input value and its JS type, so pairing a row with the
+# wrong expectation trips an assert here rather than producing a quietly wrong header.
+#
+# The device is compared on the digest, not on encodeData, because the digest is what it hands the
+# card. hashStruct(Message) is keccak256(encodeData), so each encodeData snapshot gives a
+# hashStruct, and hashStructs are what the 0x19 0x01 prefix is applied to. The rows that carry a
+# single field declare an empty EIP712Domain, whose separator the six published eip712Hash cases
+# pin independently: the minimal one is hashStruct over that same empty struct.
+
+EIP712_TEST = "eth_sig_util_sign_typed_data.test.ts"
+EIP712_SNAP = "eth_sig_util_sign_typed_data.snap"
+
+# The fixture builds these two with a template literal over Number.MAX_SAFE_INTEGER.toString(16).
+EIP712_JS_CONSTS = {
+    "MAX_SAFE_INTEGER_PLUS_ONE_CHAR_AS_HEX": "0x1fffffffffffff1",
+    "MAX_SAFE_INTEGER_AS_HEX": "0x1fffffffffffff",
+}
+
+EIP712_ATOMS = frozenset(
+    ["bool", "address", "string", "bytes"]
+    + [f"bytes{i}" for i in range(1, 33)]
+    + [f"uint{8 * i}" for i in range(1, 33)]
+    + [f"int{8 * i}" for i in range(1, 33)]
+    + ["uint", "int"]  # the fixture uses these too; ethereumjs-abi reads them as 256 bit
+)
+
+
+class Eip712Buffer(str):
+    """A Buffer in the fixture, given to the device as the hex string of the same bytes.
+
+    The reference hex-decodes a string into those same bytes, so the expectation the snapshot holds
+    still applies. `js_name` and `js_type` are what the snapshot key was built from, which is not
+    the hex form (`String(Buffer.from('10','utf8'))` is `10`)."""
+
+    def __new__(cls, data: bytes):
+        self = super().__new__(cls, "0x" + data.hex())
+        self.raw = data
+        return self
+
+    @property
+    def js_name(self) -> str:
+        return self.raw.decode("utf-8", "replace")
+
+    @property
+    def js_type(self) -> str:
+        return "Buffer"
+
+
+def js_name(value) -> str:
+    """String(value) as the fixture's test titles render it."""
+    if isinstance(value, Eip712Buffer):
+        return value.js_name
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def js_type(value) -> str:
+    if isinstance(value, Eip712Buffer):
+        return value.js_type
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, str):
+        return "string"
+    return "number"
+
+
+def eip712_literal(text: str, at: int) -> tuple[str, int]:
+    """The JS literal starting at text[at], and the index just past it. Braces inside a string
+    do not count, which is the only reason this is not a count of characters."""
+    depth = 0
+    quote = None
+    i = at
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "[{":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0:
+                return text[at : i + 1], i + 1
+        i += 1
+    raise AssertionError(f"unbalanced literal at {at}")
+
+
+def js_read(literal: str):
+    """One of the fixture's JS literals, as Python data.
+
+    Only the constructs the fixture itself uses are translated, and the leftovers are checked for,
+    because a row built on a mistranslated literal would pin an expectation nobody holds."""
+    src = re.sub(r"//[^\n]*", "", literal)
+    buffers: list[bytes] = []
+
+    def take(data: bytes) -> str:
+        """A Buffer cannot survive json.loads, so it is parked and restored afterwards."""
+        buffers.append(data)
+        return '"@@JSRAW%d@@"' % (len(buffers) - 1)
+
+    src = re.sub(
+        r"Buffer\.from\(new Int32Array\(\[([0-9,\s]+)\]\)\)",
+        lambda m: take(b"".join(struct.pack("<i", int(v)) for v in m.group(1).split(",") if v.strip())),
+        src,
+    )
+    src = re.sub(r"Buffer\.from\('([^']*)',\s*'utf8'\)", lambda m: take(m.group(1).encode("utf-8")), src)
+    for name, value in EIP712_JS_CONSTS.items():
+        src = src.replace(name, '"%s"' % value)
+    src = src.replace("Number.MAX_SAFE_INTEGER", "9007199254740991")
+    src = src.replace("Number.MIN_SAFE_INTEGER", "-9007199254740991")
+    src = re.sub(r"'([^'\\]*)'", r'"\1"', src)
+    src = re.sub(r"([{,]\s*)([A-Za-z_$][A-Za-z0-9_$]*)(\s*:)", r'\1"\2"\3', src)
+    src = re.sub(r",(\s*[}\]])", r"\1", src)
+    for left in ("Buffer", "Number.", "as any", "'"):
+        assert left not in src, f"{left} left in {src[:200]}"
+    return js_read_restore(json.loads(src), buffers)
+
+
+def js_read_restore(node, buffers: list):
+    if isinstance(node, str) and node.startswith("@@JSRAW"):
+        return Eip712Buffer(buffers[int(node[len("@@JSRAW") : -2])])
+    if isinstance(node, list):
+        return [js_read_restore(item, buffers) for item in node]
+    if isinstance(node, dict):
+        return {key: js_read_restore(value, buffers) for key, value in node.items()}
+    return node
+
+
+_SNAPSHOTS: dict[str, str] | None = None
+
+
+def snapshots() -> dict[str, str]:
+    """The jest snapshot file as {case title: expected value}."""
+    global _SNAPSHOTS
+    if _SNAPSHOTS is None:
+        text = fetch(EIP712_SNAP)
+        out = {k.strip(): v.strip().strip('"') for k, v in re.findall(r"^exports\[`([^`]*)`\] = `(.*?)`;", text, re.M | re.S)}
+        assert len(out) > 600, len(out)
+        _SNAPSHOTS = out
+    return _SNAPSHOTS
+
+
+def eip712_it_bodies(text: str, start: int, end: int) -> list[tuple[str, str]]:
+    """The (title, body) of every it() in text[start:end], in file order."""
+    out = []
+    for m in re.finditer(r"\bit\('([^']+)', function \(\) \{", text[start:end]):
+        nxt = text.find("\n    it(", start + m.end())
+        stop = text.find("\n  });", start + m.end())
+        out.append((m.group(1), text[start + m.end() : min(x for x in (nxt, stop, end) if x != -1)]))
+    return out
+
+
+def eip712_hash_cases() -> list[tuple[str, dict]]:
+    """The suite's V4 eip712Hash cases, each with the typed data its snapshot digest belongs to."""
+    text = fetch(EIP712_TEST)
+    v4 = text.index("describe('V4', function", text.index("describe('TypedDataUtils.eip712Hash'"))
+    end = text.index("describe('bool encoding'", v4)
+    cases = []
+    for title, body in eip712_it_bodies(text, v4, end):
+        if "toMatchSnapshot" not in body:
+            continue
+        at = body.index("eip712Hash(")
+        lit, _ = eip712_literal(body, body.index("{", at))
+        typed = js_read(lit)
+        key = f"TypedDataUtils.eip712Hash V4 {title} 1"
+        assert key in snapshots(), key
+        cases.append((title, typed, snapshots()[key]))
+    assert len(cases) == 6, len(cases)
+    return cases
+
+
+def eip712_encode_data_cases() -> list[tuple[str, dict]]:
+    """The named V4 encodeData cases whose fixture states types, primaryType and message."""
+    text = fetch(EIP712_TEST)
+    v4 = text.index("describe('V4', function", text.index("describe('TypedDataUtils.encodeData'"))
+    end = text.index("describe('V3/V4 identical", v4)
+    wanted = [
+        "should encode data with custom type",
+        "should encode data with a recursive data type",
+        "should encode data with a custom data type array",
+        "should encode data when given extraneous types",
+        "should encode data with a dynamic property set to null",
+    ]
+    cases = []
+    for title, body in eip712_it_bodies(text, v4, end):
+        if title not in wanted:
+            continue
+        types = js_read(eip712_literal(body, body.index("= {", body.index("const types")) + 2)[0])
+        primary = re.search(r"const primaryType = '([^']+)'", body)
+        if primary:
+            primary = primary.group(1)
+        else:
+            primary = re.search(r"encodeData\(\s*'([^']+)'", body).group(1)
+        message = js_read(eip712_literal(body, body.index("= {", body.index("const message")) + 2)[0])
+        cases.append((title, {"types": types, "primaryType": primary, "domain": {}, "message": message}))
+    assert sorted(t for t, _ in cases) == sorted(wanted), [t for t, _ in cases]
+    return cases
+
+
+def eip712_example_data() -> dict[str, list]:
+    """The fixture's per-type table of inputs, in the order its tests run them."""
+    text = fetch(EIP712_TEST)
+    at = text.index("const encodeDataExamples = {") + len("const encodeDataExamples = ")
+    lit, _ = eip712_literal(text, at)
+    out = js_read(lit)
+    for required in ("address", "bool", "bytes", "bytes1", "bytes32", "int8", "int256", "string", "uint8", "uint256"):
+        assert required in out, required
+    return out
+
+
+# The model below is written from EIP-712's own description of encodeType/encodeData/hashStruct and
+# is checked against the reference below before a single row is emitted. Its job is the domain
+# separator and the rows the fixture does not cover; where it and the fixture disagree the fixture
+# wins, because the fixture is what a verifier agrees with.
+
+
+# The digest of a typed-data document is what MetaMask's eth-sig-util computes, from two sources:
+#
+#   * the published snapshots of its own fixture, at main (version 9.0.0, unreleased);
+#   * a run of the released 8.2.0 over documents this file defines, which is how rows nobody else
+#     publishes get an expectation.
+#
+# The two agree on every case the snapshot covers, apart from a `bool` given the string "false":
+# 8.2.0 hands the value to the ABI encoder, which takes its truthiness, while main rejects anything
+# but a boolean and the strings "true" and "false". The device follows main, so those rows are not
+# taken from the run.
+#
+# The run is a separate step because it needs node:
+#
+#   python3 generate.py --eip712-documents          # writes .cache/eip712_documents.json
+#   node oracle/eip712_reference.mjs                # writes .cache/eip712_reference.json
+#
+# and then generate.py reads the dump back. Each row says which of the two it came from.
+
+EIP712_DOCUMENTS = ".cache/eip712_documents.json"
+EIP712_DUMP = ".cache/eip712_reference.json"
+
+EIP712_TYPES = [
+    "bool", "string", "bytes", "bytes1", "bytes2", "bytes4", "bytes20", "bytes31", "bytes32",
+    "address", "uint8", "uint16", "uint24", "uint32", "uint64", "uint128", "uint256", "uint",
+    "int8", "int16", "int64", "int128", "int256", "int",
+]
+
+# Every form a JSON document can hold a field value in, including the ones EIP-712 does not
+# describe and the reference nevertheless encodes.
+EIP712_VALUES: list = [
+    0, 1, -1, 10, 255, 256, True, False, None,
+    "0", "1", "10", "-1", "0x", "0x0", "0x10", "0x101", "0X10", "0xzz", " 1",
+    "9007199254740991", 9007199254740991, "0x1fffffffffffff",
+    "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+    "115792089237316195423570985008687907853269984665640564039457584007913129639936",
+    "-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+    "-57896044618658097711785492504343953926634992332820282019728792003956564819969",
+    "-0", "+1", "1e3", "", "a\tb", "Hello!",
+    "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
+    "CcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
+    "0x0000000000000000000000000000000000000000000000000000000000000001",
+]
+
+# Cells left out of the run, and why. Each is a place where the released library and main differ,
+# or where the device cannot reach the value the reference would compute.
+EIP712_MATRIX_SKIPPED = [
+    "a non-ASCII string in an address field: the reference sums UTF-16 code units, which escapes "
+    "outside what the device's JSON reader decodes reach; the device refuses the value",
+]
+
+
+def eip712_matrix_cells() -> list[tuple[str, object]]:
+    cells: list[tuple[str, object]] = []
+
+    for type_name in EIP712_TYPES:
+        for value in EIP712_VALUES:
+            if type_name == "address" and isinstance(value, str) and not value.isascii():
+                continue
+
+            cells.append((type_name, value))
+
+    return cells
+
+
+EIP712_MAIL_TYPES = {
+    "EIP712Domain": [
+        {"name": "name", "type": "string"},
+        {"name": "version", "type": "string"},
+        {"name": "chainId", "type": "uint256"},
+        {"name": "verifyingContract", "type": "address"},
+    ],
+    "Person": [
+        {"name": "name", "type": "string"},
+        {"name": "wallet", "type": "address"},
+    ],
+    "Mail": [
+        {"name": "from", "type": "Person"},
+        {"name": "to", "type": "Person"},
+        {"name": "contents", "type": "string"},
+    ],
+}
+
+EIP712_MAIL_DOMAIN = {
+    "name": "Ether Mail",
+    "version": "1",
+    "chainId": 1,
+    "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
+}
+
+EIP712_MAIL_MESSAGE = {
+    "from": {"name": "Cow", "wallet": "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"},
+    "to": {"name": "Bob", "wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"},
+    "contents": "Hello, Bob!",
+}
+
+EIP712_MAIL = {
+    "types": EIP712_MAIL_TYPES,
+    "primaryType": "Mail",
+    "domain": EIP712_MAIL_DOMAIN,
+    "message": EIP712_MAIL_MESSAGE,
+}
+
+EIP712_DOMAIN_ALL = [
+    {"name": "name", "type": "string"},
+    {"name": "version", "type": "string"},
+    {"name": "chainId", "type": "uint256"},
+    {"name": "verifyingContract", "type": "address"},
+    {"name": "salt", "type": "bytes32"},
+]
+
+
+def eip712_json(typed: dict) -> str:
+    return json.dumps(typed, separators=(",", ":"), ensure_ascii=False)
+
+
+def eip712_one(type_name: str, value) -> dict:
+    """A document with one field of one type, over a domain that declares nothing."""
+    return {
+        "types": {"EIP712Domain": [], "Message": [{"name": "data", "type": type_name}]},
+        "primaryType": "Message",
+        "domain": {},
+        "message": {"data": value},
+    }
+
+
+# The fixture builds its `salt` with Buffer.from(new Int32Array([1, 2, 3])). What the reference ends
+# up encoding is the array's elements as bytes, 0x010203, which the run confirms: the digest it
+# produces for the documents that carry it is the published one.
+EIP712_BUFFER_SALT = "0x010203"
+
+
+def eip712_jsonable(value):
+    """A fixture value as JSON. The one JS-only form the fixture uses is the salt above."""
+    if isinstance(value, Eip712Buffer):
+        assert str(value) == "0x010000000200000003000000", str(value)
+        return EIP712_BUFFER_SALT
+
+    if isinstance(value, dict):
+        return {key: eip712_jsonable(item) for key, item in value.items()}
+
+    if isinstance(value, list):
+        return [eip712_jsonable(item) for item in value]
+
+    return value
+
+
+def eip712_raw_one(type_name: str, value_json: str) -> str:
+    """A one-field document spelled out as text, so that what the parser is handed is exactly what
+    is written here. `value_json` is the JSON for the value, quotes included."""
+    return (
+        '{"types":{"EIP712Domain":[],"Message":[{"name":"data","type":"'
+        + type_name
+        + '"}]},"primaryType":"Message","domain":{},"message":{"data":'
+        + value_json
+        + "}}"
+    )
+
+
+def eip712_documents() -> list[dict]:
+    """Every document the corpus covers, as text: the device and the reference are given the same
+    bytes, so a form that only one of them can express cannot sneak in."""
+    docs: list[dict] = []
+
+    def add(name: str, typed: dict):
+        docs.append({"name": name, "json": eip712_json(typed)})
+
+    def raw(name: str, text: str):
+        docs.append({"name": name, "json": text})
+
+    add("eip712_example_mail", EIP712_MAIL)
+
+    # The fixture's own whole-document cases, whose digests its snapshots publish.
+    for title, typed, _ in eip712_hash_cases():
+        add("snap_" + eip712_case_name(title), eip712_jsonable(typed))
+
+    for order in (
+        ["message", "types", "domain", "primaryType"],
+        ["primaryType", "domain", "message", "types"],
+        ["domain", "message", "primaryType", "types"],
+    ):
+        add("mail_reordered_" + "_".join(key[:4] for key in order), {key: EIP712_MAIL[key] for key in order})
+
+    for index, (type_name, value) in enumerate(eip712_matrix_cells()):
+        add(f"atom_{type_name}_{index}", eip712_one(type_name, value))
+
+    # The same table as arrays, which is where the per-element rules get exercised again.
+    for type_name in EIP712_TYPES:
+        values = [value for name, value in eip712_matrix_cells() if name == type_name]
+        if values:
+            add(f"atom_array_{type_name}", eip712_one(type_name + "[]", values))
+
+    named: list[tuple[str, dict]] = [
+        # Structs, arrays of them, and the dependency set that goes into the type hash.
+        ("mail_two_postboxes", {
+            "types": {
+                "EIP712Domain": [],
+                "Mail": [{"name": "sender", "type": "string"}, {"name": "bodies", "type": "string[]"}],
+                "Postbox": [{"name": "mails", "type": "Mail[]"}],
+                "Holder": [
+                    {"name": "one", "type": "Postbox"},
+                    {"name": "many", "type": "Postbox[]"},
+                    {"name": "count", "type": "uint256"},
+                ],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {
+                "one": {"mails": [{"sender": "a", "bodies": ["x"]}]},
+                "many": [
+                    {"mails": [{"sender": "b", "bodies": []}, {"sender": "c", "bodies": ["y", "z"]}]},
+                    {"mails": []},
+                ],
+                "count": 3,
+            },
+        }),
+        ("mail_empty_array", {
+            "types": {
+                "EIP712Domain": [],
+                "Mail": [{"name": "sender", "type": "string"}, {"name": "bodies", "type": "string[]"}],
+                "Holder": [{"name": "mails", "type": "Mail[]"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"mails": []},
+        }),
+        ("mail_two_dimensional_array", {
+            "types": {
+                "EIP712Domain": [],
+                "Mail": [{"name": "sender", "type": "string"}],
+                "Holder": [{"name": "mails", "type": "Mail[][]"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"mails": [[{"sender": "a"}], [{"sender": "b"}, {"sender": "c"}], []]},
+        }),
+        ("mail_missing_struct_member", {
+            "types": {
+                "EIP712Domain": [],
+                "Mail": [{"name": "sender", "type": "string"}],
+                "Holder": [{"name": "mail", "type": "Mail"}, {"name": "n", "type": "uint256"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"n": 1},
+        }),
+        ("mail_null_struct_member", {
+            "types": {
+                "EIP712Domain": [],
+                "Mail": [{"name": "sender", "type": "string"}],
+                "Holder": [{"name": "mail", "type": "Mail"}, {"name": "n", "type": "uint256"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"mail": None, "n": 1},
+        }),
+        ("mail_missing_atomic_member", {
+            "types": {"EIP712Domain": [], "Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {},
+        }),
+        ("mail_extra_message_member", {
+            "types": {"EIP712Domain": [], "Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"n": 1, "unDeclared": "ignored"},
+        }),
+        # A type that is referenced is part of the type hash; one that is not is not. The names are
+        # chosen so that the alphabetical order differs from the order they are declared in.
+        ("deps_reference_order", {
+            "types": {
+                "EIP712Domain": [],
+                "Holder": [
+                    {"name": "zulu", "type": "Zulu"},
+                    {"name": "alpha", "type": "Alpha"},
+                    {"name": "mike", "type": "Mike[]"},
+                ],
+                "Zulu": [{"name": "n", "type": "uint256"}],
+                "Alpha": [{"name": "n", "type": "uint256"}],
+                "Mike": [{"name": "n", "type": "uint256"}],
+                "Unreferenced": [{"name": "n", "type": "uint256"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {
+                "zulu": {"n": 1},
+                "alpha": {"n": 2},
+                "mike": [{"n": 3}, {"n": 4}],
+            },
+        }),
+        ("deps_nested_only", {
+            "types": {
+                "EIP712Domain": [],
+                "Holder": [{"name": "outer", "type": "Outer"}],
+                "Outer": [{"name": "inner", "type": "Inner"}],
+                "Inner": [{"name": "n", "type": "uint256"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"outer": {"inner": {"n": 7}}},
+        }),
+        # A type that names itself: it is not part of its own encodeType, and a document can carry
+        # a value of it as long as the data bottoms out.
+        ("deps_self_recursive", {
+            "types": {
+                "EIP712Domain": [],
+                "Node": [
+                    {"name": "value", "type": "uint256"},
+                    {"name": "next", "type": "Node"},
+                ],
+            },
+            "primaryType": "Node",
+            "domain": {},
+            "message": {"value": 1, "next": {"value": 2, "next": None}},
+        }),
+        ("deps_self_recursive_array", {
+            "types": {
+                "EIP712Domain": [],
+                "Node": [
+                    {"name": "value", "type": "uint256"},
+                    {"name": "next", "type": "Node[]"},
+                ],
+            },
+            "primaryType": "Node",
+            "domain": {},
+            "message": {"value": 1, "next": [{"value": 2, "next": []}]},
+        }),
+        ("deps_mutual_recursion", {
+            "types": {
+                "EIP712Domain": [],
+                "A": [{"name": "n", "type": "uint256"}, {"name": "b", "type": "B"}],
+                "B": [{"name": "n", "type": "uint256"}, {"name": "a", "type": "A"}],
+            },
+            "primaryType": "A",
+            "domain": {},
+            "message": {"n": 1, "b": {"n": 2, "a": None}},
+        }),
+        # A struct name is whatever is declared, whatever its case.
+        ("name_lowercase_struct", {
+            "types": {
+                "EIP712Domain": [],
+                "wrapper": [{"name": "n", "type": "uint256"}],
+                "Holder": [{"name": "w", "type": "wrapper"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"w": {"n": 1}},
+        }),
+        ("name_underscore_struct", {
+            "types": {
+                "EIP712Domain": [],
+                "_inner": [{"name": "n", "type": "uint256"}],
+                "Holder": [{"name": "w", "type": "_inner"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"w": {"n": 1}},
+        }),
+        ("name_type_called_string", {
+            "types": {
+                "EIP712Domain": [],
+                "string": [{"name": "n", "type": "uint256"}],
+                "Holder": [{"name": "w", "type": "string"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"w": {"n": 1}},
+        }),
+        # The domain, which is hashed before the message.
+        ("domain_all_fields", {
+            "types": {"EIP712Domain": EIP712_DOMAIN_ALL, "Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "Holder",
+            "domain": {
+                "name": "examples.example",
+                "version": "1",
+                "chainId": 1,
+                "verifyingContract": "0x0000000000000000000000000000000000000000",
+                "salt": "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+            },
+            "message": {"n": 1},
+        }),
+        ("domain_custom_fields", {
+            "types": {
+                "EIP712Domain": [{"name": "description", "type": "string"}, {"name": "cid", "type": "uint256"}],
+                "Holder": [{"name": "n", "type": "uint256"}],
+            },
+            "primaryType": "Holder",
+            "domain": {"description": "a domain of one's own", "cid": 42},
+            "message": {"n": 1},
+        }),
+        ("domain_primary_is_domain", {
+            "types": {"EIP712Domain": EIP712_DOMAIN_ALL},
+            "primaryType": "EIP712Domain",
+            "domain": {
+                "name": "example.metamask.io",
+                "version": "1",
+                "chainId": 1,
+                "verifyingContract": "0x0000000000000000000000000000000000000000",
+                "salt": "0x010203",
+            },
+            "message": {},
+        }),
+        ("domain_primary_is_domain_with_message", {
+            "types": {"EIP712Domain": EIP712_DOMAIN_ALL, "Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "EIP712Domain",
+            "domain": {
+                "name": "example.metamask.io",
+                "version": "1",
+                "chainId": 1,
+                "verifyingContract": "0x0000000000000000000000000000000000000000",
+                "salt": "0x010203",
+            },
+            "message": {"n": 1},
+        }),
+        ("domain_primary_is_domain_missing_members", {
+            "types": {"EIP712Domain": EIP712_DOMAIN_ALL},
+            "primaryType": "EIP712Domain",
+            "domain": {"name": "only a name"},
+            "message": {},
+        }),
+        ("domain_missing_from_types", {
+            "types": {"Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"n": 1},
+        }),
+        ("domain_primary_unknown", {
+            "types": {"EIP712Domain": [], "Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "NothingLikeIt",
+            "domain": {},
+            "message": {"n": 1},
+        }),
+        # Text written with JSON escapes, which a JSON parser settles into something the document
+        # does not spell out. Hand-built, because json.dumps() would escape the backslash and turn
+        # the escape into a literal backslash; these are the bytes the reference's JSON.parse sees.
+        ("text_escape_two_byte", eip712_raw_one("string", '"caf\\u00e9"')),
+        ("text_escape_boundary_7ff", eip712_raw_one("string", '"\\u07ff"')),
+        ("text_escape_boundary_800", eip712_raw_one("string", '"\\u0800"')),
+        ("text_escape_boundary_fff", eip712_raw_one("string", '"\\u0fff"')),
+        ("text_escape_boundary_1000", eip712_raw_one("string", '"\\u1000"')),
+        ("text_escape_boundary_7fff", eip712_raw_one("string", '"\\u7fff"')),
+        ("text_escape_boundary_8000", eip712_raw_one("string", '"\\u8000"')),
+        ("text_escape_boundary_ffff", eip712_raw_one("string", '"\\uffff"')),
+        ("text_escape_surrogate_pair", eip712_raw_one("string", '"\\ud83d\\ude00"')),
+        ("text_escape_lone_high_surrogate", eip712_raw_one("bytes", '"\\ud83d"')),
+        ("text_escape_lone_low_surrogate", eip712_raw_one("bytes", '"\\ude00"')),
+        ("text_escape_nul", eip712_raw_one("string", '"a\\u0000b"')),
+        ("text_escape_controls", eip712_raw_one("string", '"\\b\\f\\n\\r\\t"')),
+        ("text_escape_quote_and_slash", eip712_raw_one("string", '"a\\"b\\\\c\\/d"')),
+        ("text_escape_then_text", eip712_raw_one("bytes", '"caf\\u00e9 \\ud83d\\ude00"')),
+        ("address_escape", eip712_raw_one("address", '"a\\tb"')),
+        ("address_escape_u", eip712_raw_one("address", '"a\\u0009b"')),
+        # Text as the document writes it, no escapes in it.
+        ("text_raw_equals_escape", eip712_one("string", "café")),
+        ("text_empty", eip712_one("string", "")),
+        ("bytes_hex_long", eip712_one("bytes", "0x" + "ab" * 200)),
+        ("bytes_hex_odd", eip712_one("bytes", "0x102030405060708090a")),
+        ("bytes32_hex_odd", eip712_one("bytes32", "0x10203")),
+        # Two ways of writing one document that a JSON parser settles the same way.
+        ("dupe_message_key", {
+            "types": {"EIP712Domain": [], "Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"n": 1},
+        }),
+        ("dupe_domain_key", {
+            "types": {"EIP712Domain": [{"name": "name", "type": "string"}], "Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "Holder",
+            "domain": {"name": "last one wins"},
+            "message": {"n": 1},
+        }),
+        ("dupe_types_entry", {
+            "types": {"EIP712Domain": [], "Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"n": 1},
+        }),
+        ("dupe_field_name", {
+            "types": {
+                "EIP712Domain": [],
+                "Holder": [{"name": "n", "type": "uint256"}, {"name": "n", "type": "uint256"}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"n": 9},
+        }),
+        ("key_named_value", {
+            "types": {"EIP712Domain": [], "Holder": [{"name": "a", "type": "string"}, {"name": "b", "type": "uint256"}]},
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"a": "b", "b": 1},
+        }),
+        ("value_before_key", {
+            "types": {"EIP712Domain": [], "Holder": [{"name": "n", "type": "uint256"}]},
+            "primaryType": "Holder",
+            "domain": {"chainId": 1, "name": "a number came first"},
+            "message": {"n": 1},
+        }),
+        ("field_extra_member", {
+            "types": {
+                "EIP712Domain": [],
+                "Holder": [{"name": "n", "type": "uint256", "since": 4}],
+            },
+            "primaryType": "Holder",
+            "domain": {},
+            "message": {"n": 1},
+        }),
+    ]
+
+    for name, document in named:
+        # A str here is already the JSON text of a document, escapes and all.
+        if isinstance(document, str):
+            raw(name, document)
+        else:
+            add(name, document)
+
+    # Documents a JSON parser or the reference stops at. The device has to refuse them too.
+    malformed: list[tuple[str, str]] = [
+        ("bad_empty", ""),
+        ("bad_object_only", "{}"),
+        ("bad_array", "[]"),
+        ("bad_string", '"Mail"'),
+        ("bad_number", "42"),
+        ("bad_null", "null"),
+        ("bad_no_types", '{"primaryType":"M","domain":{},"message":{}}'),
+        ("bad_no_primary", '{"types":{"EIP712Domain":[]},"domain":{},"message":{}}'),
+        ("bad_no_domain", '{"types":{"EIP712Domain":[]},"primaryType":"M","message":{}}'),
+        ("bad_no_message", '{"types":{"EIP712Domain":[]},"primaryType":"M","domain":{}}'),
+        ("bad_types_array", '{"types":[],"primaryType":"M","domain":{},"message":{}}'),
+        ("bad_types_string", '{"types":"M","primaryType":"M","domain":{},"message":{}}'),
+        ("bad_types_value", '{"types":{"EIP712Domain":{}},"primaryType":"M","domain":{},"message":{}}'),
+        ("bad_field_not_object", '{"types":{"EIP712Domain":[],"M":["n"]},"primaryType":"M","domain":{},"message":{}}'),
+        ("bad_field_no_type", '{"types":{"EIP712Domain":[],"M":[{"name":"n"}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_field_no_name", '{"types":{"EIP712Domain":[],"M":[{"type":"uint256"}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_field_type_number", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":7}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_primary_not_string", '{"types":{"EIP712Domain":[]},"primaryType":7,"domain":{},"message":{}}'),
+        ("bad_domain_array", '{"types":{"EIP712Domain":[]},"primaryType":"M","domain":[],"message":{}}'),
+        ("bad_message_array", '{"types":{"EIP712Domain":[]},"primaryType":"M","domain":{},"message":[]}'),
+        ("bad_truncated", '{"types":{"EIP712Domain":[]},"primaryType":"M","dom'),
+        ("bad_trailing_junk", '{"types":{"EIP712Domain":[]},"primaryType":"M","domain":{},"message":{}} }x'),
+        ("bad_unknown_type", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"nothere"}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_unknown_array_type", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"nothere[]"}]},"primaryType":"M","domain":{},"message":{"n":[1]}}'),
+        ("bad_bits_not_multiple", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint33"}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_bits_zero", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint0"}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_bits_leading_zero", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint08"}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_negative_uint", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint8"}]},"primaryType":"M","domain":{},"message":{"n":-1}}'),
+        ("bad_uint_out_of_range", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint8"}]},"primaryType":"M","domain":{},"message":{"n":256}}'),
+        ("bad_int_out_of_range", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"int8"}]},"primaryType":"M","domain":{},"message":{"n":-256}}'),
+        ("bad_bool_number", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"bool"}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_bool_null", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"bool"}]},"primaryType":"M","domain":{},"message":{"n":null}}'),
+        ("bad_bytes_text", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"bytes4"}]},"primaryType":"M","domain":{},"message":{"n":"not hex"}}'),
+        ("bad_bytes_too_long", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"bytes32"}]},"primaryType":"M","domain":{},"message":{"n":"0x' + '11' * 33 + '"}}'),
+        ("bad_address_too_long", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"address"}]},"primaryType":"M","domain":{},"message":{"n":"0x' + '22' * 21 + '"}}'),
+        ("bad_string_number_bool", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"string"}]},"primaryType":"M","domain":{},"message":{"n":true}}'),
+        ("bad_string_negative_number", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"string"}]},"primaryType":"M","domain":{},"message":{"n":-1}}'),
+        ("bad_array_for_atomic", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint8"}]},"primaryType":"M","domain":{},"message":{"n":[1]}}'),
+        ("bad_atomic_for_array", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint8[]"}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_struct_for_atomic_value", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint8"}]},"primaryType":"M","domain":{},"message":{"n":{"a":1}}}'),
+        ("bad_array_element_missing", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint8[]"}]},"primaryType":"M","domain":{},"message":{"n":[1,2}}'),
+        ("bad_bad_escape", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"string"}]},"primaryType":"M","domain":{},"message":{"n":"a\\qb"}}'),
+        ("bad_short_escape", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"string"}]},"primaryType":"M","domain":{},"message":{"n":"a\\u12"}}'),
+        ("bad_trailing_escape", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"string"}]},"primaryType":"M","domain":{},"message":{"n":"a\\\\"}}'),
+        ("bad_function_type", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"function"}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_open_bracket_type", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint8["}]},"primaryType":"M","domain":{},"message":{"n":1}}'),
+        ("bad_number_forms", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"uint256"}]},"primaryType":"M","domain":{},"message":{"n":1.5}}'),
+        ("bad_negative_hex", '{"types":{"EIP712Domain":[],"M":[{"name":"n","type":"int256"}]},"primaryType":"M","domain":{},"message":{"n":"-0x10"}}'),
+    ]
+
+    for name, text in malformed:
+        raw(name, text)
+
+    seen: set[str] = set()
+    for document in docs:
+        assert document["name"] not in seen, document["name"]
+        seen.add(document["name"])
+
+    return docs
+
+
+def eip712_dump() -> tuple[str, dict[str, dict]]:
+    """What the released reference made of each document, and the version that made it. Run the two
+    commands above to (re)build it; no digest here is computed by this file."""
+    path = CACHE / "eip712_reference.json"
+
+    if not path.exists():
+        raise SystemExit(
+            "missing .cache/eip712_reference.json:\n"
+            "  python3 generate.py --eip712-documents\n"
+            "  node oracle/eip712_reference.mjs"
+        )
+
+    dump = json.loads(path.read_text())
+    return dump["version"], {row["name"]: row for row in dump["rows"]}
+
+
+def eip712_published_hash() -> dict[str, bytes]:
+    """The digests upstream publishes for whole documents: the fixture's named eip712Hash cases and
+    the EIP's own example file. Keyed by the name of the document they belong to."""
+    out: dict[str, bytes] = {"eip712_example_mail": eip712_mail_digest()}
+
+    for title, _, published in eip712_hash_cases():
+        out["snap_" + eip712_case_name(title)] = bytes.fromhex(published)
+
+    return out
+
+
+def eip712_case_name(title: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.+-]", "_", title)
+
+
+def eip712_mail_digest() -> bytes:
+    """What the EIP's example file asserts its own document signs."""
+    text = fetch("eip712_example.js")
+    found = re.search(r"bufferToHex\(signHash\(\)\)\)\.to\.equal\('0x([0-9a-f]{64})'", text)
+    assert found, "signHash expectation not found in eip712_example.js"
+    return bytes.fromhex(found.group(1))
+
+
+def eip712_published_single_field() -> dict[str, bytes]:
+    """Digests built out of the published encodeData snapshots alone: the fixture gives the field's
+    encoding, and the separator of a domain that declares no fields closes the hash struct. The
+    published minimal typed message is a hash struct over exactly that domain, which is what pins
+    the separator used here.
+    """
+    empty_domain = eth_keccak(eth_keccak(b"EIP712Domain()"))
+    out: dict[str, bytes] = {}
+
+    for type_name, inputs in eip712_example_data().items():
+        for value in inputs:
+            if isinstance(value, Eip712Buffer):
+                continue
+            key = (
+                f'TypedDataUtils.encodeData V4 example data type "{type_name}" '
+                f'should encode "{js_name(value)}" (type "{js_type(value)}") 1'
+            )
+            encoded = bytes.fromhex(snapshots()[key])
+            assert len(encoded) == 64, key
+            digest = eth_keccak(b"\x19\x01" + empty_domain + eth_keccak(encoded))
+            out[json.dumps(eip712_one(type_name, value), separators=(",", ":"), ensure_ascii=False)] = digest
+
+        array_key = (
+            f'TypedDataUtils.encodeData V4 example data type "{type_name}" '
+            f"should encode array of all {type_name} example data 1"
+        )
+        if array_key in snapshots():
+            inputs_plain = [value for value in inputs if not isinstance(value, Eip712Buffer)]
+
+            if len(inputs_plain) == len(inputs):
+                encoded = bytes.fromhex(snapshots()[array_key])
+                digest = eth_keccak(b"\x19\x01" + empty_domain + eth_keccak(encoded))
+                out[
+                    json.dumps(
+                        eip712_one(type_name + "[]", inputs_plain), separators=(",", ":"), ensure_ascii=False
+                    )
+                ] = digest
+
+    return out
+
+
+def comment_block(entries: list[str], indent: str = " *   - ") -> str:
+    """Each entry as one or more wrapped lines of a C comment."""
+    out = []
+
+    for entry in entries:
+        line = indent
+        for word in entry.split():
+            if len(line) + len(word) + 1 > 92:
+                out.append(line.rstrip())
+                line = indent.replace("- ", "  ")
+            line += word + " "
+        out.append(line.rstrip())
+
+    return "\n" + "\n".join(out)
+
+
+def eip712_vectors() -> str:
+    version, dump = eip712_dump()
+    documents = eip712_documents()
+    missing = [document["name"] for document in documents if document["name"] not in dump]
+    assert not missing, f"the reference dump does not cover: {missing[:5]}"
+
+    published_hash = eip712_published_hash()
+    published_field = eip712_published_single_field()
+    checked = 0
+    rows: list[tuple[str, str, bytes, str]] = []  # name, json, digest, note
+
+    for document in documents:
+        name = document["name"]
+        row = dump[name]
+        json_text = document["json"]
+
+        if row["digest"] is None:
+            rows.append((name, json_text, b"", row["error"]))
+            continue
+
+        digest = bytes.fromhex(row["digest"])
+
+        # Where upstream publishes a value, it is the expectation and the run is checked against it.
+        expect = published_hash.get(name) or published_field.get(json_text)
+
+        if expect is not None:
+            assert expect == digest, f"{name}: run {digest.hex()} published {expect.hex()}"
+            checked += 1
+
+        rows.append((name, json_text, digest, ""))
+
+    divergences = comment_block(EIP712_MATRIX_SKIPPED)
+    refuses = sum(1 for row in rows if not row[2])
+    body = ",\n".join(
+        f'  {{"{name}", {cstr(document)}, {"true" if digest else "false"}, '
+        f'{{{", ".join("0x%02x" % b for b in digest)}}}, {cstr(note)}}}'
+        for name, document, digest, note in rows
+    )
+
+    return f"""#ifndef VECTORS_EIP712_H
+#define VECTORS_EIP712_H
+
+/* What a typed-data document is worth, by MetaMask's eth-sig-util: the digest the device has to
+ * hand the card, keccak256(0x19 0x01 || hashStruct(domain) || hashStruct(message)), or a statement
+ * that the document has none and must be refused.
+ *
+ * {len(rows)} documents. No expectation here is restated from the C under test.
+ *
+ * Where a digest comes from:
+ *  - {len(published_hash)} documents published by upstream's fixture and by the EIP's own example
+ *    file;
+ *  - {len(published_field)} documents whose single field's encodeData is published by upstream's
+ *    fixture, composed with the separator of a domain that declares no fields;
+ *  - the rest from a run of @metamask/eth-sig-util {version} (oracle/eip712_reference.mjs), which
+ *    reproduces every one of the {checked} documents the two sources above cover.
+ *
+ * Left out of the corpus, where the device cannot reach what the reference computes:{divergences}
+ */
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef struct {{
+  const char* name;
+  const char* json;
+  bool ok;
+  uint8_t digest[32];
+  const char* note;   /* why the reference refused, for a row that has no digest */
+}} eip712_case_t;
+
+static const eip712_case_t EIP712_CASES[] = {{
+{body}
+}};
+
+#define EIP712_CASES_COUNT (sizeof(EIP712_CASES) / sizeof(EIP712_CASES[0]))
+
+
+#endif\t/* VECTORS_EIP712_H */
+"""
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -6427,6 +7422,7 @@ def main() -> None:
         "vectors_tlv.h": tlv_vectors(),
         "vectors_ecdsa_der.h": ecdsa_der_vectors(),
         "vectors_keycard_signature.h": sign_reply_vectors(),
+        "vectors_eip712.h": eip712_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)
@@ -6434,4 +7430,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--eip712-documents" in sys.argv[1:]:
+        documents = eip712_documents()
+        (CACHE / "eip712_documents.json").write_text(json.dumps(documents, indent=1) + "\n")
+        print(f"{len(documents)} documents -> {CACHE / 'eip712_documents.json'}")
+    else:
+        main()

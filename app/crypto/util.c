@@ -99,66 +99,119 @@ void base16_encode(const uint8_t* data, char* out, size_t len) {
   *out = '\0';
 }
 
-bool atoi256BE(const char* str, size_t len, uint8_t out[32]) {
-  int i;
-  bool neg;
+bool decimal_to_256(const char* digits, size_t len, uint8_t out[32]) {
+  uint32_t limbs[8];
+  memset(limbs, 0, sizeof(limbs));
 
-  if (str[0] == '-') {
-    neg = true;
-    i = 1;
-  } else if (str[0] == '+') {
-    neg = false;
-    i = 1;
-  } else {
-    neg = false;
-    i = 0;
-  }
-
-  uint32_t limbs[9];
-  memset(limbs, 0, sizeof(uint32_t) * 9);
-
-  while(i < len) {
-    if (!(str[i] >= '0' && str[i] <= '9')) {
+  for (size_t i = 0; i < len; i++) {
+    if ((digits[i] < '0') || (digits[i] > '9')) {
       return false;
     }
 
-    int d = (str[i++] - '0');
+    uint64_t carry = digits[i] - '0';
 
-    for (int j = 0; j < 9; j++) {
-      limbs[j] *= 10;
+    for (int j = 7; j >= 0; j--) {
+      uint64_t acc = ((uint64_t) limbs[j] << 3) + ((uint64_t) limbs[j] << 1) + carry;
+      limbs[j] = (uint32_t) acc;
+      carry = acc >> 32;
     }
 
-    limbs[0] += d;
-
-    for (int j = 0; j < 8; j++) {
-      limbs[j + 1] += limbs[j] >> 28;
-      limbs[j] &= 0x0fffffff;
-    }
-  }
-
-  if (neg) {
-    for (int i = 0; i < 9; i++) {
-      limbs[i] = ~limbs[i] & 0x0fffffff;
-    }
-
-    limbs[0] += 1;
-
-    for (int i = 0; i < 8; i++) {
-      limbs[i + 1] += limbs[i] >> 28;
-      limbs[i] &= 0x0fffffff;
+    if (carry != 0) {
+      return false;
     }
   }
 
-  uint32_t* out32 = (uint32_t*) out;
-
-  out32[7] = rev32(((limbs[1] & 0xf) << 28) | limbs[0]);
-  out32[6] = rev32(((limbs[2] & 0xff) << 24) | (limbs[1] >> 4));
-  out32[5] = rev32(((limbs[3] & 0xfff) << 20) | (limbs[2] >> 8));
-  out32[4] = rev32(((limbs[4] & 0xffff) << 16) | (limbs[3] >> 12));
-  out32[3] = rev32(((limbs[5] & 0xfffff) << 12) | (limbs[4] >> 16));
-  out32[2] = rev32(((limbs[6] & 0xffffff) << 8) | (limbs[5] >> 20));
-  out32[1] = rev32(((limbs[7] & 0xfffffff) << 4) | (limbs[6] >> 24));
-  out32[0] = rev32((limbs[8] & 0xffffffff) | (limbs[7] >> 28));
+  for (int j = 0; j < 8; j++) {
+    out[j * 4] = limbs[j] >> 24;
+    out[j * 4 + 1] = (limbs[j] >> 16) & 0xff;
+    out[j * 4 + 2] = (limbs[j] >> 8) & 0xff;
+    out[j * 4 + 3] = limbs[j] & 0xff;
+  }
 
   return true;
+}
+
+static bool hex_to_256(const char* digits, size_t len, uint8_t mag[32]) {
+  if ((len == 0) || (len > 64)) {
+    return false;
+  }
+
+  memset(mag, 0, 32);
+
+  return base16_decode(digits, &mag[32 - ((len + 1) / 2)], len);
+}
+
+static bool is_ws(char c) {
+  return ((c == ' ') || (c == '\t') || (c == '\n') || ((c >= '\v') && (c <= '\r')));
+}
+
+int compare_256(const uint8_t a[32], const uint8_t b[32]) {
+  for (unsigned i = 0; i < 32; i++) {
+    if (a[i] != b[i]) {
+      return (a[i] < b[i]) ? -1 : 1;
+    }
+  }
+
+  return 0;
+}
+
+bool str_to_int256(const char* str, size_t len, uint8_t mag[32], bool* negative) {
+  size_t start = 0;
+
+  while ((start < len) && is_ws(str[start])) {
+    start++;
+  }
+
+  while ((len > start) && is_ws(str[len - 1])) {
+    len--;
+  }
+
+  bool neg = false;
+
+  if ((start < len) && ((str[start] == '-') || (str[start] == '+'))) {
+    neg = (str[start] == '-');
+
+    if (++start == len) {
+      return false;
+    }
+  }
+
+  if (start == len) {
+    memset(mag, 0, 32);
+    *negative = false;
+    return true;
+  }
+
+  *negative = neg;
+
+  if (((len - start) >= 2) && (str[start] == '0') && ((str[start + 1] == 'x') || (str[start + 1] == 'X'))) {
+    if (neg) {
+      return false;
+    }
+
+    return hex_to_256(&str[start + 2], len - start - 2, mag);
+  }
+
+  return decimal_to_256(&str[start], len - start, mag);
+}
+
+void negate_256(uint8_t v[32]) {
+  uint16_t carry = 1;
+
+  for (int i = 31; i >= 0; i--) {
+    v[i] = (uint8_t) (~v[i]);
+    carry += v[i];
+    v[i] = (uint8_t) carry;
+    carry >>= 8;
+  }
+}
+
+size_t significant_256(const uint8_t v[32]) {
+  size_t i = 0;
+
+  while ((i < 32) && (v[i] == 0)) {
+    i++;
+  }
+
+  return 32 - i;
 }

@@ -113,6 +113,10 @@ target_compile_options(app_bitcoin PRIVATE ${SHELLOS_COMMON_FLAGS})
 add_library(app_ethereum STATIC
     ${SHELLOS_ROOT}/app/ethereum/ethUtils.c
     ${SHELLOS_ROOT}/app/ethereum/ethUstream.c
+    # Typed data arrives as JSON and what it hashes to is what the card signs, so the module is
+    # compiled here unmodified, jsmn and all.
+    ${SHELLOS_ROOT}/app/ethereum/eip712.c
+    ${SHELLOS_ROOT}/app/json/jsmn.c
 )
 target_include_directories(app_ethereum PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_ethereum PRIVATE ${SHELLOS_COMMON_FLAGS})
@@ -209,6 +213,7 @@ shellos_test(fuzz LIBS app_btc_sig app_keycard app_bitcoin app_ethereum app_cryp
 set_tests_properties(fuzz PROPERTIES TIMEOUT 120)
 shellos_test(bignum LIBS app_crypto)
 shellos_test(ethereum LIBS app_ethereum app_crypto)
+shellos_test(eip712 LIBS app_ethereum app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)
 shellos_test(psbt LIBS app_bitcoin app_crypto)
 shellos_test(tx LIBS app_bitcoin app_crypto)
