@@ -2410,6 +2410,17 @@ def ctx_vectors() -> str:
         value = fingerprint + b"".join(e.to_bytes(4, "little") for e in path)
         return key_record(kind, value, CTX_PUBKEY)
 
+    def tap_out_derivation(fingerprint: bytes, path: list, leaf_hashes: list = (),
+                           count: bytes = None) -> bytes:
+        # BIP-371: key data is the x-only pubkey, and the value counts leaf hashes before the fingerprint.
+        value = (csb(len(leaf_hashes)) if count is None else count) + b"".join(leaf_hashes)
+        return key_record(7, value + fingerprint +
+                          b"".join(e.to_bytes(4, "little") for e in path), INTERNAL_KEY)
+
+    def unsigned_with_out(prev_id: bytes, script: bytes) -> bytes:
+        raw, _ = tx_assemble([(prev_id, 0, b"", b"\xff\xff\xff\xff")], [(90000000, script)])
+        return raw
+
     def witness(value: bytes) -> bytes:
         return key_record(1, value)
 
@@ -2599,10 +2610,81 @@ def ctx_vectors() -> str:
         unsigned_tx=unsigned(id_segwit), out_mfp=MFP_OTHER, out_path=OTHER)
     rec("output derivation of 3 bytes", [[]], rin(key_record(2, MFP_OURS[:3], CTX_PUBKEY)),
         unsigned_tx=unsigned(id_segwit), stage=1, err="ERR_DECODE")
-    # A P2TR change output carries its derivation in BIP-371's field, which this record handler does
-    # not read: the output is left unattributed and the change check never runs on it.
-    rec("P2TR change output, derivation in BIP-371's field", [[]],
-        rin(out_derivation(MFP_OURS, PATH_M86, kind=7)), unsigned_tx=unsigned(id_segwit), out_mfp=bytes(4), out_path=b"")
+    rec("P2TR change output, BIP-371's derivation", [[]],
+        rin(tap_out_derivation(MFP_OURS, PATH_M86)), unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR),
+        out_mfp=MFP_OURS, out_path=M86)
+    rec("P2TR output, another device's BIP-371 derivation", [[]],
+        rin(tap_out_derivation(MFP_OTHER, PATH_OTHER)), unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR),
+        out_mfp=MFP_OTHER, out_path=OTHER)
+    rec("P2TR change output with an empty path", [[]],
+        rin(tap_out_derivation(MFP_OURS, [])), unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR),
+        out_mfp=MFP_OURS, out_path=b"")
+    # A leaf-bearing derivation implies a script tree whose merkle root tweaks the output key
+    # (BIP-341) and is not in the PSBT, so such an output cannot be proved to be the device's change.
+    rec("P2TR change output whose BIP-371 derivation carries a leaf hash", [[]],
+        rin(tap_out_derivation(MFP_OURS, PATH_M86, [LEAF_HASH])),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), stage=1, err="ERR_DATA",
+        out_mfp=bytes(4), out_path=b"")
+    # A wallet describing a script tree names every signer's path, so one of these is not this device's
+    # business to fail on. A leaf hash starting with our fingerprint is the row that matters: read at
+    # the offsets a zero count implies, it claims the output with bytes of the hash as the path.
+    rec("P2TR output derivation, another signer's script path", [[]],
+        rin(tap_out_derivation(MFP_OTHER, PATH_OTHER, [LEAF_HASH])),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), out_mfp=bytes(4), out_path=b"")
+    rec("P2TR output derivation whose leaf hash starts with our fingerprint", [[]],
+        rin(tap_out_derivation(MFP_OTHER, PATH_OTHER, [MFP_OURS + bytes.fromhex("bb" * 28)])),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), out_mfp=bytes(4), out_path=b"")
+    rec("P2TR output derivation with three leaf hashes", [[]],
+        rin(tap_out_derivation(MFP_OTHER, PATH_OTHER, [LEAF_HASH] * 3)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), out_mfp=bytes(4), out_path=b"")
+    # A count the value cannot hold, and a non-minimal count: compactsize_read() refuses the second, as
+    # it does everywhere else in this PSBT.
+    rec("P2TR output derivation with a count past its own value", [[]],
+        rin(key_record(7, b"\x05" + LEAF_HASH + MFP_OURS + M86, INTERNAL_KEY)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), stage=1, err="ERR_DECODE",
+        out_mfp=bytes(4), out_path=b"")
+    rec("P2TR output derivation with no room for a fingerprint", [[]],
+        rin(key_record(7, b"\x00" + MFP_OURS[:3], INTERNAL_KEY)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), stage=1, err="ERR_DECODE",
+        out_mfp=bytes(4), out_path=b"")
+    rec("P2TR output derivation with a long-form zero count", [[]],
+        rin(key_record(7, b"\xfd\x00\x00" + MFP_OURS + M86, INTERNAL_KEY)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), stage=1, err="ERR_DECODE",
+        out_mfp=bytes(4), out_path=b"")
+    rec("P2TR output derivation that is only a count", [[]],
+        rin(key_record(7, b"\x00", INTERNAL_KEY)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), stage=1, err="ERR_DECODE",
+        out_mfp=bytes(4), out_path=b"")
+    # A long-form count whose bytes the value does not have.
+    rec("P2TR output derivation with a truncated long-form count", [[]],
+        rin(key_record(7, b"\xfd\x01", INTERNAL_KEY)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), stage=1, err="ERR_DECODE",
+        out_mfp=bytes(4), out_path=b"")
+    # ... and one whose read bytes are large, since compactsize_read's minimality check refuses the
+    # row above on its own. Trusting the width here points the fingerprint far outside the PSBT.
+    rec("P2TR output derivation with a truncated wide count", [[]],
+        rin(key_record(7, b"\xfe\xff\xff\xff", INTERNAL_KEY)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), stage=1, err="ERR_DECODE",
+        out_mfp=bytes(4), out_path=b"")
+    # Whichever derivation names us first claims the output, so the two fields cannot disagree about
+    # the path.
+    rec("output derivation in both fields, BIP-371's first", [[]],
+        rin(tap_out_derivation(MFP_OURS, PATH_M86), out_derivation(MFP_OTHER, PATH_OTHER)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), out_mfp=MFP_OURS, out_path=M86)
+    rec("output derivation in both fields, BIP-174's first, neither of ours until the last",
+        [[]], rin(out_derivation(MFP_OTHER, PATH_OTHER), tap_out_derivation(MFP_OURS, PATH_M86)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), out_mfp=MFP_OURS, out_path=M86)
+    rec("output derivation in both fields, ours first", [[]],
+        rin(out_derivation(MFP_OURS, PATH_OTHER), tap_out_derivation(MFP_OURS, PATH_M86)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), out_mfp=MFP_OURS, out_path=OTHER)
+    # The internal key is what a signer of that output needs; this device signs inputs. It travels on
+    # to the finalizer, malformed or not.
+    rec("P2TR output internal key, which the device leaves alone", [[]],
+        rin(key_record(5, INTERNAL_KEY), tap_out_derivation(MFP_OURS, PATH_M86)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), out_mfp=MFP_OURS, out_path=M86)
+    rec("P2TR output internal key of 31 bytes", [[]],
+        rin(key_record(5, INTERNAL_KEY[:-1]), tap_out_derivation(MFP_OURS, PATH_M86)),
+        unsigned_tx=unsigned_with_out(id_p2tr, CTX_P2TR), out_mfp=MFP_OURS, out_path=M86)
     rec("unknown output record type", [[]], rin(key_record(0x7F, b"\x01\x02")),
         unsigned_tx=unsigned(id_segwit), out_mfp=bytes(4), out_path=b"")
 

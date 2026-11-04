@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "bitcoin/compactsize.h"
 #include "bitcoin/psbt_ctx.h"
 #include "bitcoin/psbt.h"
 #include "bitcoin/psbt_tx.h"
@@ -138,23 +139,79 @@ void btc_psbt_input_record(btc_tx_ctx_t* tx_ctx, size_t index, psbt_record_t* re
   }
 }
 
+static bool tap_derivation_split(uint8_t* val, size_t val_size, uint64_t* leaf_count,
+                                 uint8_t** derivation, size_t* derivation_len) {
+  size_t count_len = compactsize_peek_length(val[0]);
+
+  if (val_size < count_len) {
+    return false;
+  }
+
+  psbt_result_t err = PSBT_OK;
+  uint64_t leaves = compactsize_read(val, &err);
+
+  if ((err != PSBT_OK) ||
+      (leaves > ((val_size - count_len) / BTC_TAPROOT_WITPROG_LEN)) ||
+      ((val_size - count_len - ((size_t)leaves * BTC_TAPROOT_WITPROG_LEN)) < sizeof(uint32_t))) {
+    return false;
+  }
+
+  *leaf_count = leaves;
+  *derivation = &val[count_len + ((size_t)leaves * BTC_TAPROOT_WITPROG_LEN)];
+  *derivation_len = val_size - count_len - ((size_t)leaves * BTC_TAPROOT_WITPROG_LEN);
+  return true;
+}
+
 void btc_psbt_output_record(btc_tx_ctx_t* tx_ctx, size_t index, psbt_record_t* rec) {
   if (index >= tx_ctx->output_count) {
     tx_ctx->error = ERR_DATA;
     return;
   }
 
-  if (rec->type == PSBT_OUT_BIP32_DERIVATION) {
-    if (rec->val_size < 4) {
+  uint8_t* derivation = NULL;
+  size_t derivation_len = 0;
+
+  switch (rec->type) {
+  case PSBT_OUT_BIP32_DERIVATION:
+    if (rec->val_size < sizeof(uint32_t)) {
       tx_ctx->error = ERR_DECODE;
       return;
     }
-
-    if (tx_ctx->output_data[index].master_fingerprint != tx_ctx->mfp) {
-      memcpy(&tx_ctx->output_data[index].master_fingerprint, rec->val, sizeof(uint32_t));
-      tx_ctx->output_data[index].bip32_path = &rec->val[4];
-      tx_ctx->output_data[index].bip32_path_len = rec->val_size - 4;
+    derivation = rec->val;
+    derivation_len = rec->val_size;
+    break;
+  case PSBT_OUT_TAP_BIP32_DERIVATION: {
+    uint64_t leaf_count;
+    if (!tap_derivation_split(rec->val, rec->val_size, &leaf_count, &derivation, &derivation_len)) {
+      tx_ctx->error = ERR_DECODE;
+      return;
     }
+    if (leaf_count == 0) {
+      break;
+    }
+
+    uint32_t claimed;
+    memcpy(&claimed, derivation, sizeof(claimed));
+
+    if (claimed == tx_ctx->mfp) {
+      tx_ctx->error = ERR_DATA;
+      return;
+    }
+    derivation = NULL;
+    break;
+  }
+  default:
+    break;
+  }
+
+  if (derivation == NULL) {
+    return;
+  }
+
+  if (tx_ctx->output_data[index].master_fingerprint != tx_ctx->mfp) {
+    memcpy(&tx_ctx->output_data[index].master_fingerprint, derivation, sizeof(uint32_t));
+    tx_ctx->output_data[index].bip32_path = &derivation[4];
+    tx_ctx->output_data[index].bip32_path_len = derivation_len - 4;
   }
 }
 

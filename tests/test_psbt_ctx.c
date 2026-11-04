@@ -10,7 +10,8 @@
  * The second corpus takes the records one at a time, including the taproot ones BIP-371 defines,
  * because those decide the key a signature comes from: BIP-371 hands the signer the internal key to
  * tweak and the derivation to sign with, and the device hashes both into what it asks the card to
- * sign. A record misread there is a signature made with a key nobody approved. */
+ * sign. A record misread there is a signature made with a key nobody approved. On an output the same
+ * records decide what the user is told is their own change and what is somebody else's address. */
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -6,6 +6,7 @@
 #include "bitcoin/compactsize.h"
 #include "bitcoin/psbt_ctx.h"
 #include "bitcoin/sighash.h"
+#include "bitcoin/taproot.h"
 #include "crypto/script.h"
 #include "crypto/sha2_soft.h"
 #include "crypto/util.h"
@@ -163,7 +164,13 @@ static bool core_btc_pubkey_matches_output(const uint8_t* pubkey, const psbt_txo
   }
 
   if (script_is_p2tr(out->script, out->script_len)) {
-    return memcmp(&pubkey[1], &out->script[2], 32) == 0;
+    uint8_t output_key[BTC_TAPROOT_WITPROG_LEN];
+
+    if (!bitcoin_taproot_output_key(pubkey, output_key)) {
+      return false;
+    }
+
+    return memcmp(output_key, &out->script[2], BTC_TAPROOT_WITPROG_LEN) == 0;
   }
 
   uint8_t tmp[RIPEMD160_DIGEST_LENGTH];
