@@ -69,7 +69,8 @@ add_library(app_crypto STATIC
     ${SHELLOS_ROOT}/app/crypto/base32.c
     ${SHELLOS_ROOT}/app/crypto/base58.c
     ${SHELLOS_ROOT}/app/crypto/bignum.c
-    ${SHELLOS_ROOT}/app/crypto/bip39.c
+    ${SHELLOS_ROOT}/app/crypto/script.c
+  ${SHELLOS_ROOT}/app/crypto/bip39.c
     ${SHELLOS_ROOT}/app/crypto/bip39_english.c
     ${SHELLOS_ROOT}/app/crypto/crc32.c
     ${SHELLOS_ROOT}/app/crypto/ecdsa.c
@@ -198,6 +199,7 @@ shellos_test(base58 LIBS app_crypto)
 shellos_test(bech32 LIBS app_crypto)
 shellos_test(address LIBS app_crypto)
 shellos_test(addr_uri LIBS app_crypto)
+shellos_test(script LIBS app_crypto)
 shellos_test(bignum LIBS app_crypto)
 shellos_test(ethereum LIBS app_ethereum app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)

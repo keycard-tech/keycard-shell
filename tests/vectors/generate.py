@@ -58,6 +58,12 @@ SOURCES = {
     "bip371.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0371.mediawiki",
     "bip143.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0143.mediawiki",
     "bip341_wallet.json": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0341/wallet-test-vectors.json",
+    "bip13.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0013.mediawiki",
+    "bip16.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0016.mediawiki",
+    "bip86.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0086.mediawiki",
+    "bip141.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0141.mediawiki",
+    "bip341.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0341.mediawiki",
+    "key_io_valid.json": "https://raw.githubusercontent.com/bitcoin/bitcoin/master/src/test/data/key_io_valid.json",
     "bip340_vectors.csv": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0340/test-vectors.csv",
     "bc_bytewords.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/src/bc-bytewords.c",
     "bc_bytewords_test.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/test/test.c",
@@ -2684,6 +2690,252 @@ static const psbt_ctx_record_t PSBT_CTX_RECORDS[] = {
 
 #endif
 """ % ("\n\n".join(arrays), "\n".join(rows), "\n\n".join(rec_arrays), "\n".join(rec_rows))
+
+# ------------------------------------------------------- scriptPubKey classification (script.c)
+
+# The five output forms, written the way the documents write them -- a script is of a form because
+# its bytes match that pattern, which is the claim the predicates have to implement. P2PKH and P2SH
+# come from BIP-16's templates, the witness forms from BIP-141's version-and-length rule and BIP-341's
+# definition of a Taproot output.
+SCRIPT_FORMS = (
+    ("SCRIPT_P2PKH", re.compile(r"^76a914([0-9a-f]{40})88ac$")),
+    ("SCRIPT_P2SH", re.compile(r"^a914([0-9a-f]{40})87$")),
+    ("SCRIPT_P2WPKH", re.compile(r"^0014([0-9a-f]{40})$")),
+    ("SCRIPT_P2WSH", re.compile(r"^0020([0-9a-f]{64})$")),
+    ("SCRIPT_P2TR", re.compile(r"^5120([0-9a-f]{64})$")),
+)
+
+
+def script_form(script: str) -> tuple:
+    """The one form a scriptPubKey matches, with its program, or (None, None) for one that matches no
+    documented form."""
+    hits = [(name, m.match(script).group(1)) for name, m in SCRIPT_FORMS if m.match(script)]
+    assert len(hits) <= 1, (script, [h[0] for h in hits])
+    return hits[0] if hits else (None, None)
+
+
+def script_vectors() -> str:
+    """A scriptPubKey is fifteen bytes of opinion about what a payment is: five shapes, each with an
+    anchor byte whose meaning nothing checks at the call site, and the whole of them written by
+    whoever built the transaction. Expectations are published pairs -- Bitcoin Core's key_io vectors
+    give address and scriptPubKey together, BIP-173/350 and BIP-86 give them for the witness forms --
+    and the classification is derived here from the BIP templates, never from the predicates under
+    test. What has no published address is what the documents leave unclassified: a witness program
+    of a version this firmware renders no address for, or of a length BIP-341 says leaves the output
+    unencumbered."""
+    bip141 = fetch("bip141.mediawiki")
+    assert "It is interpreted as a pay-to-witness-public-key-hash (P2WPKH) program." in bip141
+    assert "It is interpreted as a pay-to-witness-script-hash (P2WSH) program." in bip141
+    assert "exactly a push of a version byte, plus a push of a witness program" in bip141
+    bip341 = fetch("bip341.mediawiki")
+    assert "A Taproot output is a native SegWit output" in bip341
+    assert "version number 1, and a 32-byte witness program" in bip341
+    assert "version 1 outputs with lengths other than 32 bytes" in bip341
+    bip16 = fetch("bip16.mediawiki")
+    assert "OP_HASH160 [20-byte-hash-value] OP_EQUAL" in bip16
+    bip13 = fetch("bip13.mediawiki")
+    assert "Version byte is 5 for a main-network address" in bip13
+
+    # BIP-173 rules the encoder's casing, so the published form of a bech32 address is not always
+    # what an encoder must emit: "Encoders MUST always output an all lowercase Bech32 string."
+    bip173 = fetch("bip173.mediawiki")
+    assert "Encoders MUST always output an all lowercase Bech32 string." in bip173
+    witness_forms = ("SCRIPT_P2WPKH", "SCRIPT_P2WSH", "SCRIPT_P2TR")
+
+    cases = []  # (name, script, expected address or None, form or None)
+    unrendered = []  # published addresses for scripts no documented form covers
+    rewritten = []  # rows whose published address is not the lowercase form
+    seen = set()  # the appendices repeat some addresses between their sections
+
+    def add(name, script, address=None):
+        """Only a script that matches one of the five documented forms has an address to produce: a
+        published address for anything else -- a future witness version -- is something this device
+        renders no address for, and the expectation becomes a refusal.
+
+        A bech32 address published in caps is expected back in lower case, which is the document's
+        rule for encoders, not a tolerance for the code under test: mixed case is rejected on input,
+        so an encoder emitting it would be producing something its own decoder refuses. Caps is only
+        for presentation, and the row name keeps the string as printed.
+        """
+        if script in seen:
+            return
+        seen.add(script)
+        form, _program = script_form(script)
+        if address and form is None:
+            unrendered.append(name)
+            address = None
+        if address and form in witness_forms:
+            assert address == address.lower() or address == address.upper(), name
+            if address != address.lower():
+                rewritten.append(name)
+            address = address.lower()
+        cases.append((name, script, address, form))
+
+    # Core's key_io vectors: the address and the scriptPubKey it renders from, published together.
+    keyio = json.loads(fetch("key_io_valid.json"))
+    main = [r for r in keyio if r[2].get("chain") == "main" and not r[2].get("isPrivkey")]
+    assert len(main) >= 14, len(main)
+    for address, script, _info in main:
+        add("Core key_io " + address, script, address)
+
+    # The address rule itself, checked against those published pairs before it is used to derive any:
+    # Base58Check of the version byte and the 20-byte hash, version 0 for P2PKH and BIP-13's 5 for
+    # P2SH.
+    def legacy(version: int, program: str) -> str:
+        return b58check_encode(bytes([version]) + bytes.fromhex(program))
+
+    for address, script, _info in main:
+        form, program = script_form(script)
+        if form == "SCRIPT_P2PKH":
+            assert legacy(0x00, program) == address, address
+        elif form == "SCRIPT_P2SH":
+            assert legacy(0x05, program) == address, address
+
+    # A scriptPubKey carries no network: the same bytes on any chain, and this device renders the
+    # mainnet address. Derived with the rule above, which the rows just checked against published
+    # pairs -- including the P2SH case, where BIP-13's version byte is what makes the address begin
+    # with a 3.
+    for address, script, info in keyio:
+        if info.get("isPrivkey") or info.get("chain") == "main":
+            continue
+        form, program = script_form(script)
+        if form == "SCRIPT_P2PKH":
+            add("testnet P2PKH script, mainnet rendering " + address, script, legacy(0x00, program))
+        elif form == "SCRIPT_P2SH":
+            add("testnet P2SH script, mainnet rendering " + address, script, legacy(0x05, program))
+
+    # BIP-173 and BIP-350 publish address and scriptPubKey side by side; the mainnet rows are pairs,
+    # and a witness version the firmware renders no address for is a refusal, not a guess.
+    for row in parse_segwit_vectors("bip173.mediawiki")[0] + parse_segwit_vectors("bip350.mediawiki")[0]:
+        if row["hrp"] != "bc":
+            continue
+        script = "%02x%02x%s" % (0x50 + row["witver"] if row["witver"] else 0,
+                                 len(row["program"]) // 2, row["program"])
+        add("BIP-%s v%d %s" % ("173" if row["witver"] == 0 else "350", row["witver"], row["address"]),
+            script, row["address"])
+
+    # BIP-86's example hierarchy, scriptPubKey and address printed together.
+    bip86 = fetch("bip86.mediawiki")
+    pairs = re.findall(r"scriptPubKey = ([0-9a-f]{68})\s+address += (bc1p[a-z0-9]+)", bip86)
+    assert len(pairs) >= 3, pairs
+    for script, address in pairs:
+        add("BIP-86 " + address, script, address)
+
+    # Every anchor byte of every form, moved, plus the lengths the documents rule out. These are the
+    # single-byte edits a wallet's serialiser, or an attacker with a PSBT, can make, and the answer is
+    # always the same: no address, because the output is not one of the five.
+    sample = {}
+    for name, script, address, form in cases:
+        if form and form not in sample:
+            sample[form] = script
+
+    def shift(script: str, at: int, what: int = 0x01) -> str:
+        raw = bytearray(bytes.fromhex(script))
+        raw[at] ^= what
+        return raw.hex()
+
+    mutations = {
+        "SCRIPT_P2PKH": [0, 1, 2, 23, 24],
+        "SCRIPT_P2SH": [0, 1, 22],
+        "SCRIPT_P2WPKH": [0, 1],
+        "SCRIPT_P2WSH": [0, 1],
+        "SCRIPT_P2TR": [0, 1],
+    }
+    for form, offsets in mutations.items():
+        base = sample[form]
+        for at in offsets:
+            add("%s with byte %d moved" % (form, at), shift(base, at))
+        add("%s one byte short" % form, base[:-2])
+        add("%s one byte long" % form, base + "00")
+
+    # Witness programs the documents place outside every form.
+    program20 = "11" * 20
+    program32 = "22" * 32
+    add("witness v0 with a 19 byte program", "0013" + "11" * 19)
+    add("witness v0 with a 21 byte program", "0015" + "11" * 21)
+    add("witness v0 with a 31 byte program", "001f" + "11" * 31)
+    add("witness v0 with a 33 byte program", "0021" + "11" * 33)
+    add("witness v1 with a 31 byte program", "511f" + "11" * 31)
+    add("witness v1 with a 33 byte program", "5121" + "11" * 33)
+    add("witness v1 with a 40 byte program", "5128" + "11" * 40)
+    add("witness v2 with a 32 byte program", "5220" + program32)
+    add("witness v16 with a 20 byte program", "6014" + program20)
+    add("witness version byte with no push", "00")
+    add("push of a version byte and nothing else", "0014")
+    add("empty scriptPubKey", "")
+    add("OP_RETURN", "6a")
+    add("OP_RETURN with 36 bytes of data", "6a24" + "59" * 36)
+    add("bare public key and CHECKSIG", "2103" + "aa" * 32 + "ac")
+    add("bare 2 of 3 multisig", "522103" + "aa" * 32 + "2103" + "bb" * 32 + "2103" + "cc" * 32 + "53ae")
+    add("P2SH multisig redeem script", "522103" + "dd" * 32 + "2103" + "ee" * 32 + "53ae")
+    # A P2PKH script with the P2SH trailer, and the reverse: both are 23 or 25 bytes and neither is a
+    # form, so a predicate keyed on length alone would let one through.
+    add("P2PKH head with the P2SH trailer", "76a914" + program20 + "87")
+    add("P2SH head with the P2PKH trailer", "a914" + program20 + "88ac")
+
+    rows = []
+    for i, (name, script, address, form) in enumerate(cases):
+        rows.append(
+            "  { %s, %s, %s, %s },"
+            % (cstr(name), cstr(script), cstr(address) if address else "NULL",
+               form if form else "0")
+        )
+
+    accepted = sum(1 for _n, _s, a, _f in cases if a)
+    classified = sum(1 for _n, _s, _a, f in cases if f)
+    assert accepted == classified
+
+    return """/* Generated by tests/vectors/generate.py -- do not edit.
+ *
+ * scriptPubKey classification. The pairs are published, not computed here: Bitcoin Core's
+ * key_io_valid vectors give an address together with the scriptPubKey it renders from, BIP-173 and
+ * BIP-350 do the same for the witness forms, BIP-86 for the Taproot examples. The classification
+ * column comes from the templates the documents state -- BIP-141's "If the version byte is 0, and
+ * the witness program is 20 bytes ... P2WPKH" and its 32-byte P2WSH counterpart, BIP-16's
+ * "OP_HASH160 [20-byte-hash-value] OP_EQUAL", BIP-341's "a native SegWit output ... with version
+ * number 1, and a 32-byte witness program", together with that document's statement that version 1
+ * outputs of other lengths remain unencumbered -- and the two columns are cross-checked against each
+ * other while generating, so a row is never classified one way and rendered another.
+ *
+ * %d rows match one of the five forms and carry its address; the rest must produce no address at all
+ * and leave the caller's buffer untouched, including %d published addresses belonging to witness
+ * programs no documented form covers, which this device renders nothing for.
+ *
+ * Rows whose published bech32 address is printed in capitals -- %d of them here -- are expected back in
+ * lower case, which is BIP-173's rule for an encoder: "Encoders MUST always output an all lowercase
+ * Bech32 string." Caps is for presentation, outside the encoder.
+ */
+
+#ifndef VECTORS_SCRIPT_H
+#define VECTORS_SCRIPT_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+/* One bit per predicate, so a row states which of the five a script must and must not satisfy. */
+#define SCRIPT_P2PKH  0x01
+#define SCRIPT_P2SH   0x02
+#define SCRIPT_P2WPKH 0x04
+#define SCRIPT_P2WSH  0x08
+#define SCRIPT_P2TR   0x10
+
+typedef struct {
+  const char* name;
+  const char* script;   /* the scriptPubKey; every byte of it arrives from a wallet */
+  const char* address;  /* what script_output_to_address() has to produce, NULL for nothing */
+  unsigned classes;     /* the SCRIPT_* bits that must be set, 0 for none of them */
+} script_case_t;
+
+static const script_case_t SCRIPT_CASES[] = {
+%s
+};
+
+#define SCRIPT_CASE_COUNT (sizeof(SCRIPT_CASES) / sizeof(SCRIPT_CASES[0]))
+
+#endif
+""" % (classified, len(unrendered), len(rewritten), "\n".join(rows))
+
+
 
 # ------------------------------------------------------- signature hashes (sighash.c)
 
@@ -6079,6 +6331,7 @@ def main() -> None:
         "vectors_bech32.h": bech32_vectors(),
         "vectors_compactsize.h": compactsize_vectors(),
         "vectors_address.h": address_vectors(),
+        "vectors_script.h": script_vectors(),
         "vectors_addr_uri.h": addr_uri_vectors(),
         "vectors_psbt.h": psbt_vectors(),
         "vectors_bytewords.h": bytewords_vectors(),
