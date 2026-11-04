@@ -221,7 +221,7 @@ app_err_t eip712_extract_domain(const eip712_ctx_t* ctx, eip712_domain_t* out) {
   if (eip712_extract_uint256(ctx, ctx->index.domain, "chainId", chain_bytes) != ERR_OK) {
     out->chainID = UINT32_MAX;
   } else {
-    out->chainID = (chain_bytes[28] << 24) | (chain_bytes[29] << 16) | (chain_bytes[30] << 8) | chain_bytes[31];
+    out->chainID = ((uint32_t) chain_bytes[28] << 24) | ((uint32_t) chain_bytes[29] << 16) | ((uint32_t) chain_bytes[30] << 8) | chain_bytes[31];
   }
 
   return ERR_OK;

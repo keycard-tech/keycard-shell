@@ -380,7 +380,7 @@ app_err_t core_btc_usb_sign_psbt(keycard_t* kc, command_t* cmd) {
       return ERR_DATA;
     }
 
-    g_core.data.msg.len = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+    g_core.data.msg.len = ((uint32_t) data[0] << 24) | ((uint32_t) data[1] << 16) | ((uint32_t) data[2] << 8) | data[3];
     g_core.data.msg.received = 0;
     data += 4;
     len -= 4;

@@ -144,7 +144,7 @@ app_err_t core_get_fingerprint(uint8_t* path, size_t len, uint32_t* fingerprint)
 
   hash160(g_core.data.key.pub, PUBKEY_COMPRESSED_LEN, g_core.data.key.pub);
 
-  *fingerprint = (g_core.data.key.pub[0] << 24) | (g_core.data.key.pub[1] << 16) | (g_core.data.key.pub[2] << 8) | g_core.data.key.pub[3];
+  *fingerprint = ((uint32_t) g_core.data.key.pub[0] << 24) | ((uint32_t) g_core.data.key.pub[1] << 16) | ((uint32_t) g_core.data.key.pub[2] << 8) | g_core.data.key.pub[3];
 
   if (len == 0)  {
     g_core.master_fingerprint = *fingerprint;

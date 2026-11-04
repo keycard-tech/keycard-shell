@@ -118,9 +118,9 @@ static void derive_fingerprint_from_seed(const uint8_t* seed, size_t seed_len, u
   uint8_t hash160_result[20];  // RIPEMD160 output is 20 bytes
   hash160(pub_key_compressed, 33, hash160_result);
   
-  *fingerprint = (hash160_result[0] << 24) |
-  (hash160_result[1] << 16) |
-  (hash160_result[2] << 8) |
+  *fingerprint = ((uint32_t) hash160_result[0] << 24) |
+  ((uint32_t) hash160_result[1] << 16) |
+  ((uint32_t) hash160_result[2] << 8) |
   hash160_result[3];
   
   memzero(I, sizeof(I));

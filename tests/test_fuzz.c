@@ -821,18 +821,32 @@ static void test_fuzz_wire(void) {
   }
 }
 
+/* A seed that found something stays in the list, so that the defect cannot come back quietly.
+ * 0x...07 is the stream that reported the signed left shift in rlpDecodeLength(). */
+static const uint64_t FUZZ_SEEDS[] = {0x656e74726f7079ULL, 0x7ULL, 0xdeadbeefULL, 0xabcdef0123456789ULL};
+
 int main(void) {
   const char* env = getenv("FUZZ_SEED");
-  seed_in_use = env != NULL ? strtoull(env, NULL, 0) : 0x656e74726f7079ULL;
   verbose = getenv("FUZZ_VERBOSE") != NULL;
 
-  rng_state = seed_in_use;
   UNITY_BEGIN();
-  RUN_TEST(test_fuzz_card_replies);
-  rng_state = seed_in_use ^ 0x9e3779b97f4a7c15ULL;
-  RUN_TEST(test_fuzz_wire);
+  if (env != NULL) {
+    seed_in_use = strtoull(env, NULL, 0);
+    rng_state = seed_in_use;
+    RUN_TEST(test_fuzz_card_replies);
+    rng_state = seed_in_use ^ 0x9e3779b97f4a7c15ULL;
+    RUN_TEST(test_fuzz_wire);
+  } else {
+    for (size_t i = 0; i < sizeof(FUZZ_SEEDS) / sizeof(FUZZ_SEEDS[0]); i++) {
+      seed_in_use = FUZZ_SEEDS[i];
+      rng_state = seed_in_use;
+      RUN_TEST(test_fuzz_card_replies);
+      rng_state = seed_in_use ^ 0x9e3779b97f4a7c15ULL;
+      RUN_TEST(test_fuzz_wire);
+    }
+  }
   const int result = UNITY_END();
-  printf("seed 0x%016llx: %zu inputs, %zu parser calls\n", (unsigned long long)seed_in_use, inputs_seen,
-         calls_made);
+  printf("%zu seeds, %zu inputs, %zu parser calls\n", env != NULL ? 1 : sizeof(FUZZ_SEEDS) / sizeof(FUZZ_SEEDS[0]),
+         inputs_seen, calls_made);
   return result;
 }

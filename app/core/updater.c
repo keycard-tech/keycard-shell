@@ -228,8 +228,8 @@ static app_err_t updater_confirm_fw_upgrade() {
   uint8_t* ver_buf = (uint8_t*)(HAL_FLASH_FW_UPGRADE_AREA + ver_off);
 
   // don't consider beta when checking version
-  uint32_t current_ver = (FW_VERSION[0] << 24) | (FW_VERSION[1] << 16) | (FW_VERSION[2] << 8) | 0;
-  uint32_t new_ver = (ver_buf[0] << 24) | (ver_buf[1] << 16) | (ver_buf[2] << 8) | 0;
+  uint32_t current_ver = ((uint32_t) FW_VERSION[0] << 24) | ((uint32_t) FW_VERSION[1] << 16) | ((uint32_t) FW_VERSION[2] << 8) | 0;
+  uint32_t new_ver = ((uint32_t) ver_buf[0] << 24) | ((uint32_t) ver_buf[1] << 16) | ((uint32_t) ver_buf[2] << 8) | 0;
 
   if (current_ver > new_ver) {
     ui_info(ICON_INFO_ERROR, LSTR(FW_UPGRADE_INVALID_MSG), LSTR(FW_UPGRADE_OUTDATED_SUB), 0);
@@ -258,7 +258,7 @@ app_err_t updater_usb_fw_upgrade(command_t *cmd, apdu_t* apdu) {
       core_usb_err_sw(apdu, 0x6a, 0x80);
       return ERR_DATA;
     }
-    g_core.data.msg.len = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+    g_core.data.msg.len = ((uint32_t) data[0] << 24) | ((uint32_t) data[1] << 16) | ((uint32_t) data[2] << 8) | data[3];
     g_core.data.msg.received = 0;
     data += 4;
     len -= 4;
@@ -319,7 +319,7 @@ app_err_t updater_usb_db_upgrade(apdu_t* apdu) {
       return ERR_DATA;
     }
 
-    g_core.data.msg.len = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+    g_core.data.msg.len = ((uint32_t) data[0] << 24) | ((uint32_t) data[1] << 16) | ((uint32_t) data[2] << 8) | data[3];
     g_core.data.msg.received = 0;
     data += 4;
     len -= 4;

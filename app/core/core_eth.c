@@ -250,7 +250,7 @@ static app_err_t core_eth_usb_message_reassemble(keycard_t* kc, apdu_t* cmd, uin
       return ERR_DATA;
     }
 
-    g_core.data.msg.len = (data[1+g_core.bip44_path_len] << 24) | (data[2+g_core.bip44_path_len] << 16) | (data[3+g_core.bip44_path_len] << 8) | data[4+g_core.bip44_path_len];
+    g_core.data.msg.len = ((uint32_t) data[1+g_core.bip44_path_len] << 24) | ((uint32_t) data[2+g_core.bip44_path_len] << 16) | ((uint32_t) data[3+g_core.bip44_path_len] << 8) | data[4+g_core.bip44_path_len];
 
     if (g_core.data.msg.len > MEM_HEAP_SIZE) {
       return ERR_DATA;
