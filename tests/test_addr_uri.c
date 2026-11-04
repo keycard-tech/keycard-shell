@@ -159,6 +159,7 @@ static void test_longest_target(void) {
   memset(uri, 0, sizeof(uri));
   strcpy(uri, "bitcoin:");
   memset(uri + 8, '1', MAX_ADDR_LEN - 1);
+  memset(want, 0, sizeof(want));
   memset(want, '1', MAX_ADDR_LEN - 1);
 
   memset(&guarded, 0, sizeof(guarded));

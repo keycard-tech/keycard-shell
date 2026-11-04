@@ -200,6 +200,13 @@ shellos_test(bech32 LIBS app_crypto)
 shellos_test(address LIBS app_crypto)
 shellos_test(addr_uri LIBS app_crypto)
 shellos_test(script LIBS app_crypto)
+
+# One binary for every parser that takes bytes from outside the device, because the point is to run
+# each of them over corpora it was not written for.
+shellos_test(fuzz LIBS app_btc_sig app_keycard app_bitcoin app_ethereum app_crypto)
+# Deterministic and in milliseconds; the timeout is only so that a parser that ever loops on a
+# mutated count fails the suite instead of the CI runner.
+set_tests_properties(fuzz PROPERTIES TIMEOUT 120)
 shellos_test(bignum LIBS app_crypto)
 shellos_test(ethereum LIBS app_ethereum app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)

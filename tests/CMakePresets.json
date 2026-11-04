@@ -63,6 +63,13 @@
             "output": {
                 "outputOnFailure": true
             }
+        },
+        {
+            "name": "host-tests-coverage",
+            "configurePreset": "host-tests-coverage",
+            "output": {
+                "outputOnFailure": true
+            }
         }
     ]
 }
