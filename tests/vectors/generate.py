@@ -38,6 +38,12 @@ CACHE = HERE / ".cache"
 
 SOURCES = {
     "rfc4880.txt": "https://www.rfc-editor.org/rfc/rfc4880.txt",
+    "coldcard_multisig.html": "https://coldcard.com/docs/multisig/",
+    "cc_export_1.txt": "https://raw.githubusercontent.com/sparrowwallet/sparrow/master/src/test/resources/com/sparrowwallet/sparrow/io/cc-multisig-export-1.txt",
+    "cc_export_2.txt": "https://raw.githubusercontent.com/sparrowwallet/sparrow/master/src/test/resources/com/sparrowwallet/sparrow/io/cc-multisig-export-2.txt",
+    "cc_export_missingkey.txt": "https://raw.githubusercontent.com/sparrowwallet/sparrow/master/src/test/resources/com/sparrowwallet/sparrow/io/cc-multisig-export-missingkey.txt",
+    "cc_export_multideriv.txt": "https://raw.githubusercontent.com/sparrowwallet/sparrow/master/src/test/resources/com/sparrowwallet/sparrow/io/cc-multisig-export-multideriv.txt",
+    "cc_export_nopolicy.txt": "https://raw.githubusercontent.com/sparrowwallet/sparrow/master/src/test/resources/com/sparrowwallet/sparrow/io/cc-multisig-export-nopolicy.txt",
     "bip39_wordlist.txt": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/english.txt",
     "bip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-mnemonic/master/vectors.json",
     "bip32.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0032.mediawiki",
@@ -396,6 +402,162 @@ def bip39_checksum_ok(words: list[str], index_of: dict[str, int]) -> bool:
     return digest_bits == checksum_bits
 
 
+def seedqr_standard(payload: bytes) -> tuple[bool, list[int]]:
+    """A model of mnemonic_from_seedqr_standard.
+
+    48 or 96 octets, four decimal digits per BIP-39 index, no separator and no checksum. What makes a
+    model necessary rather than a guess is that the check is on the *value*: each octet is subtracted
+    from '0' as a signed char, scaled by its position, and the sum is truncated to uint16_t before
+    being compared against the word count. So ':' in the units place is 10 and accepted, and 0xff in
+    the thousands place is -49000 which truncates to 16536 and is not.
+    """
+    if len(payload) not in (48, 96):
+        return False, []
+    indexes = []
+    for i in range(0, len(payload), 4):
+        value = 0
+        for offset, weight in ((0, 1000), (1, 100), (2, 10), (3, 1)):
+            octet = payload[i + offset]
+            signed = octet - 0x100 if octet >= 0x80 else octet
+            value += (signed - 0x30) * weight
+        value &= 0xFFFF
+        if value >= 2048:
+            return False, []
+        indexes.append(value)
+    return True, indexes
+
+
+def last_word_mask(indexes: list[int]) -> tuple[int, bytes]:
+    """A model of mnemonic_last_word_mask: which last words make len words a valid checksum, for the
+    first len - 1 indexes. Returns the candidate count and the 256 byte bitmap."""
+    words = len(indexes) + 1
+    checksum_bits = words // 3
+    entropy_bytes = (words * 11 - checksum_bits) // 8
+    count = 1 << (11 - checksum_bits)
+    mask = bytearray(256)
+    for tail in range(count):
+        row = list(indexes) + [tail << checksum_bits]
+        bits = bytearray(33)
+        position = 0
+        for index in row:
+            for bit in range(10, -1, -1):
+                if index & (1 << bit):
+                    bits[position // 8] |= 1 << (7 - (position % 8))
+                position += 1
+        assert position == words * 11
+        digest = hashlib.sha256(bytes(bits[:entropy_bytes])).digest()
+        index = (tail << checksum_bits) | (digest[0] >> (8 - checksum_bits))
+        mask[index // 8] |= 1 << (index % 8)
+    return count, bytes(mask)
+
+
+def seedqr_c_bytes(payload: bytes) -> str:
+    """A C literal for bytes that may contain NUL, in a form where an escape can never be read
+    together with a following digit: runs of ordinary digits stay plain, anything else becomes its
+    own three-digit octal literal in its own concatenated string."""
+    out, plain = [], ''
+    for byte in payload:
+        if 0x20 <= byte < 0x7f and byte != ord('"') and byte != ord('\\'):
+            plain += chr(byte)
+            continue
+        if plain:
+            out.append(f'"{plain}"')
+            plain = ''
+        out.append(f'"\\{byte:03o}"')
+    if plain:
+        out.append(f'"{plain}"')
+    return ' '.join(out) if out else '""'
+
+
+def seedqr_tables(entries, words: list[str], index_of: dict[str, int]) -> tuple[str, str]:
+    """The standard-SeedQR rows: the Trezor mnemonics as digit strings with their published seeds,
+    and the shapes a hostile or merely odd QR payload arrives in."""
+    index_rows, row_entries = [], []
+
+    def row(payload: bytes, indexes: list[int] | None, seed: str | None) -> None:
+        if indexes is None:
+            slot = -1
+        else:
+            slot = len(index_rows)
+            index_rows.append('{ ' + ', '.join(f'0x{index:04x}' for index in indexes
+                                               + [0] * (24 - len(indexes))) + ' }')
+        row_entries.append(f'  {{{seedqr_c_bytes(payload)}, {len(payload)}, {slot}, "{seed or ""}"}}')
+
+    for entropy_hex, mnemonic, seed, _xprv in entries:
+        word_list = mnemonic.split()
+        if len(word_list) not in (12, 24):  # the firmware implements 12 and 24 words only
+            continue
+        indexes = [index_of[word] for word in word_list]
+        digits = ''.join(f'{index:04d}' for index in indexes)
+        assert len(digits) in (48, 96) and digits.isdigit()
+        row(digits.encode(), indexes, seed)
+
+    # The last index that is a word, and the first that is not: 2047 is "zoo", 2048 is nothing.
+    row(b'2047' * 12, [2047] * 12, None)
+    row(b'2048' + b'0000' * 11, None, None)
+    row(b'0000' * 11 + b'2048', None, None)
+
+    # Lengths. 48 and 96 are the only accepted ones: an 18-word mnemonic is valid BIP-39 and is not a
+    # SeedQR this firmware reads, and one digit more or less is not a scanned-string truncation but a
+    # different string.
+    for count in (0, 1, 47, 48 + 1, 72, 95, 96 + 1, 132):
+        row(b'0' * count, None, None)
+
+    # A scanned QR is not NUL-terminated, so an embedded NUL reaches the function as data rather than
+    # as a terminator. NUL is -48 against '0', which lands far outside the word list.
+    row(b'0000' * 12 + b'\0', None, None)
+    row(b'\0' + b'0' * 47, None, None)
+    row(b'000' + b'\0' + b'0' * 44, None, None)
+
+    # Octets that are not digits, in each of the four positions and at both ends of the range they
+    # can produce. Accepted or refused is the model's answer, and the rows exist to make that answer
+    # visible: 1000 * (c - '0') is arithmetic on whatever is there, so ':' is ten and 'A' in the
+    # hundreds place is seventeen hundred -- both in range, both accepted. A QR reader in numeric mode
+    # cannot send either; the function is public and the next caller may not have one in front of it.
+    odd = []
+    for position in (0, 1, 2, 3):
+        for char in (0x30, 0x39, 0x3a, 0x2f, 0x20, 0x2d, ord('A'), ord('a'), ord('z'), 0x80, 0xff):
+            digits = bytearray(b'0000' * 12)
+            digits[position] = char
+            accepted, indexes = seedqr_standard(bytes(digits))
+            odd.append((position, char, bytes(digits), accepted, indexes))
+    for position, char, digits, accepted, indexes in odd:
+        row(digits, indexes if accepted else None, None)
+
+    # What this module claims independently of the model: the boundary words, the lengths, and that a
+    # NUL is not a digit.
+    assert seedqr_standard(b'0000' * 12) == (True, [0] * 12)
+    assert seedqr_standard(b'2047' * 12)[0] and not seedqr_standard(b'2048' * 12)[0]
+    assert not seedqr_standard(b'0' * 47)[0] and not seedqr_standard(b'0' * 49)[0]
+    assert not seedqr_standard(b'\0' + b'0' * 47)[0]
+    assert len(odd) == 44
+
+    return (',\n'.join(index_rows), ',\n'.join(row_entries))
+
+
+def last_word_tables(entries, index_of: dict[str, int]) -> tuple[str, str]:
+    """One row per published mnemonic: its indexes except the last, the published last word, the
+    candidate count the closed form gives, and a digest of the bitmap."""
+    index_rows, rows = [], []
+    for _entropy_hex, mnemonic, _seed, _xprv in entries:
+        word_list = mnemonic.split()
+        if len(word_list) not in (12, 24):
+            continue
+        indexes = [index_of[word] for word in word_list]
+        count, mask = last_word_mask(indexes[:-1])
+        # The published mnemonic is a valid one, so its own last word must be among the candidates.
+        assert mask[indexes[-1] // 8] & (1 << (indexes[-1] % 8))
+        # One candidate per value of the bits the last word carries, and none of them collide.
+        assert count == 1 << (11 - len(word_list) // 3)
+        assert sum(bin(byte).count('1') for byte in mask) == count
+        slot = len(index_rows)
+        index_rows.append('{ ' + ', '.join(f'0x{index:04x}' for index in indexes[:-1]
+                                           + [0] * (24 - len(indexes) + 1)) + ' }')
+        rows.append(f'  {{{len(word_list)}, 0x{indexes[-1]:04x}, {count}, '
+                    f'"{hashlib.sha256(mask).hexdigest()}"}}')
+    return ',\n'.join(index_rows), ',\n'.join(rows)
+
+
 def bip39_vectors() -> str:
     words = fetch("bip39_wordlist.txt").split()
     entries = json.loads(fetch("bip39_vectors.json"))["english"]
@@ -430,6 +592,8 @@ def bip39_vectors() -> str:
         )
 
     wordlist_sha = wordlist_digest("bip39_wordlist.txt", words)
+    seedqr_index_rows, seedqr_rows = seedqr_tables(entries, words, index_of)
+    last_word_index_rows, last_word_rows = last_word_tables(entries, index_of)
 
     return f"""#ifndef VECTORS_BIP39_H
 #define VECTORS_BIP39_H
@@ -465,6 +629,70 @@ static const bip39_vector_t BIP39_VECTORS[] = {{
  */
 #define BIP39_WORDLIST_COUNT 2048
 #define BIP39_WORDLIST_SHA256 "{wordlist_sha}"
+
+/* spec: SeedQR standard mode (four decimal digits per BIP-39 index, no separator, 48 or 96 of them)
+ *       and the Trezor vectors above.
+ *
+ * A standard SeedQR is the word indexes written as four decimal digits each, so the digit string of a
+ * published mnemonic is published data too: the rows with a seed are that string, and the seed is the
+ * published one. digits/len is what a caller hands over (len is separate because a scanned QR is not
+ * NUL-terminated and an embedded NUL is one of the cases); indexes is a row of SEEDQR_INDEXES, or -1
+ * when the string must be refused; seed is the published seed those indexes must produce under the
+ * passphrase the vectors use, or NULL for the strings that are not published mnemonics.
+ *
+ * The rows without a seed are what the function accepts or refuses for its own reasons. Two of its
+ * properties are surprising and are pinned rather than fixed:
+ *
+ *   - it checks the *value*, not the character class: 1000*(c-'0') is arithmetic on whatever octet is
+ *     there, so ':' is 10 and 'A' in the hundreds place is 1700, and both are in range. SeedQR from a
+ *     QR reader arrives as NUMERIC data, so a real scanner cannot send that; the row is here because
+ *     the function is public and the next caller may not have a scanner in front of it.
+ *   - *out_len is written before the digits are examined, so a refusal part way through still reports
+ *     a word count. The one caller in the firmware only reads it when the answer was true.
+ */
+typedef struct {{
+  const char* digits;
+  uint32_t len;
+  int16_t indexes;
+  const char* seed;
+}} seedqr_row_t;
+
+static const uint16_t SEEDQR_INDEXES[][24] = {{
+{seedqr_index_rows}
+}};
+
+static const seedqr_row_t SEEDQR_ROWS[] = {{
+{seedqr_rows}
+}};
+
+#define SEEDQR_ROW_COUNT (sizeof(SEEDQR_ROWS) / sizeof(SEEDQR_ROWS[0]))
+
+/* spec: BIP-39's checksum (SHA-256 of the entropy, its first len/3 bits appended to the 11 bit word
+ *       indexes) -- the same rule the vectors above were built with.
+ *
+ * The last word of a mnemonic is the only one the checksum constrains, so the words that could
+ * complete a partially entered seed are computable from the words already there: the firmware does
+ * that when the user has typed or scanned all but the last. indexes is a row of
+ * LAST_WORD_INDEXES -- the published mnemonic minus its last word -- last is the published last word,
+ * count is the number of completions (2 to the power of the bits the last word does not carry), and
+ * mask_sha256 is the digest of the 256 byte candidate bitmap in index order.
+ */
+typedef struct {{
+  uint32_t words;
+  uint16_t last;
+  uint32_t count;
+  const char* mask_sha256;
+}} last_word_row_t;
+
+static const uint16_t LAST_WORD_INDEXES[][24] = {{
+{last_word_index_rows}
+}};
+
+static const last_word_row_t LAST_WORD_ROWS[] = {{
+{last_word_rows}
+}};
+
+#define LAST_WORD_ROW_COUNT (sizeof(LAST_WORD_ROWS) / sizeof(LAST_WORD_ROWS[0]))
 
 #endif
 """
@@ -8440,12 +8668,393 @@ static const openpgp_request_row_t OPENPGP_REQUESTS[] = {{
     return out
 
 
+MULTISIG_HEADER = """\
+#ifndef VECTORS_MULTISIG_H
+#define VECTORS_MULTISIG_H
+
+/* spec: {provenance}
+ *
+ * Multisig setup files, in the format COLDCARD exports and Sparrow reads: a Name, a "M of N"
+ * Policy, an address Format, Derivation lines that apply to every key below them, and one line per
+ * cosigner of eight hex digits of master fingerprint, a colon, and an extended public key. The
+ * accepted files here are the one printed on the format page and the exports another wallet keeps as
+ * its own parser's test fixtures, so "what this file means" is somebody else\u2019s answer.
+ *
+ * Refusals are pinned too, and several of them are places where this parser is stricter than the
+ * format page suggests: it takes no M/N policy spelling, no lowercase labels or formats, no default
+ * Policy when one is missing, and no CRLF line endings anywhere in the file. Stricter is the right
+ * direction for bytes that arrive from a camera, but the rows are the place to notice if that ever
+ * needs to change.
+ *
+ * Paths are stored as the firmware stores them, with the hardening bit set, flattened six keys of
+ * six components; fingerprints and xpubs are hex per key in the order the file lists them. The
+ * serialized and re-exported forms are our own layout rather than anything published, so they are
+ * pinned for two rows only and the rest are checked by round trip.
+ */
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "error.h"
+
+typedef struct {{
+  const char* label;
+  const char* text;
+  uint32_t text_len;
+  app_err_t err;
+  const char* name;
+  uint8_t m;
+  uint8_t n;
+  uint8_t format;
+  uint8_t key_count;
+  uint32_t path[6][6];
+  uint8_t path_len[6];
+  const char* fingerprints;
+  const char* xpubs;
+  const char* serialized;
+  const char* reexport;
+}} multisig_case_t;
+
+static const multisig_case_t MULTISIG_CASES[] = {{
+{rows}
+}};
+
+#define MULTISIG_CASE_COUNT (sizeof(MULTISIG_CASES) / sizeof(MULTISIG_CASES[0]))
+
+#endif /* VECTORS_MULTISIG_H */
+"""
+
+
+HARDENED = 0x80000000
+B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+
+def b58_decode(text: str) -> bytes:
+    """Base58Check, decoded and checked here rather than trusted: the vectors carry the 78 bytes the
+    firmware must end up with, so a parser that decoded the wrong payload would differ from them."""
+    value = 0
+    for char in text:
+        digit = B58.index(char)
+        value = value * 58 + digit
+    raw = value.to_bytes((value.bit_length() + 7) // 8 or 1, 'big')
+    pad = len(text) - len(text.lstrip('1'))
+    data = b'\x00' * pad + raw
+    body, checksum = data[:-4], data[-4:]
+    assert hashlib.sha256(hashlib.sha256(body).digest()).digest()[:4] == checksum, text
+    return body
+
+
+def b58_encode(data: bytes) -> str:
+    """Base58Check, for the text the device writes back out."""
+    raw = data + hashlib.sha256(hashlib.sha256(data).digest()).digest()[:4]
+    value = int.from_bytes(raw, 'big')
+    out = ''
+    while value:
+        value, rest = divmod(value, 58)
+        out = B58[rest] + out
+    return '1' * (len(raw) - len(raw.lstrip(b'\x00'))) + out
+
+
+def cc_path(text: str) -> list[int]:
+    """A Coldcard derivation path as the firmware stores it: ' or h hardens, and the leading m is
+    not a component. Per the format page: 'Must use single quote or h for hardened keys, and start
+    with m/ (master).'"""
+    parts = text.split('/')[1:]
+    out = []
+    for part in parts:
+        hardened = part.endswith(("'", 'h'))
+        digits = part[:-1] if hardened else part
+        index = int(digits)
+        assert index <= 0xffffffff, text
+        out.append(index | (HARDENED if hardened else 0))
+    return out
+
+
+def cc_keys(text: str, default_path: list[int] | None = None) -> list[tuple[str, list[int], bytes]]:
+    """The key lines of a setup file, each with the derivation path in force above it."""
+    keys, current = [], default_path
+    for line in text.split('\n'):
+        line = line.strip()
+        if not line or line.startswith('#') or ':' not in line:
+            continue
+        key, value = line.split(':', 1)
+        key, value = key.strip(), value.strip()
+        if key == 'Derivation':
+            current = cc_path(value)
+            continue
+        if len(key) != 8:
+            continue
+        keys.append((key, list(current or []), b58_decode(value)))
+    return keys
+
+
+def cc_serialize(name: str, m: int, n: int, fmt: int,
+                 keys: list[tuple[str, list[int], bytes]]) -> bytes:
+    """The storage form: our own layout, pinned so that a change to it shows up as a migration
+    problem rather than a passing test."""
+    out = bytearray([fmt, m, n, len(keys), len(name)])
+    out += name.encode()
+    for fingerprint, path, xpub in keys:
+        out.append(len(path))
+        for index in path:
+            out += index.to_bytes(4, 'little')
+        out += bytes.fromhex(fingerprint)
+        out += xpub
+    return bytes(out)
+
+
+def cc_to_text(name: str, m: int, n: int, fmt: int,
+               keys: list[tuple[str, list[int], bytes]]) -> str:
+    """What the device writes back out for a QR export."""
+    formats = ['P2SH', 'P2SH-P2WSH', 'P2WSH']
+    out = f'Name: {name}\nPolicy: {m} of {n}\nFormat: {formats[fmt]}\n\n'
+    for fingerprint, path, xpub in keys:
+        derived = 'm' + ''.join(f"/{index & ~HARDENED}{'\'' if index & HARDENED else ''}"
+                                for index in path)
+        out += f'Derivation: {derived}\n{fingerprint.lower()}: {b58_encode(xpub)}\n\n'
+    return out
+
+
+def multisig_case(label: str, text: str, *, name: str = '', m: int = 0, n: int = 0, fmt: int = 2,
+                  keys: list[tuple[str, list[int], bytes]] | None = None,
+                  err: str = 'ERR_OK', pinned: bool = False) -> str:
+    keys = keys or []
+    flat, lens, fps, xpubs = [], [], '', ''
+    for fingerprint, path, xpub in keys:
+        lens.append(len(path))
+        flat.append(list(path) + [0] * (6 - len(path)))
+        fps += fingerprint.lower()
+        xpubs += xpub.hex()
+    while len(lens) < 6:
+        lens.append(0)
+        flat.append([0] * 6)
+    serialized = (f'"{hexs(cc_serialize(name, m, n, fmt, keys))}"'
+                  if pinned and err == 'ERR_OK' else 'NULL')
+    reexport = cstr(cc_to_text(name, m, n, fmt, keys)) if pinned and err == 'ERR_OK' else 'NULL'
+    paths = ', '.join('{' + ', '.join(f'0x{index:08x}' for index in row) + '}' for row in flat)
+    return (f'  {{{cstr(label)}, {cstr(text)}, {len(text)}, {err}, {cstr(name)}, {m}, {n}, {fmt}, '
+            f'{len(keys)}, {{{paths}}}, {{{", ".join(str(x) for x in lens)}}}, '
+            f'{cstr(fps)}, {cstr(xpubs)}, {serialized}, {reexport}}}')
+
+
+def multisig_vectors() -> str:
+    raw = fetch('coldcard_multisig.html')
+    doc = re.sub(r'<[^>]+>', '', raw).replace('&quot;', '"').replace('&amp;', '&')
+    doc = doc.replace('&#39;', "'").replace('&gt;', '>')
+    flattened = re.sub(r'\s+', ' ', doc)  # the page wraps mid-sentence
+
+    for sentence in (
+        'Comments start with # and go the end of the line. Blank lines are okay.',
+        'Values and labels are case insensitive.',
+        'Can be written "M of N", or just "M/N".',
+        'Must use single quote or h for hardened keys, and start with m/ (master).',
+        'Applies to all subsequent XPUBs and may be repeated',
+        'Policy Default is M==N.',
+        'The rest of the line, after the colon is the XPUB for that signer',
+    ):
+        assert sentence in flattened, sentence
+
+    example = re.search(r'(# Coldcard Multisig setup file.*?)</code>', raw, re.S)
+    assert example, 'the format page no longer carries an example setup file'
+    coldcard = re.sub(r'<[^>]+>', '', example.group(1)).replace('&#39;', "'")
+    assert coldcard.startswith('# Coldcard Multisig setup file (exported from 0F056943)')
+
+    export1, export2 = fetch('cc_export_1.txt'), fetch('cc_export_2.txt')
+    missing, multi, nopolicy = (fetch('cc_export_missingkey.txt'),
+                                fetch('cc_export_multideriv.txt'), fetch('cc_export_nopolicy.txt'))
+    assert 'Policy: 2 of 4' in export1 and 'Format: P2WSH-P2SH' in export2
+    assert 'Policy' not in nopolicy
+
+    xpub = export1.split('0F056943: xpub')[1].split('\n')[0]
+    tpub = export2.split('0F056943: tpub')[1].split('\n')[0]
+
+    path_48_0_0_2 = cc_path("m/48'/0'/0'/2'")
+    rows = [
+        multisig_case('the example on the format page', coldcard, name='MeMyself', m=2, n=4, fmt=2,
+                      keys=cc_keys(coldcard), pinned=True),
+        multisig_case('a Coldcard export, apostrophe hardening', export1, name='CC-2-of-4', m=2,
+                      n=4, fmt=2, keys=cc_keys(export1)),
+        # The wrapped format, spelled the way Coldcard spells it when exporting a nested script, and
+        # testnet keys: the version bytes are part of the 78, so they are part of the expectation.
+        multisig_case('P2WSH-P2SH over tpubs', export2, name='CC-2-of-4', m=2, n=4, fmt=1,
+                      keys=cc_keys(export2)),
+        # One Derivation line per key, and the last key at a different path: the path in force is
+        # the nearest one above, not the first one seen.
+        multisig_case('a per-key derivation, Electrum export', multi, name='el-CC-3-of-3-sb-2',
+                      m=3, n=3, fmt=2, keys=cc_keys(multi)),
+        multisig_case('a comment between keys, and blank lines', multi.replace(
+            'Derivation: m/47', '# a comment\nDerivation: m/47'), name='el-CC-3-of-3-sb-2', m=3,
+            n=3, fmt=2, keys=cc_keys(multi.replace('Derivation: m/47',
+                                                   '# a comment\nDerivation: m/47'))),
+        multisig_case('indented labels and trailing blanks',
+                      '\t \n   Name: Indented\t\n  Policy: 1 of 1  \n  Format: P2WSH  \n\n'
+                      + '  0F056943: xpub' + xpub + '\n', name='Indented', m=1, n=1, fmt=2,
+                      keys=[('0F056943', [], b58_decode('xpub' + xpub))]),
+        # The default format is P2SH, which is the value a zeroed descriptor already has; a file
+        # without a Format line is accepted and means P2SH.
+        multisig_case('no Format line at all', 'Name: Default\nPolicy: 1 of 1\n\n0F056943: '
+                      + export1.split('0F056943: ')[1].split('\n')[0] + '\n',
+                      name='Default', m=1, n=1, fmt=0,
+                      keys=cc_keys('0F056943: ' + export1.split('0F056943: ')[1].split('\n')[0])),
+    ]
+
+    def single(**changes) -> str:
+        """One key, with the parts a hostile or broken QR can get wrong changed one at a time."""
+        fields = {'name': 'One', 'policy': 'Policy: 1 of 1', 'format': 'Format: P2WSH',
+                  'derivation': "Derivation: m/48'/0'/0'/2'", 'fp': '0F056943', 'xpub': 'xpub' + xpub}
+        fields.update(changes)
+        lines = [f"Name: {fields['name']}", fields['policy'], fields['format'], '',
+                 fields['derivation'], '', f"{fields['fp']}: {fields['xpub']}", '']
+        return '\n'.join(lines)
+
+    second = '6BA6CFD0: xpub' + export1.split('6BA6CFD0: xpub')[1].split('\n')[0]
+
+    rows += [
+        # Refusals, each one a file another tool might hand over.
+        multisig_case('no Policy line (Coldcard would default M=N)', nopolicy, err='ERR_DATA'),
+        multisig_case('one key missing from a 2 of 4', missing, err='ERR_DATA'),
+        multisig_case('policy in the M/N spelling the format page allows',
+                      export1.replace('Policy: 2 of 4', 'Policy: 2/4'), err='ERR_DATA'),
+        multisig_case('a lowercase format, as the format page spells it',
+                      single(format='Format: p2wsh'), name='One', m=1, n=1, fmt=2,
+                      keys=cc_keys(single(format='Format: p2wsh'))),
+        multisig_case('an unknown label, which becomes a key line',
+                      single(name='One', policy='Wallet: 1 of 1'), err='ERR_DATA'),
+        multisig_case('a label with no colon at all', single().replace('Format: P2WSH', 'P2WSH'),
+                      err='ERR_DATA'),
+        multisig_case('a lowercase label', single().replace('Name:', 'name:'), name='One', m=1,
+                      n=1, fmt=2, keys=cc_keys(single())),
+        # "Values and labels are case insensitive" on the format page, which covers the keywords and
+        # not the base58: an xpub in another case is a different string and fails its own checksum.
+        multisig_case('every label uppercase, the policy spelled OF, hardening by H',
+                      'NAME: Shouted\nPOLICY: 1 OF 1\nFORMAT: P2WSH\n\n'
+                      'Derivation: M/48H/0H/0H/2H\n\n0F056943: xpub' + xpub + '\n', name='Shouted',
+                      m=1, n=1, fmt=2, keys=cc_keys(single())),
+        multisig_case('the nested format in lower case, reversed spelling',
+                      single(format='format: p2wsh-p2sh'), name='One', m=1, n=1, fmt=1,
+                      keys=cc_keys(single())),
+        multisig_case('a fingerprint in lower case', single(fp='0f056943'), name='One', m=1, n=1,
+                      fmt=2, keys=cc_keys(single())),
+        multisig_case('a hardening mark in the middle of a path, uppercase',
+                      single(derivation='Derivation: m/48h/0H/0/2'), name='One', m=1, n=1, fmt=2,
+                      keys=cc_keys(single(derivation="Derivation: m/48'/0'/0/2"))),
+        multisig_case('a name of 33 characters', single(name='x' * 33), err='ERR_DATA'),
+        multisig_case('a name of 32 characters', single(name='x' * 32), name='x' * 32, m=1, n=1,
+                      fmt=2, keys=cc_keys(single())),
+        multisig_case('a name containing a colon', single(name='CC: 1 of 1'), name='CC: 1 of 1',
+                      m=1, n=1, fmt=2, keys=cc_keys(single(name='CC: 1 of 1'))),
+        multisig_case('M greater than N', single(policy='Policy: 2 of 1'), err='ERR_DATA'),
+        multisig_case('M of zero keys', single(policy='Policy: 1 of 0'), err='ERR_DATA'),
+        multisig_case('zero of zero', single(policy='Policy: 0 of 0'), err='ERR_DATA'),
+        multisig_case('a key line before any policy',
+                      single().replace('Policy: 1 of 1\n', ''), err='ERR_DATA'),
+        multisig_case('a fingerprint that is not hex', single(fp='ZZZZZZZZ'), err='ERR_DATA'),
+        multisig_case('a fingerprint of seven digits', single(fp='0F05694'), err='ERR_DATA'),
+        multisig_case('a fingerprint of nine digits', single(fp='0F056943A'), err='ERR_DATA'),
+        multisig_case('an xpub with a broken checksum',
+                      single(xpub='xpub' + xpub[:-1] + ('A' if xpub[-1] != 'A' else 'B')),
+                      err='ERR_DATA'),
+        multisig_case('an xpub one character short', single(xpub='xpub' + xpub[:-1]),
+                      err='ERR_DATA'),
+        multisig_case('an xpub one character too long', single(xpub='xpub' + xpub + 'A'),
+                      err='ERR_DATA'),
+        multisig_case('a key with no value after the colon', single(xpub=''), err='ERR_DATA'),
+        # tpub is a different version prefix with the same length; the 78 octets are what is stored,
+        # so a testnet descriptor parses exactly like a mainnet one.
+        multisig_case('testnet keys', single(xpub='tpub' + tpub), name='One', m=1, n=1, fmt=2,
+                      keys=cc_keys(single(xpub='tpub' + tpub))),
+        multisig_case('a path with no components', single(derivation='Derivation: m'),
+                      err='ERR_DATA'),
+        # The scan for the path begins at the first slash, so a path written without its m/ prefix
+        # loses its first component instead of being refused. The wallet that comes out is a
+        # different one and nothing says so.
+        # A path is a position under the master key. Reading from the first slash instead of
+        # insisting on it turns "48'/0'/0'/2'" into m/0'/0'/2' -- a different wallet, accepted
+        # without a word -- so the prefix is required.
+        multisig_case('a path with no master prefix',
+                      single(derivation="Derivation: 48'/0'/0'/2'"), err='ERR_DATA'),
+        multisig_case('a path that starts with a slash',
+                      single(derivation="Derivation: /48'/0'/0'/2'"), err='ERR_DATA'),
+        multisig_case('a path that starts with the master key but no slash',
+                      single(derivation="Derivation: m48'/0'/0'/2'"), err='ERR_DATA'),
+        multisig_case('a path component that is not a number',
+                      single(derivation="Derivation: m/48'/x'/0'/2'"), err='ERR_DATA'),
+        multisig_case('a path with an empty component',
+                      single(derivation="Derivation: m/48'//0'/2'"), err='ERR_DATA'),
+        multisig_case('a path of seven components',
+                      single(derivation="Derivation: m/1'/2'/3'/4'/5'/6'/7'"), err='ERR_DATA'),
+        multisig_case('a path of six components, which is the most there is room for',
+                      single(derivation="Derivation: m/1'/2'/3'/4'/5'/6'"), name='One', m=1, n=1,
+                      fmt=2, keys=cc_keys(single(derivation="Derivation: m/1'/2'/3'/4'/5'/6'"))),
+        # The hardening mark is the top bit of the stored component, so 2^31 is not an index this
+        # format can hold -- read as-is it would reach the card as m/2147483648h. Ten digits is also
+        # fewer than a uint32 holds, so 4294967296 is refused by the conversion rather than wrapping
+        # to m/0.
+        multisig_case('an index of 2^31 is not an index',
+                      single(derivation='Derivation: m/2147483648/1'), err='ERR_DATA'),
+        multisig_case('an index of 2^31 - 1 is the largest there is room for',
+                      single(derivation='Derivation: m/2147483647/1'), name='One', m=1, n=1, fmt=2,
+                      keys=cc_keys(single(derivation='Derivation: m/2147483647/1'))),
+        multisig_case('an index of 2^32 would wrap to the master key itself',
+                      single(derivation='Derivation: m/4294967296'), err='ERR_DATA'),
+        multisig_case('an index of twenty digits', single(derivation='Derivation: m/1' + '0' * 19),
+                      err='ERR_DATA'),
+        multisig_case('a line of 256 octets', single() + 'a' * 256 + '\n', err='ERR_DATA'),
+        multisig_case('a comment line of 255 octets, which is a comment, not a key',
+                      single() + '#' * 255 + '\n', name='One', m=1, n=1, fmt=2,
+                      keys=cc_keys(single())),
+        # A file saved with CRLF endings is refused rather than half-parsed: the carriage return
+        # would otherwise end up inside the name and behind the xpub.
+        multisig_case('CRLF line endings', single().replace('\n', '\r\n'), err='ERR_DATA'),
+        multisig_case('empty text', '', err='ERR_DATA'),
+        multisig_case('comments only', '# nothing here\n#\n', err='ERR_DATA'),
+        multisig_case('a space where the colon should be', single().replace('Name: One', 'Name One'),
+                      err='ERR_DATA'),
+        # Six keys is MULTISIG_MAX_KEYS; seven does not fit, and the refusal is ERR_FULL rather than
+        # ERR_DATA because the descriptor was fine and the room was not.
+    ]
+
+    # The key count bound, with the key lines spelled out.
+    keyless = single().rsplit('\n', 3)[0] + '\n'
+    fingerprints = ['0F056943', '6BA6CFD0', '747B698E', '7BB026BE', 'AAAAAAAA', 'BBBBBBBB']
+    path = cc_keys(single())[0][1]
+    rows.append(multisig_case(
+        'six keys, which is the most that fits',
+        keyless.replace('Policy: 1 of 1', 'Policy: 6 of 6')
+        + '\n'.join(f'{fp}: xpub{xpub}' for fp in fingerprints) + '\n',
+        name='One', m=6, n=6, fmt=2,
+        keys=[(fp, path, b58_decode('xpub' + xpub)) for fp in fingerprints]))
+    rows.append(multisig_case(
+        'seven keys: the descriptor does not fit',
+        keyless.replace('Policy: 1 of 1', 'Policy: 7 of 7')
+        + '\n'.join(f'{fp}: xpub{xpub}' for fp in fingerprints + ['CCCCCCCC']) + '\n',
+        err='ERR_FULL'))
+    # Nothing compares the cosigners with one another, so the same key twice is a wallet that has
+    # the same signer in it twice.
+    rows.append(multisig_case(
+        'the same cosigner twice',
+        keyless.replace('Policy: 1 of 1', 'Policy: 2 of 2')
+        + '\n'.join([f'0F056943: xpub{xpub}'] * 2) + '\n', name='One', m=2, n=2, fmt=2,
+        keys=[('0F056943', path, b58_decode('xpub' + xpub))] * 2))
+
+    # A single key at a path with both hardened and plain components, whose storage bytes and
+    # re-exported text are pinned in full.
+    canonical = single(derivation="Derivation: m/48'/1/2'/3")
+    rows.append(multisig_case('canonical: one key, mixed hardening', canonical, name='One', m=1,
+                              n=1, fmt=2,
+                              keys=[('0F056943', [48 | HARDENED, 1, 2 | HARDENED, 3],
+                                     b58_decode('xpub' + xpub))], pinned=True))
+
+    return MULTISIG_HEADER.format(rows=',\n'.join(rows),
+                                  provenance=provenance('coldcard_multisig.html'))
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
         "vectors_hmac.h": hmac_vectors(),
         "vectors_hkdf.h": hkdf_vectors(),
         "vectors_bip39.h": bip39_vectors(),
+        "vectors_multisig.h": multisig_vectors(),
         "vectors_slip39.h": slip39_vectors(),
         "vectors_base58.h": base58_vectors(),
         "vectors_bech32.h": bech32_vectors(),

@@ -89,6 +89,9 @@ add_library(app_crypto STATIC
     ${SHELLOS_ROOT}/app/crypto/rand.c
     ${SHELLOS_ROOT}/app/crypto/ripemd160.c
     ${SHELLOS_ROOT}/app/crypto/secp256k1.c
+    # multisig.c derives a child key from each cosigner's xpub, so the public half of BIP-32 has to
+    # be in the link. Its one foreign call is hal_ec_double_ladder, which the host seam aborts.
+    ${SHELLOS_ROOT}/app/crypto/bip32.c
     ${SHELLOS_ROOT}/app/crypto/segwit_addr.c
     ${SHELLOS_ROOT}/app/crypto/shamir.c
     ${SHELLOS_ROOT}/app/crypto/sha2.c
@@ -104,6 +107,9 @@ target_link_libraries(app_crypto PUBLIC app_util)
 
 add_library(app_bitcoin STATIC
     ${SHELLOS_ROOT}/app/bitcoin/compactsize.c
+    # A setup file arrives from a camera and the descriptor then lives in the store, so its parser
+    # and its storage form are host tests. Address derivation is not: it ends at the PKA.
+    ${SHELLOS_ROOT}/app/bitcoin/multisig.c
     ${SHELLOS_ROOT}/app/bitcoin/psbt.c
     ${SHELLOS_ROOT}/app/bitcoin/psbt_tx.c
     ${SHELLOS_ROOT}/app/bitcoin/psbt_ctx.c
@@ -251,6 +257,7 @@ shellos_test(sighash LIBS app_bitcoin app_crypto)
 shellos_test(bytewords LIBS app_ur app_crypto)
 shellos_test(ur LIBS app_ur app_crypto)
 shellos_test(openpgp LIBS app_openpgp app_crypto)
+shellos_test(multisig LIBS app_bitcoin app_crypto)
 shellos_test(qrcode LIBS app_qrcode)
 shellos_test(tlv LIBS app_keycard)
 shellos_test(ecdsa_der LIBS app_crypto app_keycard)

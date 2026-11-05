@@ -1,6 +1,9 @@
 #include "multisig.h"
 
+#include <ctype.h>
+#include <stdint.h>
 #include <string.h>
+#include <strings.h>
 
 #include "crypto/base58.h"
 #include "crypto/bip32.h"
@@ -13,12 +16,14 @@
 #define MULTISIG_OP_CHECKMULTISIG 0xae
 
 static bool _parse_u32_dec(const char* s, size_t len, uint32_t* out) {
-  uint32_t v = 0;
   if (len == 0 || len > 10) return false;
 
+  uint32_t v = 0;
   for (size_t i = 0; i < len; i++) {
     if (s[i] < '0' || s[i] > '9') return false;
-    v = v * 10 + (uint32_t) (s[i] - '0');
+    const uint32_t digit = (uint32_t) (s[i] - '0');
+    if (v > (UINT32_MAX - digit) / 10) return false;
+    v = v * 10 + digit;
   }
   *out = v;
   return true;
@@ -26,12 +31,9 @@ static bool _parse_u32_dec(const char* s, size_t len, uint32_t* out) {
 
 static bool _parse_path(const char* s, uint32_t* path, uint8_t* path_len) {
   uint8_t count = 0;
-  size_t i = 0;
 
-  /* skip the leading "m" / "M" */
-  while (i < strlen(s) && s[i] != '/') i++;
-  if (i >= strlen(s)) return false;
-  i++;
+  if ((s[0] != 'm' && s[0] != 'M') || s[1] != '/') return false;
+  size_t i = 2;
 
   while (i < strlen(s)) {
     size_t j = i;
@@ -39,13 +41,14 @@ static bool _parse_path(const char* s, uint32_t* path, uint8_t* path_len) {
     bool hardened = false;
     size_t tok_len = j - i;
 
-    if (tok_len > 0 && (s[j - 1] == '\'' || s[j - 1] == 'h')) {
+    if (tok_len > 0 && (s[j - 1] == '\'' || tolower((unsigned char) s[j - 1]) == 'h')) {
       hardened = true;
       tok_len--;
     }
 
     uint32_t idx;
     if (!_parse_u32_dec(&s[i], tok_len, &idx)) return false;
+    if (idx & 0x80000000) return false;
     if (hardened) idx |= 0x80000000;
     if (count >= MULTISIG_MAX_PATH_LEN) return false;
 
@@ -61,19 +64,18 @@ static bool _parse_path(const char* s, uint32_t* path, uint8_t* path_len) {
 
 static size_t _path_to_str(const uint32_t* path, uint8_t path_len, char* out, size_t cap) {
   size_t off = 0;
-  if (cap == 0) return 0;
+  if (cap < 2) return 0;
 
   out[off++] = 'm';
   for (uint8_t i = 0; i < path_len; i++) {
-    if (off >= cap - 1) return 0;
-    out[off++] = '/';
     uint32_t idx = path[i];
     bool hardened = (idx & 0x80000000) != 0;
     uint8_t buf[UINT32_STRING_LEN];
     uint8_t* p = u32toa(idx & 0x7fffffff, buf, sizeof(buf));
     size_t nd = strlen((char*) p);
-    if (off + nd >= cap) return 0;
-    memcpy(&out[off], p, nd + 1);
+    if (off + 2 + nd + (hardened ? 1 : 0) > cap) return 0;
+    out[off++] = '/';
+    memcpy(&out[off], p, nd);
     off += nd;
     if (hardened) out[off++] = '\'';
   }
@@ -95,7 +97,7 @@ static bool _parse_policy(const char* s, uint8_t* m, uint8_t* n) {
 
   /* skip " of " */
   i++;
-  if (strncmp(&s[i], "of ", 3) != 0) return false;
+  if (strncasecmp(&s[i], "of ", 3) != 0) return false;
   i += 3;
 
   uint32_t nv;
@@ -107,12 +109,9 @@ static bool _parse_policy(const char* s, uint8_t* m, uint8_t* n) {
 }
 
 static bool _parse_format(const char* s, multisig_format_t* fmt) {
-  size_t len = strlen(s);
-
-  if (len == 5 && !strncmp(s, "P2WSH", 5)) { *fmt = MULTISIG_FORMAT_P2WSH; return true; }
-  if (len == 4 && !strncmp(s, "P2SH", 4)) { *fmt = MULTISIG_FORMAT_P2SH; return true; }
-  if (len == 10 && !strncmp(s, "P2SH-P2WSH", 10)) { *fmt = MULTISIG_FORMAT_P2WSH_P2SH; return true; }
-  if (len == 11 && !strncmp(s, "P2WSH-P2SH", 11)) { *fmt = MULTISIG_FORMAT_P2WSH_P2SH; return true; }
+  if (strcasecmp(s, "P2WSH") == 0) { *fmt = MULTISIG_FORMAT_P2WSH; return true; }
+  if (strcasecmp(s, "P2SH") == 0) { *fmt = MULTISIG_FORMAT_P2SH; return true; }
+  if (strcasecmp(s, "P2SH-P2WSH") == 0 || strcasecmp(s, "P2WSH-P2SH") == 0) { *fmt = MULTISIG_FORMAT_P2WSH_P2SH; return true; }
   return false;
 }
 
@@ -156,14 +155,14 @@ app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
     size_t vlen = strlen(value);
     while (vlen && (value[vlen - 1] == ' ' || value[vlen - 1] == '\t')) value[--vlen] = '\0';
 
-    if (!strcmp(key, "Name")) {
+    if (strcasecmp(key, "Name") == 0) {
       if (strlen(value) >= MULTISIG_MAX_NAME_LEN) return ERR_DATA;
       memcpy(out->name, value, strlen(value) + 1);
-    } else if (!strcmp(key, "Policy")) {
+    } else if (strcasecmp(key, "Policy") == 0) {
       if (!_parse_policy(value, &out->m, &out->n)) return ERR_DATA;
-    } else if (!strcmp(key, "Format")) {
+    } else if (strcasecmp(key, "Format") == 0) {
       if (!_parse_format(value, &out->format)) return ERR_DATA;
-    } else if (!strcmp(key, "Derivation")) {
+    } else if (strcasecmp(key, "Derivation") == 0) {
       /* Sets the path for all following keys until a new directive appears. */
       if (!_parse_path(value, cur_path, &cur_path_len)) return ERR_DATA;
       have_path = true;
