@@ -26,8 +26,9 @@ typedef struct {
 int ecdsa_sign(const ecdsa_curve *curve, const uint8_t *priv_key, const uint8_t *digest, uint8_t *sig);
 int ecdsa_verify(const ecdsa_curve *curve, const uint8_t *pub_key, const uint8_t *sig, const uint8_t *digest);
 int ecdsa_verify_raw_pub(const ecdsa_curve *curve, const uint8_t *pub_key, const uint8_t *sig, const uint8_t *digest);
-int ecdsa_get_public_key65(const ecdsa_curve *curve, const uint8_t *priv_key, uint8_t *pub_key);
-int ecdsa_get_public_key33(const ecdsa_curve *curve, const uint8_t *priv_key, uint8_t *pub_key);
+// Both write 0x04||x||y; the 33 byte form then rewrites the prefix according to y.
+int ecdsa_get_public_key65(const ecdsa_curve *curve, const uint8_t *priv_key, uint8_t pub_key[ECC256_POINT_SIZE + 1]);
+int ecdsa_get_public_key33(const ecdsa_curve *curve, const uint8_t *priv_key, uint8_t pub_key[ECC256_POINT_SIZE + 1]);
 int ecdsa_recover_pub_from_sig(const ecdsa_curve *curve, uint8_t *pub_key, const uint8_t *sig, const uint8_t *digest, int recid);
 #define DER_ECDSA_MAX_SIGNATURE_LEN 72
 

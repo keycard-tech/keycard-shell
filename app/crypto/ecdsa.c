@@ -55,10 +55,14 @@ int ecdsa_verify(const ecdsa_curve *curve, const uint8_t *pub_key, const uint8_t
 }
 
 int ecdsa_verify_raw_pub(const ecdsa_curve *curve, const uint8_t *pub_key, const uint8_t *sig, const uint8_t *digest) {
+  if (hal_ec_point_check(curve, pub_key) != HAL_SUCCESS) {
+    return 1;
+  }
+
   return hal_ecdsa_verify(curve, pub_key, sig, digest) == HAL_SUCCESS ? 0 : 1;
 }
 
-int ecdsa_get_public_key65(const ecdsa_curve *curve, const uint8_t *priv_key, uint8_t *pub_key) {
+int ecdsa_get_public_key65(const ecdsa_curve *curve, const uint8_t *priv_key, uint8_t pub_key[ECC256_POINT_SIZE + 1]) {
   if (hal_ec_point_multiply(curve, priv_key, curve->G, &pub_key[1]) != HAL_SUCCESS) {
     return 1;
   }
@@ -67,7 +71,7 @@ int ecdsa_get_public_key65(const ecdsa_curve *curve, const uint8_t *priv_key, ui
   return 0;
 }
 
-int ecdsa_get_public_key33(const ecdsa_curve *curve, const uint8_t *priv_key, uint8_t *pub_key) {
+int ecdsa_get_public_key33(const ecdsa_curve *curve, const uint8_t *priv_key, uint8_t pub_key[ECC256_POINT_SIZE + 1]) {
   if (ecdsa_get_public_key65(curve, priv_key, pub_key) != 0) {
     return 1;
   }
@@ -77,10 +81,9 @@ int ecdsa_get_public_key33(const ecdsa_curve *curve, const uint8_t *priv_key, ui
 }
 
 int ecdsa_recover_pub_from_sig(const ecdsa_curve *curve, uint8_t *pub_key, const uint8_t *sig, const uint8_t *digest, int recid) {
-  //TODO: sanity check on input
   const uint8_t* r = sig;
   const uint8_t* s = &sig[ECC256_ELEMENT_SIZE];
-  uint8_t r2[ECC256_ELEMENT_SIZE];
+  uint8_t x[ECC256_ELEMENT_SIZE];
 
   if ((hal_bn_cmp(r, curve->order) >= 0) || all_zero(r, ECC256_ELEMENT_SIZE)) {
     return 1;
@@ -90,17 +93,18 @@ int ecdsa_recover_pub_from_sig(const ecdsa_curve *curve, uint8_t *pub_key, const
     return 1;
   }
 
-  if (recid & 2) {
-    hal_bn_add(r, curve->order, r2);
-    r = r2;
+  memcpy(x, r, ECC256_ELEMENT_SIZE);
 
-    if (hal_bn_cmp(r, curve->prime) >= 0) {
+  if (recid & 2) {
+    hal_bn_add(r, curve->order, x);
+
+    if ((hal_bn_cmp(x, r) < 0) || (hal_bn_cmp(x, curve->prime) >= 0)) {
       return 1;
     }
   }
 
   uint8_t* P = &pub_key[1];
-  ec_uncompress_point(curve, r, recid, P);
+  ec_uncompress_point(curve, x, recid, P);
   if (hal_ec_point_check(curve, P) != HAL_SUCCESS) {
     return 1;
   }
@@ -126,6 +130,10 @@ int ecdh_multiply(const ecdsa_curve *curve, const uint8_t *priv_key, const uint8
   pub_key = ec_uncompress_key(curve, pub_key, buf);
 
   if (pub_key == NULL) {
+    return 1;
+  }
+
+  if (hal_ec_point_check(curve, pub_key) != HAL_SUCCESS) {
     return 1;
   }
 

@@ -128,6 +128,9 @@ static void test_recover_public_key(void) {
  * code makes wraps and the comparison it then makes against the prime is not the one that bit was
  * meant to trigger. What a caller depends on holds either way, and is what is asserted here: a
  * recovery id that is not the one the signer used does not hand back the signer's key. */
+/* The third bit of a recovery id asks for x = r + order, which is a field element only where r is
+ * below prime - order -- about 2^129 of the values r can take, and no signature here has an r that
+ * small. An id that is not the signer's must not return the signer, refused or otherwise. */
 static void test_recovery_id_bit_two_never_yields_the_signer(void) {
   for (size_t i = 0; i < ECDSA_RECOVER_COUNT; i++) {
     const ecdsa_recover_t* row = &ECDSA_RECOVER[i];
@@ -141,13 +144,43 @@ static void test_recovery_id_bit_two_never_yields_the_signer(void) {
     memset(out, 0xA5, sizeof(out));
 
     int err = ecdsa_recover_pub_from_sig(&secp256k1, out, sig, digest, row->recid | 2);
-    if (err != 0) {
-      continue; /* refused, which is what the bit deserves */
-    }
-    TEST_ASSERT_TRUE_MESSAGE(memcmp(own, out, UNCOMPRESSED) != 0,
-                           "a recovery id that is not the signer's returned the signer");
-    TEST_ASSERT_EQUAL_INT(HAL_SUCCESS, hal_ec_point_check(&secp256k1, &out[1]));
+    TEST_ASSERT_EQUAL_MESSAGE(1, err, row->sig);
+    TEST_ASSERT_EQUAL_UINT8(0xA5, out[0]); /* a refused call writes nothing */
   }
+}
+
+/* A public key is a point on the curve: SEC1 v2.0 5.6.2.3.1 step 4 for a verification and 5.7.1
+ * step 4 for an exchange. The accelerator computes its equation for any pair of coordinates, so
+ * the check is here rather than somewhere hoping the key came from a trusted place -- every caller
+ * of these three takes the key from outside. No fixed signature happens to verify against an
+ * off-curve point, so this is the rule and not a difference; the points are the ones PKA_CHECK
+ * marks as off the curve. */
+static void test_off_curve_public_key_is_not_a_key(void) {
+  uint8_t sig[PT], digest[EL], priv[EL];
+  TEST_GIVEN(PKA_VERIFY[0].sig, sig, PT);
+  TEST_GIVEN(PKA_VERIFY[0].digest, digest, EL);
+  TEST_GIVEN(ECDSA_ECDH[0].priv, priv, EL);
+
+  size_t checked = 0;
+  for (size_t i = 0; i < PKA_CHECK_COUNT; i++) {
+    if (PKA_CHECK[i].on_curve) {
+      continue;
+    }
+    uint8_t point[PT], key[UNCOMPRESSED], session[UNCOMPRESSED];
+    TEST_GIVEN(PKA_CHECK[i].point, point, PT);
+    key[0] = 0x04;
+    memcpy(key + 1, point, PT);
+    memset(session, 0xA5, sizeof(session));
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, ecdsa_verify(&secp256k1, key, sig, digest), PKA_CHECK[i].point);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, ecdsa_verify_raw_pub(&secp256k1, point, sig, digest),
+                                  PKA_CHECK[i].point);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, ecdh_multiply(&secp256k1, priv, key, session),
+                                  PKA_CHECK[i].point);
+    TEST_ASSERT_EQUAL_UINT8(0xA5, session[0]);
+    checked++;
+  }
+  TEST_ASSERT_TRUE(checked > 0);
 }
 
 /* Two numbers outside [1, order-1] are not a signature. The digest is a real one, so a refusal on
@@ -177,5 +210,6 @@ int main(void) {
   RUN_TEST(test_recover_public_key);
   RUN_TEST(test_recovery_id_bit_two_never_yields_the_signer);
   RUN_TEST(test_recover_refuses_a_signature_that_is_not_one);
+  RUN_TEST(test_off_curve_public_key_is_not_a_key);
   return UNITY_END();
 }
