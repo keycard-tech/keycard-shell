@@ -31,6 +31,7 @@ having here are buffer overflows and undefined behaviour.
 | `CMakeLists.txt` | One static library per app area (`app_crypto`, `app_bitcoin`, `app_ur`) plus `shellos_test()` |
 | `host/host_stm32.h` | Host platform definition: geometry and typedefs, no register access |
 | `host/hal_host.c` | Deterministic `hal_rng_next()`; anything needing silicon is deliberately left undefined |
+| `host/hal_pka_host.c` | The public key accelerator, computed with `app/crypto/bignum.c`: the five curve operations and the bignum helpers `app/` calls |
 | `host/host_data.c` | Constants that live in `app/mem.c` on the target (section attributes the host assembler rejects) |
 | `framework/` | `TEST_ASSERT_HEX` and hex helpers over Unity |
 | `unity/` | Vendored Unity 2.6.1 (MIT, see `unity/LICENSE.txt`) |
@@ -40,7 +41,10 @@ having here are buffer overflows and undefined behaviour.
 Adding a module means adding its `.c` files to a library in `CMakeLists.txt` and a
 `shellos_test(...)` line. If the linker then asks for a `hal_*` symbol, that module reaches
 hardware: stub it in `host/hal_host.c` only if a test can meaningfully drive it, otherwise
-the test belongs on the device.
+the test belongs on the device. Curve work is already driven: `host/hal_pka_host.c` computes what
+`stm32_crypto.c` hands to the PKA, so a module whose only missing symbol is `hal_ec_*`,
+`hal_ecdsa_*` or `hal_bn_*` is a host test waiting, with its expectations taken from a published
+source rather than from the stand-in.
 
 ## Where the expected values come from
 

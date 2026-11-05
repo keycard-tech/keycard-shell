@@ -14,6 +14,13 @@ size_t test_unhex(const char* hex, uint8_t* out, size_t max);
 void test_assert_hex_(const char* file, int line, const uint8_t* actual, size_t actual_len,
                       const char* expected_hex, const char* message);
 
+/* Feeds a vector into a buffer of the exact width the call requires. test_unhex refuses a vector
+ * that is too long; this also refuses one that is too short, whose tail would otherwise stay at
+ * whatever the buffer held. */
+void test_given_(const char* file, int line, const char* hex, uint8_t* out, size_t len);
+
+#define TEST_GIVEN(hex, out, len) test_given_(__FILE__, __LINE__, (hex), (out), (len))
+
 /* The vector headers carry expected values as hex strings; this decodes and compares, so a
  * failure prints both sides as hex rather than comparing a digest to its rendering. */
 #define TEST_ASSERT_HEX(actual, actual_len, expected_hex) \

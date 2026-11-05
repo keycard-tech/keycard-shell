@@ -47,6 +47,12 @@ char* test_hex(const uint8_t* data, size_t len) {
   return buf;
 }
 
+void test_given_(const char* file, int line, const char* hex, uint8_t* out, size_t len) {
+  size_t got = test_unhex(hex, out, len);
+  UnityAssertEqualNumber((UNITY_INT)len, (UNITY_INT)got, hex, (UNITY_LINE_TYPE)line,
+                         UNITY_DISPLAY_STYLE_UINT32);
+}
+
 void test_assert_hex_(const char* file, int line, const uint8_t* actual, size_t actual_len,
                       const char* expected_hex, const char* message) {
   uint8_t expected[2048];

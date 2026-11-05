@@ -47,6 +47,7 @@ SOURCES = {
     "bip39_wordlist.txt": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/english.txt",
     "bip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-mnemonic/master/vectors.json",
     "bip32.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0032.mediawiki",
+    "bip86.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0086.mediawiki",
     "base58.cpp": "https://raw.githubusercontent.com/bitcoin/bitcoin/master/src/base58.cpp",
     "bip173.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0173.mediawiki",
     "bip350.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0350.mediawiki",
@@ -64,6 +65,7 @@ SOURCES = {
     "slip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-shamir-mnemonic/master/vectors.json",
     "rfc4231.txt": "https://www.rfc-editor.org/rfc/rfc4231.txt",
     "rfc5869.txt": "https://www.rfc-editor.org/rfc/rfc5869.txt",
+    "rfc6979.txt": "https://www.rfc-editor.org/rfc/rfc6979.txt",
     "bip174.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0174.mediawiki",
     "bip371.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0371.mediawiki",
     "bip143.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0143.mediawiki",
@@ -9048,6 +9050,969 @@ def multisig_vectors() -> str:
                                   provenance=provenance('coldcard_multisig.html'))
 
 
+# ----------------------------------------------------------------- pka stand-in
+
+
+# secp256k1 as SEC 2 states it, and NIST P-256 as RFC 6979 states it. Both are checked before use:
+# the secp256k1 numbers against the table in app/crypto/secp256k1.c, the P-256 ones against the
+# document that the deterministic-k model is validated with below.
+PKA_CURVE = {
+    "p": 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F,
+    "n": 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141,
+    "a": 0,
+    "b": 7,
+    "gx": 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
+    "gy": 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,
+}
+
+PKA_P256 = {
+    "p": 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF,
+    "n": 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551,
+    "a": 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC,
+    "b": 0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B,
+    "gx": 0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296,
+    "gy": 0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5,
+}
+
+
+def pka_curve_table(name: str) -> dict:
+    """The curve constants as the firmware holds them, read out of its own table so that a vector
+    computed against PKA_CURVE below is known to describe the curve the stand-in is handed."""
+    text = (HERE.parents[1] / "app" / "crypto" / f"{name}.c").read_text()
+    body = text.split("const ecdsa_curve " + name + " = {", 1)[1].split("\n};", 1)[0]
+    fields = {}
+    for field in ("prime", "G", "order", "a", "b", "sqrt_exp"):
+        octets = re.findall(r"0x([0-9a-fA-F]{2})", body.split("." + field + " = {", 1)[1].split("},", 1)[0])
+        fields[field] = bytes(int(o, 16) for o in octets)
+    for field in ("prime", "order", "a", "b", "sqrt_exp"):
+        assert len(fields[field]) == 32, (field, len(fields[field]))
+    assert len(fields["G"]) == 64, len(fields["G"])
+    sign = re.search(r"\.a_sign = (A_SIGN_\w+)", body)
+    assert sign, "no a_sign in the table"
+    return fields, sign.group(1)
+
+
+def pka_check_curve_table() -> None:
+    fields, a_sign = pka_curve_table("secp256k1")
+    c = PKA_CURVE
+    assert fields["prime"].hex() == "%064x" % c["p"], "prime moved"
+    assert fields["order"].hex() == "%064x" % c["n"], "order moved"
+    assert fields["G"][:32].hex() == "%064x" % c["gx"], "G.x moved"
+    assert fields["G"][32:].hex() == "%064x" % c["gy"], "G.y moved"
+    assert fields["a"].hex() == "%064x" % c["a"] and a_sign == "A_SIGN_ZERO"
+    assert fields["b"].hex() == "%064x" % c["b"]
+    # The table's sqrt exponent is (p + 1) // 4, which is what a square root is raised to.
+    assert int(fields["sqrt_exp"].hex(), 16) == (c["p"] + 1) // 4, "sqrt_exp is not (p+1)//4"
+
+
+def pka_ec_add(p1, p2, P: int, A: int):
+    """Chord-and-tangent on y^2 = x^3 + A*x + B, with None as the point at infinity."""
+    if p1 is None:
+        return p2
+    if p2 is None:
+        return p1
+    x1, y1 = p1
+    x2, y2 = p2
+    if x1 == x2 and (y1 + y2) % P == 0:
+        return None
+    if p1 == p2:
+        slope = (3 * x1 * x1 + A) * pow(2 * y1, -1, P) % P
+    else:
+        slope = (y2 - y1) * pow(x2 - x1, -1, P) % P
+    x3 = (slope * slope - x1 - x2) % P
+    return (x3, (slope * (x1 - x3) - y1) % P)
+
+
+def pka_ec_mul(k: int, point, P: int, A: int):
+    acc = None
+    for bit in range(255, -1, -1):
+        acc = pka_ec_add(acc, acc, P, A)
+        if (k >> bit) & 1:
+            acc = pka_ec_add(acc, point, P, A)
+    return acc
+
+
+def pka_bits2int(block: bytes, q: int) -> int:
+    """RFC 6979 section 2.3.2: the leftmost bits of a block, at the width the group order needs.
+    A digest longer than the order loses its tail and a shorter one is taken whole, which is why
+    `e` in the signature equation is not the hash modulo the order."""
+    qlen = q.bit_length()
+    value = int.from_bytes(block, "big")
+    extra = len(block) * 8 - qlen
+    return value >> extra if extra > 0 else value
+
+
+def pka_rfc6979_k(q: int, priv: bytes, digest: bytes, hash_name: str) -> int:
+    """RFC 6979 section 3.2, the deterministic nonce. Validated against the appendix of the same
+    document before it is used for secp256k1, which that appendix does not cover."""
+    hlen = hashlib.new(hash_name).digest_size
+    qlen = q.bit_length()
+    rlen = (qlen + 7) // 8
+
+    def bits2octets(block: bytes) -> bytes:
+        return (pka_bits2int(block, q) % q).to_bytes(rlen, "big")
+
+    seed = priv + bits2octets(digest)
+    v = b"\x01" * hlen
+    key = b"\x00" * hlen
+    key = hmac.new(key, v + b"\x00" + seed, hash_name).digest()
+    v = hmac.new(key, v, hash_name).digest()
+    key = hmac.new(key, v + b"\x01" + seed, hash_name).digest()
+    v = hmac.new(key, v, hash_name).digest()
+    while True:
+        taken = b""
+        while len(taken) * 8 < qlen:
+            v = hmac.new(key, v, hash_name).digest()
+            taken += v
+        k = pka_bits2int(taken, q)
+        if 1 <= k < q:
+            return k
+        key = hmac.new(key, v + b"\x00", hash_name).digest()
+        v = hmac.new(key, v, hash_name).digest()
+
+
+def pka_parse_rfc6979() -> tuple[int, int, list[dict]]:
+    """Appendix A.2.5, the only 256-bit prime-field case the RFC publishes. It is P-256, not
+    secp256k1, so what it can pin is the model rather than the curve the firmware uses."""
+    text = fetch("rfc6979.txt")
+    head = "A.2.5.  ECDSA, 256 Bits (Prime Field)"
+    assert head in text, "rfc6979: appendix A.2.5 missing"
+    # rsplit, because the same heading is in the table of contents and the table of contents
+    # carries an A.2.6 line a few lines later.
+    section = text.rsplit(head, 1)[1]
+    for marker in ("\nA.2.6.", "\nA.3."):
+        if marker in section:
+            section = section.split(marker, 1)[0]
+
+    # "curve: NIST P-256" and the published q are what the section's triples are stated over.
+    assert "curve: NIST P-256" in section, "A.2.5 is not stated over NIST P-256"
+    q = int(re.search(r"\n\s+q = ([0-9A-F]+)", section).group(1), 16)
+    priv = int(re.search(r"\n\s+x = ([0-9A-F]+)", section).group(1), 16)
+    assert q == PKA_P256["n"], "A.2.5's q is not the P-256 order used here"
+
+    cases = []
+    for block in re.finditer(
+        r'With (SHA-\d+), message = "([A-Za-z]+)":\s*\n\s*k = ([0-9A-F]+)\s*\n\s*r = ([0-9A-F]+)\s*\n\s*s = ([0-9A-F]+)',
+        section,
+    ):
+        cases.append(
+            {
+                "hash": block.group(1).lower().replace("-", ""),
+                "message": block.group(2).encode(),
+                "k": int(block.group(3), 16),
+                "r": int(block.group(4), 16),
+                "s": int(block.group(5), 16),
+            }
+        )
+    return q, priv, cases
+
+
+def pka_validate_k_model() -> int:
+    """Every published triple of A.2.5 has to come out of the model, including its k. Returns the
+    number of triples checked, which the emitted header records."""
+    q, priv, cases = pka_parse_rfc6979()
+    if len(cases) != 10:
+        sys.exit(f"rfc6979 A.2.5: parsed {len(cases)} triples, expected 10")
+    if {c["hash"] for c in cases} != {"sha1", "sha224", "sha256", "sha384", "sha512"}:
+        sys.exit(f"rfc6979 A.2.5: hashes parsed were {sorted({c['hash'] for c in cases})}")
+
+    for case in cases:
+        digest = hashlib.new(case["hash"], case["message"]).digest()
+        k = pka_rfc6979_k(q, priv.to_bytes(32, "big"), digest, case["hash"])
+        assert k == case["k"], (case["hash"], case["message"], "%x" % k, "%x" % case["k"])
+        point = pka_ec_mul(k, (PKA_P256["gx"], PKA_P256["gy"]), PKA_P256["p"], PKA_P256["a"])
+        r = point[0] % q
+        s = pow(k, -1, q) * (pka_bits2int(digest, q) % q + r * priv) % q
+        assert (r, s) == (case["r"], case["s"]), case["hash"]
+    return len(cases)
+
+
+def pka_secp_sign(priv: int, digest: bytes) -> tuple[int, int, int]:
+    """(k, r, s) for secp256k1, the equation as RFC 6979 states it and as the stand-in computes
+    it. The caller proves each row against coincurve's independent signature of the same digest."""
+    c = PKA_CURVE
+    k = pka_rfc6979_k(c["n"], priv.to_bytes(32, "big"), digest, "sha256")
+    point = pka_ec_mul(k, (c["gx"], c["gy"]), c["p"], c["a"])
+    r = point[0] % c["n"]
+    s = pow(k, -1, c["n"]) * (pka_bits2int(digest, c["n"]) % c["n"] + r * priv) % c["n"]
+    assert r and s
+    return k, r, s
+
+
+def pka_coincurve_signature(priv: int, digest: bytes) -> tuple[int, int]:
+    """The same digest signed by libsecp256k1, whose default nonce is RFC 6979 without additional
+    data. A row whose (r, s) matches this is a row whose k matches what libsecp256k1 picked."""
+    import coincurve
+
+    key = coincurve.PrivateKey(priv.to_bytes(32, "big"))
+    # The digest is handed over as the hash of anything, because these rows are about the
+    # equation over a given digest rather than about a message.
+    der = key.sign(digest, hasher=lambda message: digest)
+    compact = coincurve.ecdsa.serialize_compact(coincurve.ecdsa.der_to_cdata(der))
+    public = coincurve.PublicKey.from_secret(priv.to_bytes(32, "big"))
+    assert public.verify(der, digest, hasher=lambda message: digest), "coincurve does not accept its own signature"
+    return int.from_bytes(compact[:32], "big"), int.from_bytes(compact[32:], "big")
+
+
+def pka_bip32_keys() -> list[tuple[int, bytes]]:
+    """(private key, published public key) for every level of BIP-32's test vector 1, pairing the
+    xprv and xpub of the same level. The document states K = point(k), and asserts it below."""
+    text = fetch("bip32.mediawiki")
+    assert "the secp256k1 base point with the integer p" in text, "BIP-32 no longer states point(p)"
+    section = text.split("===Test vector 1===", 1)[1].split("===Test vector 2", 1)[0]
+    assert "Seed (hex): 000102030405060708090a0b0c0d0e0f" in section, "test vector 1 is not the seed it was"
+    levels = re.findall(
+        r"\* Chain m[^\n]*\n\*\* ext pub: (xpub[0-9A-HJ-NP-Za-km-z]+)\n\*\* ext prv: (xprv[0-9A-HJ-NP-Za-km-z]+)",
+        section,
+    )
+    if len(levels) < 5:
+        sys.exit(f"bip32: paired {len(levels)} levels of test vector 1, expected at least 5")
+
+    pairs = []
+    for xpub, xprv in levels:
+        private = b58decode(xprv)[:-4][46:78]
+        public = b58decode(xpub)[:-4][45:78]
+        assert public[0] in (0x02, 0x03), public
+        pairs.append((int.from_bytes(private, "big"), public))
+    return pairs
+
+
+def pka_decompress(compressed: bytes) -> tuple[int, int]:
+    """A compressed key expanded by coincurve, which does its own square root."""
+    import coincurve
+
+    uncompressed = coincurve.PublicKey(compressed).format(compressed=False)
+    assert uncompressed[0] == 0x04, "coincurve did not expand the key"
+    return int.from_bytes(uncompressed[1:33], "big"), int.from_bytes(uncompressed[33:65], "big")
+
+
+def pka_point_hex(point) -> str:
+    return "" if point is None else "%064x%064x" % point
+
+
+def pka_bn_rows() -> dict[str, list[tuple[str, str, str, str, str, int]]]:
+    """The bignum helpers, against CPython. mod empty means the width-fixed add, sub and cmp."""
+    p, n = PKA_CURVE["p"], PKA_CURVE["n"]
+    W = 1 << 256
+    top = W - 1
+    rows: dict[str, list] = {key: [] for key in ("add", "sub", "cmp", "add_mod", "sub_mod", "mul_mod", "exp_mod", "inv_mod")}
+
+    for a, b in ((0, 0), (1, 2), (p - 1, 1), (top, 1), (top, top), (n - 1, n), (n, n), (2**128, 2**128 - 1)):
+        rows["add"].append(("", "%064x" % a, "%064x" % b, "", "%064x" % ((a + b) % W), 0))
+    for a, b in ((1, 1), (1, 2), (0, 1), (p, 1), (n, top), (0, top), (2**128, 2**128 + 1)):
+        rows["sub"].append(("", "%064x" % a, "%064x" % b, "", "%064x" % ((a - b) % W), 0))
+    for a, b, want in ((0, 0, 0), (0, 1, -1), (1, 0, 1), (top - 1, top, -1), (top, top, 0), (n, p, -1), (p, n, 1)):
+        rows["cmp"].append(("", "%064x" % a, "%064x" % b, "", "", want))
+    for modulus, label in ((p, "p"), (n, "n")):
+        for a, b in ((0, 0), (1, 1), (modulus - 1, 1), (modulus, 0), (modulus + 5, modulus - 6), (top, top)):
+            rows["add_mod"].append((label, "%064x" % a, "%064x" % b, "%064x" % modulus, "%064x" % ((a + b) % modulus), 0))
+            rows["sub_mod"].append((label, "%064x" % a, "%064x" % b, "%064x" % modulus, "%064x" % ((a - b) % modulus), 0))
+            rows["mul_mod"].append((label, "%064x" % a, "%064x" % b, "%064x" % modulus, "%064x" % (a * b % modulus), 0))
+        for exponent, answer in ((0, 1), (1, 2), (2, 4), (255, pow(2, 255, modulus))):
+            rows["exp_mod"].append((label, "%064x" % 2, "%064x" % exponent, "%064x" % modulus, "%064x" % answer, 0))
+        rows["exp_mod"].append((label, "%064x" % top, "%064x" % (modulus - 1), "%064x" % modulus, "%064x" % pow(top, modulus - 1, modulus), 0))
+        for a in (1, 2, modulus - 1, modulus + 1, (modulus >> 1) + 1):
+            rows["inv_mod"].append((label, "%064x" % a, "", "%064x" % modulus, "%064x" % pow(a, -1, modulus), 0))
+    # Fermat reaches zero the same way as any other input, and answers zero. Nothing in app/ asks.
+    for modulus, label in ((p, "p"), (n, "n")):
+        rows["inv_mod"].append((label, "%064x" % 0, "", "%064x" % modulus, "%064x" % 0, 0))
+    # The square root exponent the curve table carries, applied to a residue.
+    rows["exp_mod"].append(("sqrt", "%064x" % 4, "%064x" % ((p + 1) // 4), "%064x" % p, "%064x" % 2, 0))
+    return rows
+
+
+def bip32_public_levels() -> list[dict]:
+    """Every xpub BIP-32's test vectors publish, in document order, with the derivation path
+    rebuilt from the depth and child-number fields of the serialisation itself."""
+    text = fetch("bip32.mediawiki")
+    levels, stack = [], []
+    for kind, key in re.findall(r"\*\* ext (pub|prv): (x(?:pub|prv)[0-9A-HJ-NP-Za-km-z]+)", text):
+        if kind != "pub":
+            continue
+        raw = b58decode(key)[:-4]
+        version, depth, child = raw[:4], raw[4], int.from_bytes(raw[9:13], "big")
+        assert version == bytes.fromhex("0488b21e"), version.hex()
+        while len(stack) > depth:
+            stack.pop()
+        assert len(stack) == depth, (depth, stack)
+        stack.append(child)
+        levels.append(
+            {
+                "path": "m"
+                + "".join(
+                    "/%d%s" % (c & 0x7FFFFFFF, "H" if c & 0x80000000 else "") for c in stack[1:]
+                ),
+                "depth": depth,
+                "index": child,
+                "chain": raw[13:45],
+                "pub": raw[45:78],
+            }
+        )
+    assert len(levels) >= 12, len(levels)
+    return levels
+
+
+def bip32_vectors() -> str:
+    levels = bip32_public_levels()
+
+    def uncompressed(level) -> str:
+        x, y = pka_decompress(level["pub"])
+        return "04%064x%064x" % (x, y)
+
+    def derives(parent, child) -> bool:
+        return child["depth"] == parent["depth"] + 1
+
+    def public_step(parent, child) -> bool:
+        return derives(parent, child) and not child["index"] & 0x80000000
+
+    ckd = []
+    for parent, child in zip(levels, levels[1:]):
+        if not public_step(parent, child):
+            continue
+        ckd.append(
+            (
+                child["path"],
+                uncompressed(parent),
+                hexs(parent["chain"]),
+                child["index"],
+                uncompressed(child),
+                hexs(child["chain"]),
+                1,
+            )
+        )
+    for parent, child in zip(levels, levels[1:]):
+        if derives(parent, child) and child["index"] & 0x80000000:
+            ckd.append(
+                (
+                    "%s, asked for with the hardened bit set" % parent["path"],
+                    uncompressed(parent),
+                    hexs(parent["chain"]),
+                    child["index"],
+                    "",
+                    "",
+                    0,
+                )
+            )
+
+    walk = []
+    for account, change, leaf in zip(levels, levels[1:], levels[2:]):
+        if public_step(account, change) and public_step(change, leaf):
+            walk.append(
+                (
+                    account["path"],
+                    uncompressed(account),
+                    hexs(account["chain"]),
+                    change["index"],
+                    leaf["index"],
+                    uncompressed(change),
+                    hexs(change["chain"]),
+                    hexs(leaf["pub"]),
+                )
+            )
+    if not walk:
+        sys.exit("bip32: no account/change/leaf triple of published public keys")
+
+    def ckd_row(r):
+        return (cstr(r[0]), cstr(r[1]), cstr(r[2]), "%dU" % r[3], cstr(r[4]), cstr(r[5]), "%d" % r[6])
+
+    def walk_row(r):
+        return (
+            cstr(r[0]),
+            cstr(r[1]),
+            cstr(r[2]),
+            "%dU" % r[3],
+            "%dU" % r[4],
+            cstr(r[5]),
+            cstr(r[6]),
+            cstr(r[7]),
+        )
+
+    ckd_body = ",\n".join("  {%s}" % ", ".join(ckd_row(r)) for r in ckd)
+    walk_body = ",\n".join("  {%s}" % ", ".join(walk_row(r)) for r in walk)
+
+    return f"""#ifndef VECTORS_BIP32_H
+#define VECTORS_BIP32_H
+
+/* spec: {provenance('bip32.mediawiki')}
+ * reference: coincurve expands each published key to the uncompressed form the code works in
+ *
+ * Two consecutive xpubs of one test chain, where the child's number has the hardened bit clear,
+ * are a public derivation the standard defines: parent key, parent chain code, index, child key
+ * and child chain code all come out of the document. The hardened rows are the same parents asked
+ * for with the hardened bit set, which is the one input the code is told to refuse; BIP-32
+ * publishes nothing to compare against there, so those rows claim only that no key comes out.
+ */
+typedef struct {{
+  const char* path;
+  const char* parent_pub;
+  const char* parent_chain;
+  unsigned index;
+  const char* child_pub; /* empty when ok is 0 */
+  const char* child_chain;
+  int ok;
+}} bip32_ckd_t;
+
+static const bip32_ckd_t BIP32_CKD[] = {{
+{ckd_body}
+}};
+
+#define BIP32_CKD_COUNT (sizeof(BIP32_CKD) / sizeof(BIP32_CKD[0]))
+
+/* The same published chain walked through the account context: setup at the account level, then
+ * the change level, then a leaf. The leaf is compared as the document writes it, compressed,
+ * because that is the form the context hands to the address encoders. */
+typedef struct {{
+  const char* account_path;
+  const char* account_pub;
+  const char* account_chain;
+  unsigned change;
+  unsigned leaf;
+  const char* change_pub;
+  const char* change_chain;
+  const char* leaf_pub;
+}} bip32_walk_t;
+
+static const bip32_walk_t BIP32_WALK[] = {{
+{walk_body}
+}};
+
+#define BIP32_WALK_COUNT (sizeof(BIP32_WALK) / sizeof(BIP32_WALK[0]))
+
+#endif /* VECTORS_BIP32_H */
+"""
+
+
+def taproot_vectors() -> str:
+    """BIP-86 publishes, for each of three leaves, the leaf's xprv, the x-only internal key and the
+    taproot output key, together with the account xpub the same leaves are derived from
+    publicly. All of it is used: the private key proves the internal key, the internal key and its
+    TapTweak prove the output key, and only then is a row emitted."""
+    text = fetch("bip86.mediawiki")
+    c = PKA_CURVE
+    g = (c["gx"], c["gy"])
+
+    account = None
+    rows = []
+    for chunk in text.split("// Account 0,")[1:]:
+        path = re.search(r"= (m(?:/[0-9]+'?)+)", chunk)
+        xpub = re.search(r"xpub\s*= (xpub[0-9A-HJ-NP-Za-km-z]+)", chunk)
+        assert path and xpub, chunk[:60]
+        if not re.search(r"internal_key = [0-9a-f]{64}", chunk):
+            account = xpub.group(1)
+            continue
+        internal = re.search(r"internal_key = ([0-9a-f]{64})", chunk).group(1)
+        output = re.search(r"output_key\s*= ([0-9a-f]{64})", chunk).group(1)
+        xprv = re.search(r"xprv\s*= (xprv[0-9A-HJ-NP-Za-km-z]+)", chunk)
+        assert xprv, path.group(1)
+        private = int.from_bytes(b58decode(xprv.group(1))[:-4][46:78], "big")
+        x, y = pka_ec_mul(private, g, c["p"], c["a"])
+        assert "%064x" % x == internal, path.group(1)
+        assert b58decode(xpub.group(1))[:-4][45:78] == bytes.fromhex("%02x%064x" % (0x02 | (y & 1), x))
+
+        # BIP-341 tweaks the even-y internal point, which is what the caller's prefix byte records.
+        even = (x, y) if y % 2 == 0 else (x, c["p"] - y)
+        tweak = int.from_bytes(tagged_hash("TapTweak", bytes.fromhex(internal)), "big")
+        q = pka_ec_add(even, pka_ec_mul(tweak, g, c["p"], c["a"]), c["p"], c["a"])
+        assert "%064x" % q[0] == output, path.group(1)
+
+        steps = [int(part.rstrip("'")) for part in path.group(1).split("/")[1:]]
+        assert not steps[-1] & 0x80000000 and not steps[-2] & 0x80000000, path.group(1)
+        assert account, "a leaf appeared before its account xpub"
+        body = b58decode(account)[:-4]
+        assert body[:4] == bytes.fromhex("0488b21e"), body[:4].hex()
+        ax, ay = pka_decompress(body[45:78])
+        rows.append(
+            (
+                path.group(1).replace("'", "H"),
+                "04%064x%064x" % (ax, ay),
+                hexs(body[13:45]),
+                steps[-2],
+                steps[-1],
+                "%02x%064x%064x" % (0x02 | (y & 1), x, y),
+                output,
+                y & 1,
+            )
+        )
+    if len(rows) < 3:
+        sys.exit(f"bip86: parsed {len(rows)} output keys, expected at least 3")
+    if not (any(row[7] for row in rows) and any(not row[7] for row in rows)):
+        sys.exit("bip86: the published internal keys are all of one parity")
+
+    body = ",\n".join(
+        "  {%s, %s, %s, %dU, %dU, %s, %s}"
+        % (cstr(r[0]), cstr(r[1]), cstr(r[2]), r[3], r[4], cstr(r[5]), cstr(r[6]))
+        for r in rows
+    )
+    even, odd = (sum(1 for r in rows if not r[7]), sum(1 for r in rows if r[7]))
+
+    return f"""#ifndef VECTORS_TAPROOT_H
+#define VECTORS_TAPROOT_H
+
+/* spec: {provenance('bip86.mediawiki')}
+ *
+ * Three leaves of the BIP-86 test vector. The document publishes the account xpub they derive
+ * from publicly, each leaf's own xprv, the x-only internal key and the output key. The generator
+ * first recomputes the internal key from the private key and then the output key from the internal
+ * key and its TapTweak, so the published quadruple is consistent with the standard before any of
+ * it reaches a test.
+ *
+ * {even} of these internal keys have an even y and {odd} an odd one, which is the difference
+ * between handing the point to the tweak as it stands and negating it first. The internal buffer
+ * is the layout bip32_ctx_t.leaf_pub holds: a SEC1 compression prefix, then x || y.
+ */
+typedef struct {{
+  const char* path;
+  const char* account_pub; /* the account xpub, 0x04 || x || y */
+  const char* account_chain;
+  unsigned change;
+  unsigned index;
+  const char* internal; /* 0x02|parity || x || y */
+  const char* witprog;
+}} taproot_t;
+
+static const taproot_t TAPROOT_OUTPUT_KEY[] = {{
+{body}
+}};
+
+#define TAPROOT_OUTPUT_KEY_COUNT (sizeof(TAPROOT_OUTPUT_KEY) / sizeof(TAPROOT_OUTPUT_KEY[0]))
+
+#endif /* VECTORS_TAPROOT_H */
+"""
+
+
+def ecdsa_curve_vectors() -> str:
+    """The curve side of app/crypto/ecdsa.c: public keys, ECDH, and signature recovery."""
+    c = PKA_CURVE
+    g = (c["gx"], c["gy"])
+    p, n = c["p"], c["n"]
+
+    def point_hex(point) -> str:
+        return "04%064x%064x" % point
+
+    keys = pka_bip32_keys()
+
+    pubkey = []
+    for priv, compressed in keys:
+        x, y = pka_decompress(compressed)
+        assert (x, y) == pka_ec_mul(priv, g, p, c["a"]), "the published key is not the private key's"
+        pubkey.append(("%064x" % priv, point_hex((x, y)), "%02x%064x" % (0x02 | (y & 1), x)))
+
+    ecdh = []
+    for first, second in zip(keys, keys[1:]):
+        priv_a, compressed_a = first
+        priv_b, compressed_b = second
+        a, b = pka_decompress(compressed_a), pka_decompress(compressed_b)
+        shared = pka_ec_mul(priv_a, b, p, c["a"])
+        assert shared == pka_ec_mul(priv_b, a, p, c["a"]), "ECDH is not symmetric"
+        ecdh.append(("%064x" % priv_a, point_hex(b), point_hex(shared)))
+        ecdh.append(("%064x" % priv_b, point_hex(a), point_hex(shared)))
+
+    def point_over(x: int, parity: int) -> tuple[int, int]:
+        """The point whose x is x and whose y has the parity named; no such point exists when
+        x^3 + 7 is not a square, which is what the curve test in the code under test catches."""
+        return pka_decompress(bytes([0x02 | parity]) + x.to_bytes(32, "big"))
+
+    def recovered(r: int, s: int, digest: bytes, point) -> tuple[int, int]:
+        """The recovery the code does: r^-1 (s P + (order - digest) G). The digest is taken off the
+        order with an ordinary 256-bit subtraction, as the code does, before it is a scalar."""
+        z = ((n - int.from_bytes(digest, "big")) % (1 << 256)) % n
+        both = pka_ec_add(pka_ec_mul(s, point, p, c["a"]), pka_ec_mul(z, g, p, c["a"]), p, c["a"])
+        return pka_ec_mul(pow(r, -1, n), both, p, c["a"])
+
+    recover = []
+    for priv, digest, k, r, s in pka_signature_rows():
+        if int.from_bytes(digest, "big") > n:
+            continue  # below the order, or the subtraction the code does goes negative
+        own_point = pka_ec_mul(priv, g, p, c["a"])
+        parity = pka_ec_mul(k, g, p, c["a"])[1] & 1
+        signature = "%064x%064x" % (r, s)
+        assert recovered(r, s, digest, point_over(r, parity)) == own_point, \
+            "the recovery formula does not return the signer"
+        recover.append(("the signer's own key", point_hex(own_point), signature, hexs(digest), parity))
+
+        other = recovered(r, s, digest, point_over(r, parity ^ 1))
+        assert other != own_point
+        recover.append(("the other point over the same x", point_hex(other), signature, hexs(digest), parity ^ 1))
+
+
+    def pubkey_row(r):
+        return (cstr(r[0]), cstr(r[1]), cstr(r[2]))
+
+    def ecdh_row(r):
+        return (cstr(r[0]), cstr(r[1]), cstr(r[2]))
+
+    # A signature is two elements of the order, and the recovery entry point is the one place in
+    # ecdsa.c that says so out loud. The first real signature provides the half that is fine.
+    first_priv, first_digest, _k, first_r, first_s = pka_signature_rows()[0]
+    reject = [
+        ("r of 0", "%064x%064x" % (0, first_s), hexs(first_digest)),
+        ("r of the order", "%064x%064x" % (n, first_s), hexs(first_digest)),
+        ("r above the order", "%064x%064x" % (n + 1, first_s), hexs(first_digest)),
+        ("s of 0", "%064x%064x" % (first_r, 0), hexs(first_digest)),
+        ("s of the order", "%064x%064x" % (first_r, n), hexs(first_digest)),
+        ("s above the order", "%064x%064x" % (first_r, n + 1), hexs(first_digest)),
+    ]
+
+    def reject_row(r):
+        return (cstr(r[0]), cstr(r[1]), cstr(r[2]))
+
+    def recover_row(r):
+        return (cstr(r[0]), cstr(r[1]), cstr(r[2]), cstr(r[3]), "%dU" % r[4])
+
+    def body(rows, fields):
+        return ",\n".join("  {%s}" % ", ".join(fields(r)) for r in rows)
+
+    return f"""#ifndef VECTORS_ECDSA_CURVE_H
+#define VECTORS_ECDSA_CURVE_H
+
+/* spec: {provenance('bip32.mediawiki')}
+ * reference: CPython integers, with coincurve expanding each published key and signing the
+ * digests the recovery rows run over
+ *
+ * The public keys are the levels of BIP-32 test vector 1, whose xprv and xpub are published
+ * together, so the point of a private key is a published value rather than a computed one; the
+ * generator recomputes each one and asserts it before emitting.
+ *
+ * The ECDH rows are pairs of those same published keys, each shared secret stated from both ends,
+ * which is the property the exchange is defined by.
+ *
+ * The recovery rows are signatures from vectors_pka.h over a digest below the order, and a
+ * signature is recovered twice: once with the id the generator derives from the nonce, for which
+ * the standard's own recovery formula is asserted to return the published key of the signer, and
+ * once with the id naming the other y over the same x, for which it states what that formula
+ * yields. An x taken from a real point is a coordinate of points whatever parity is read from it,
+ * so neither row asks for a refusal.
+ *
+ * The other bit of a recovery id, which claims an x of r plus the order, is not here. On this
+ * curve that sum is past the width of a scalar unless r is under prime - order, a window of 2**32
+ * values out of the order, so what the bit does is a consequence of how the addition overflows
+ * rather than of the standard; the test covers it with the property that holds either way.
+ */
+typedef struct {{
+  const char* priv;
+  const char* pub; /* 0x04 || x || y */
+  const char* compressed; /* 0x02|parity || x */
+}} ecdsa_pubkey_t;
+
+static const ecdsa_pubkey_t ECDSA_PUBKEY[] = {{
+{body(pubkey, pubkey_row)}
+}};
+
+#define ECDSA_PUBKEY_COUNT (sizeof(ECDSA_PUBKEY) / sizeof(ECDSA_PUBKEY[0]))
+
+typedef struct {{
+  const char* priv;
+  const char* peer; /* 0x04 || x || y */
+  const char* shared; /* 0x04 || x || y */
+}} ecdsa_ecdh_t;
+
+static const ecdsa_ecdh_t ECDSA_ECDH[] = {{
+{body(ecdh, ecdh_row)}
+}};
+
+#define ECDSA_ECDH_COUNT (sizeof(ECDSA_ECDH) / sizeof(ECDSA_ECDH[0]))
+
+typedef struct {{
+  const char* name;
+  const char* pub; /* 0x04 || x || y */
+  const char* sig; /* r || s */
+  const char* digest;
+  unsigned recid; /* the id handed to the call, which returns the key above */
+}} ecdsa_recover_t;
+
+static const ecdsa_recover_t ECDSA_RECOVER[] = {{
+{body(recover, recover_row)}
+}};
+
+#define ECDSA_RECOVER_COUNT (sizeof(ECDSA_RECOVER) / sizeof(ECDSA_RECOVER[0]))
+
+/* Two numbers that are not a signature, because an element is in [1, order-1]. The recovery entry
+ * point is the one that checks, and the digest it then hashes is a valid one, so what a row tests
+ * is the check rather than anything behind it. */
+typedef struct {{
+  const char* name;
+  const char* sig; /* r || s */
+  const char* digest;
+}} ecdsa_reject_t;
+
+static const ecdsa_reject_t ECDSA_RECOVER_REJECTED[] = {{
+{body(reject, reject_row)}
+}};
+
+#define ECDSA_RECOVER_REJECTED_COUNT (sizeof(ECDSA_RECOVER_REJECTED) / sizeof(ECDSA_RECOVER_REJECTED[0]))
+
+#endif /* VECTORS_ECDSA_CURVE_H */
+"""
+
+
+def pka_signature_rows() -> list[tuple[int, bytes, int, int, int]]:
+    """(private key, digest, k, r, s), one row per (private key, digest). The k is what the
+    deterministic-k model picks; every row is then compared with a signature libsecp256k1 made
+    over the same private key and digest, since libsecp256k1's own nonce is RFC 6979 without
+    additional data."""
+    c = PKA_CURVE
+    n = c["n"]
+    pka_validate_k_model()
+
+    digests = [hashlib.sha256(b"keycard-shell pka %d" % i).digest() for i in range(6)]
+    digests.append(bytes(32))
+    digests.append(bytes([0xFF] * 32))
+
+    rows = []
+    privates = [priv for priv, _ in pka_bip32_keys()] + [1, n - 1, 0x1234567890ABCDEF]
+    for priv in privates:
+        for digest in digests:
+            k, r, s = pka_secp_sign(priv, digest)
+            signed = pka_coincurve_signature(priv, digest)
+            # libsecp256k1 hands back the lower of the two s when it signs, so the comparison is
+            # against either root; which one a row carries is the point of the s-above-n/2 check.
+            assert (r, s) == signed or (r, (n - s) % n) == signed, "model and libsecp256k1 disagree"
+            rows.append((priv, digest, k, r, s))
+    return rows
+
+
+def pka_vectors() -> str:
+    pka_check_curve_table()
+    checked = pka_validate_k_model()
+
+    c = PKA_CURVE
+    g = (c["gx"], c["gy"])
+    p, n = c["p"], c["n"]
+    neg_g = (g[0], (p - g[1]) % p)
+
+    sign_rows = pka_signature_rows()
+    high = [row for row in sign_rows if row[4] * 2 > n]
+    if not high:
+        sys.exit("no row had s above n/2, so the other root would go uncovered")
+
+    # --- verification: each signature accepts, and each way of perturbing it does not.
+    verify_rows = []
+    for index, (priv, digest, _k, r, s) in enumerate(sign_rows):
+        public = pka_ec_mul(priv, g, p, c["a"])
+        verify_rows.append(("as signed", "%064x%064x" % (r, s), hexs(digest), pka_point_hex(public), 1))
+        if index >= 8:
+            continue  # one accept per row, and the perturbations of the first eight
+        flipped = bytearray(digest)
+        flipped[0] ^= 1
+        verify_rows.append(("digest bit flipped", "%064x%064x" % (r, s), hexs(bytes(flipped)), pka_point_hex(public), 0))
+        verify_rows.append(("digest one higher", "%064x%064x" % (r, s), "%064x" % ((int.from_bytes(digest, "big") + 1) % (1 << 256)), pka_point_hex(public), 0))
+        verify_rows.append(("r one higher", "%064x%064x" % (r + 1, s), hexs(digest), pka_point_hex(public), 0))
+        verify_rows.append(("s one higher", "%064x%064x" % (r, s + 1), hexs(digest), pka_point_hex(public), 0))
+        verify_rows.append(("wrong key", "%064x%064x" % (r, s), hexs(digest), pka_point_hex(g), 0))
+        if index == 0:
+            # The all-zero digest is a real digest, so this row is about the equation rather than
+            # about a message; it is kept because it is the one digest a test reaches by accident.
+            verify_rows.append(("empty digest", "%064x%064x" % (r, s), hexs(bytes(32)), pka_point_hex(public), 0))
+    # Both roots of s satisfy the equation: negating s negates the scalar of the point it recovers,
+    # and negating a point leaves its x coordinate alone.
+    first = sign_rows[0]
+    public_first = pka_ec_mul(first[0], g, p, c["a"])
+    verify_rows.append(("s replaced by n - s", "%064x%064x" % (first[3], (n - first[4]) % n), hexs(first[1]), pka_point_hex(public_first), 1))
+    for zero in (0, n, n + 1, 1 << 255):
+        verify_rows.append(("r of %s" % hex(zero), "%064x%064x" % (zero, first[4]), hexs(first[1]), pka_point_hex(public_first), 0))
+        verify_rows.append(("s of %s" % hex(zero), "%064x%064x" % (first[3], zero), hexs(first[1]), pka_point_hex(public_first), 0))
+
+    # --- multiplication against the published keys of BIP-32's test vector 1, then the degenerate
+    # scalars, with the answers from CPython.
+    mul_rows = []
+    for priv, compressed in pka_bip32_keys():
+        x, y = pka_decompress(compressed)
+        assert (x, y) == pka_ec_mul(priv, g, p, c["a"]), "BIP-32's published key is not priv*G"
+        mul_rows.append(("%064x" % priv, pka_point_hex(g), "%064x%064x" % (x, y), 1))
+    for scalar, point, want in (
+        (2, g, pka_ec_mul(2, g, p, c["a"])),
+        (n - 1, g, pka_ec_mul(n - 1, g, p, c["a"])),
+        (n + 1, g, g),
+        (n - 2, neg_g, pka_ec_mul(n - 2, neg_g, p, c["a"])),
+        (1, neg_g, neg_g),
+        (0, g, None),
+        (n, g, None),
+        (n + (1 << 127), neg_g, pka_ec_mul(1 << 127, neg_g, p, c["a"])),
+        (n + 3, neg_g, pka_ec_mul(n + 3, neg_g, p, c["a"])),
+    ):
+        mul_rows.append(("%064x" % scalar, pka_point_hex(point), pka_point_hex(want), 0 if want is None else 1))
+
+    # --- the double ladder, which is how BIP-32's public child derivation and the taproot tweak
+    # reach the accelerator: s1*p1 + s2*p2.
+    ladder_rows = []
+    priv, compressed = pka_bip32_keys()[0]
+    parent = pka_decompress(compressed)
+    for tweak in (1, 2, int(hashlib.sha256(b"I").hexdigest(), 16), n - 1):
+        want = pka_ec_add(pka_ec_mul(1, parent, p, c["a"]), pka_ec_mul(tweak, g, p, c["a"]), p, c["a"])
+        ladder_rows.append(("%064x" % 1, pka_point_hex(parent), "%064x" % tweak, pka_point_hex(g), pka_point_hex(want), 1))
+    ladder_rows.append(("%064x" % 1, pka_point_hex(g), "%064x" % 2, pka_point_hex(g), pka_point_hex(pka_ec_mul(3, g, p, c["a"])), 1))
+    ladder_rows.append(("%064x" % 5, pka_point_hex(g), "%064x" % 3, pka_point_hex(neg_g), pka_point_hex(pka_ec_mul(2, g, p, c["a"])), 1))
+    ladder_rows.append(("%064x" % 1, pka_point_hex(g), "%064x" % (n - 1), pka_point_hex(g), "", 0))
+    ladder_rows.append(("%064x" % 0, pka_point_hex(g), "%064x" % (n - 2), pka_point_hex(neg_g), pka_point_hex(pka_ec_mul(2, g, p, c["a"])), 1))
+
+    # --- the curve test itself. A coordinate of p + x names the same field element, so it is the
+    # same point to arithmetic modulo p; the rest are not on the curve.
+    x0, y0 = pka_ec_mul(0x1000, g, p, c["a"])
+    check_rows = [(pka_point_hex(g), 1), (pka_point_hex(neg_g), 1), (pka_point_hex((x0, y0)), 1)]
+    for priv, compressed in pka_bip32_keys():
+        check_rows.append((pka_point_hex(pka_decompress(compressed)), 1))
+    # A point whose x is small enough that x + p still fits in 32 bytes, for the one non-canonical
+    # encoding this curve can express at all: p is within 2**32 of 2**256, so there is barely any
+    # room above it, and y + p does not fit for a point that exists.
+    head = lambda x: (x * x * x + c["a"] * x + c["b"]) % p
+    x_small = next(value for value in range(2, 500) if pow(head(value), (p - 1) // 2, p) == 1)
+    y_small = pow(head(x_small), (p + 1) // 4, p)
+    assert y_small * y_small % p == head(x_small)
+
+    check_rows += [
+        ("%064x%064x" % (x0, y0 + 1), 0),
+        ("%064x%064x" % (x0 + 1, y0), 0),
+        ("%064x%064x" % (x0, (p - y0 + 1) % p), 0),
+        ("0" * 128, 0),
+        ("%064x%064x" % (p - 1, 1), 0),
+        ("%064x%064x" % (p, 0), 0),
+        ("%064x%064x" % (1, 1), 0),
+        ("%064x%064x" % (x_small, y_small), 1),
+        ("%064x%064x" % (p + x_small, y_small), 1),
+    ]
+    # Each row against the curve equation, arithmetic modulo p, so an off-curve row is off it for
+    # the reason the stand-in will give, and every point is a coordinate pair the encoder can hold.
+    for point, claims in check_rows:
+        assert len(point) == 128 and all(ch in "0123456789abcdef" for ch in point), point
+        x = int(point[:64], 16) % p
+        y = int(point[64:], 16) % p
+        on = (y * y - (x * x * x + c["a"] * x + c["b"])) % p == 0
+        assert on == bool(claims), point
+
+    bn = pka_bn_rows()
+
+    def table(name: str, type_name: str, rows, fields) -> str:
+        body = ",\n".join("  {%s}" % ", ".join(f for f in fields(row)) for row in rows)
+        # Every literal that is made of hex digits is a byte string, so an odd length would be a
+        # value the test's reader has to guess at. A name column always has a space or a
+        # non-hex letter in it, which is what keeps this check from tripping on those.
+        for literal in re.findall(r'"([0-9a-f]*)"', body):
+            assert len(literal) % 2 == 0, (name, literal)
+
+        return f"""static const {type_name} {name}[] = {{
+{body}
+}};
+
+#define {name}_COUNT (sizeof({name}) / sizeof({name}[0]))
+"""
+
+    def sign_row(row):
+        priv, digest, k, r, s = row
+        return (cstr("%064x" % priv), cstr(hexs(digest)), cstr("%064x" % k), cstr("%064x" % r), cstr("%064x" % s))
+
+    def verify_row(row):
+        name, sig, digest, pub, verdict = row
+        return (cstr(name), cstr(sig), cstr(digest), cstr(pub), str(verdict))
+
+    def mul_row(row):
+        scalar, point, out, verdict = row
+        return (cstr(scalar), cstr(point), cstr(out), str(verdict))
+
+    def ladder_row(row):
+        s1, p1, s2, p2, out, verdict = row
+        return (cstr(s1), cstr(p1), cstr(s2), cstr(p2), cstr(out), str(verdict))
+
+    def check_row(row):
+        point, verdict = row
+        return (cstr(point), str(verdict))
+
+    def bn_row(row):
+        label, a, b, modulus, out, want = row
+        return (cstr(label), cstr(a), cstr(b), cstr(modulus), cstr(out), str(want))
+
+    return f"""#ifndef VECTORS_PKA_H
+#define VECTORS_PKA_H
+
+/* spec: {provenance('rfc6979.txt')}
+ * reference: CPython integers, and coincurve/libsecp256k1 for every signature row
+ * {provenance('bip32.mediawiki')}
+ *
+ * {checked} triples of RFC 6979 appendix A.2.5 were reproduced by the same deterministic-k model
+ * that produced the k of every row below, k, r and s all matching. A.2.5 is NIST P-256, and
+ * secp256k1 is the only curve this firmware builds, so what the appendix pins is the model; each
+ * row below is then checked against a signature libsecp256k1 made for the same private key and
+ * the same digest, which is where the secp256k1 answer comes from.
+ *
+ * The curve constants are compared against app/crypto/secp256k1.c before a row is emitted, and
+ * its sqrt_exp against (p+1)//4. The keys of BIP-32 test vector 1 are published as both an xprv
+ * and an xpub of the same level, which is what makes priv*G a published value rather than a
+ * computed one; the decompression of each published key is done by coincurve.
+ */
+typedef struct {{
+  const char* priv;
+  const char* digest;
+  const char* k;
+  const char* r;
+  const char* s;
+}} pka_sign_t;
+
+typedef struct {{
+  const char* name;
+  const char* sig;      /* r then s, 64 bytes */
+  const char* digest;
+  const char* point;    /* x then y, no prefix */
+  int accept;           /* 0 means the equation must not hold */
+}} pka_verify_t;
+
+typedef struct {{
+  const char* scalar;
+  const char* point;
+  const char* out;
+  int ok;               /* 0 where the answer is the point at infinity, which has no encoding */
+}} pka_mul_t;
+
+typedef struct {{
+  const char* s1;
+  const char* p1;
+  const char* s2;
+  const char* p2;
+  const char* out;
+  int ok;
+}} pka_ladder_t;
+
+typedef struct {{
+  const char* point;
+  int on_curve;
+}} pka_check_t;
+
+typedef struct {{
+  const char* label;    /* which modulus the row was computed over, empty for the fixed-width ops */
+  const char* a;
+  const char* b;        /* the exponent of exp_mod; empty where unused */
+  const char* mod;      /* empty for add, sub and cmp, which are not reduced */
+  const char* out;      /* empty for cmp */
+  int cmp;              /* the answer for cmp, -1, 0 or 1; unused otherwise */
+}} pka_bn_t;
+
+{table("PKA_SIGN", "pka_sign_t", sign_rows, sign_row)}
+
+{table("PKA_VERIFY", "pka_verify_t", verify_rows, verify_row)}
+
+{table("PKA_MUL", "pka_mul_t", mul_rows, mul_row)}
+
+{table("PKA_LADDER", "pka_ladder_t", ladder_rows, ladder_row)}
+
+{table("PKA_CHECK", "pka_check_t", check_rows, check_row)}
+
+{table("PKA_BN_ADD", "pka_bn_t", bn['add'], bn_row)}
+
+{table("PKA_BN_SUB", "pka_bn_t", bn['sub'], bn_row)}
+
+{table("PKA_BN_CMP", "pka_bn_t", bn['cmp'], bn_row)}
+
+{table("PKA_BN_ADD_MOD", "pka_bn_t", bn['add_mod'], bn_row)}
+
+{table("PKA_BN_SUB_MOD", "pka_bn_t", bn['sub_mod'], bn_row)}
+
+{table("PKA_BN_MUL_MOD", "pka_bn_t", bn['mul_mod'], bn_row)}
+
+{table("PKA_BN_EXP_MOD", "pka_bn_t", bn['exp_mod'], bn_row)}
+
+{table("PKA_BN_INV_MOD", "pka_bn_t", bn['inv_mod'], bn_row)}
+
+#endif
+"""
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -9069,6 +10034,10 @@ def main() -> None:
         "vectors_psbt_ctx.h": ctx_vectors(),
         "vectors_sighash.h": sighash_vectors(),
         "vectors_bignum.h": bignum_vectors(),
+        "vectors_pka.h": pka_vectors(),
+        "vectors_bip32.h": bip32_vectors(),
+        "vectors_taproot.h": taproot_vectors(),
+        "vectors_ecdsa_curve.h": ecdsa_curve_vectors(),
         "vectors_ethereum.h": ethereum_vectors(),
         "vectors_shamir.h": shamir_vectors(),
         "vectors_tlv.h": tlv_vectors(),

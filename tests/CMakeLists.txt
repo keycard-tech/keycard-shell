@@ -50,6 +50,7 @@ target_include_directories(unity PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/unity)
 add_library(test_framework STATIC
     framework/test_util.c
     host/hal_host.c
+    host/hal_pka_host.c
     host/host_data.c
 )
 target_include_directories(test_framework PUBLIC
@@ -108,12 +109,14 @@ target_link_libraries(app_crypto PUBLIC app_util)
 add_library(app_bitcoin STATIC
     ${SHELLOS_ROOT}/app/bitcoin/compactsize.c
     # A setup file arrives from a camera and the descriptor then lives in the store, so its parser
-    # and its storage form are host tests. Address derivation is not: it ends at the PKA.
+    # and its storage form are host tests. The address side is here too now that the PKA has a
+    # stand-in (host/hal_pka_host.c): taproot's output key is one point operation.
     ${SHELLOS_ROOT}/app/bitcoin/multisig.c
     ${SHELLOS_ROOT}/app/bitcoin/psbt.c
     ${SHELLOS_ROOT}/app/bitcoin/psbt_tx.c
     ${SHELLOS_ROOT}/app/bitcoin/psbt_ctx.c
     ${SHELLOS_ROOT}/app/bitcoin/sighash.c
+    ${SHELLOS_ROOT}/app/bitcoin/taproot.c
     ${SHELLOS_ROOT}/app/bitcoin/tx.c
 )
 target_include_directories(app_bitcoin PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
@@ -214,8 +217,12 @@ function(shellos_test name)
   add_executable(test_${name} ${CMAKE_CURRENT_SOURCE_DIR}/${TEST_SRC})
   target_compile_options(test_${name} PRIVATE ${SHELLOS_COMMON_FLAGS})
   # test_framework supplies the hal and data symbols the application objects reference, so it
-  # has to come after them on the link line.
-  target_link_libraries(test_${name} PRIVATE ${TEST_LIBS} test_framework)
+  # has to come after them on the link line. The two also need each other in the other
+  # direction -- hal_pka_host.c computes with bignum.c out of app_crypto, and app_crypto's curve
+  # code calls back into it -- which a single left-to-right scan of static archives cannot
+  # resolve, hence the group.
+  target_link_libraries(test_${name} PRIVATE
+      -Wl,--start-group ${TEST_LIBS} test_framework -Wl,--end-group)
   add_test(NAME ${name} COMMAND test_${name})
   # The exit code is the verdict, but a test whose main() forgets to return UNITY_END() exits 0
   # whatever it found, so the summary line is checked as well.
@@ -261,7 +268,11 @@ shellos_test(multisig LIBS app_bitcoin app_crypto)
 shellos_test(qrcode LIBS app_qrcode)
 shellos_test(tlv LIBS app_keycard)
 shellos_test(ecdsa_der LIBS app_crypto app_keycard)
+shellos_test(ecdsa_curve LIBS app_crypto)
 shellos_test(keycard_signature LIBS app_crypto app_keycard)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)
+shellos_test(hal_pka LIBS app_crypto)
+shellos_test(bip32 LIBS app_crypto)
+shellos_test(taproot LIBS app_bitcoin app_crypto)
