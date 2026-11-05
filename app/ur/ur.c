@@ -163,6 +163,9 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
 
   if (part.ur_part_checksum != ur->crc) {
     ur->crc = part.ur_part_checksum;
+    ur->seq_len = part.ur_part_seqLen;
+    ur->message_len = part.ur_part_messageLen;
+    ur->fragment_len = part.ur_part_data.len;
     ur->data = NULL;
     ur->data_len = 0;
     ur_desc_zero(&ur->part_mask);
@@ -171,6 +174,10 @@ app_err_t ur_process_part(ur_t* ur, const uint8_t* in, size_t in_len) {
     }
 
     random_sampler_init(part.ur_part_seqLen, ur->sampler_probs, ur->sampler_aliases);
+  } else if ((part.ur_part_seqLen != ur->seq_len) ||
+             (part.ur_part_messageLen != ur->message_len) ||
+             (part.ur_part_data.len != ur->fragment_len)) {
+    return ERR_DATA;
   }
 
   part_len = part.ur_part_data.len;

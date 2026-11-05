@@ -7,8 +7,10 @@
 #include "ur/bytewords.h"
 #include "ur/ur.h"
 #include "ur/ur_decode.h"
+#include "ur/sampler.h"
 #include "ur/ur_encode.h"
 #include "unity.h"
+#include "vectors/vectors_ur.h"
 
 /* The receiver keeps one scratch buffer, MEM_HEAP_SIZE on the device, and lays the part being
  * decoded, the reassembly slots and the finished message inside it. Every buffer here is exactly
@@ -647,6 +649,214 @@ static void test_encode_refuses_too_small_a_buffer(void) {
   TEST_ASSERT_EQUAL_INT(ERR_DATA, ur_encode(&out, not_a_type, sizeof(not_a_type)));
 }
 
+/* ------------------------------------------------- BCR-2024-001, and the type papers' own examples */
+
+static size_t part_body(const char* text, uint8_t* cbor, size_t max) {
+  const char* body = strrchr(text, '/');
+  TEST_ASSERT_NOT_NULL(body);
+  size_t len = bytewords_decode((const uint8_t*)(body + 1), strlen(body + 1), cbor, max);
+  TEST_ASSERT_TRUE(len > 0);
+  return len;
+}
+
+static void expect_part_fields(const char* text, const ur_spec_part_t* want) {
+  uint8_t cbor[128];
+  size_t len = part_body(text, cbor, sizeof(cbor));
+
+  struct ur_part got;
+  TEST_ASSERT_EQUAL_INT(ZCBOR_SUCCESS, cbor_decode_ur_part(cbor, len, &got, NULL));
+  TEST_ASSERT_EQUAL_UINT32(want->seq_num, got.ur_part_seqNum);
+  TEST_ASSERT_EQUAL_UINT32(want->seq_len, got.ur_part_seqLen);
+  TEST_ASSERT_EQUAL_UINT32(want->message_len, got.ur_part_messageLen);
+  TEST_ASSERT_EQUAL_UINT32(want->checksum, got.ur_part_checksum);
+  TEST_ASSERT_EQUAL_UINT32(UR_SPEC_FRAGMENT_LEN, got.ur_part_data.len);
+  TEST_ASSERT_EQUAL_MEMORY(want->data, got.ur_part_data.value, UR_SPEC_FRAGMENT_LEN);
+}
+
+/* The receiver's checksum is the one field nothing but the message can produce. */
+static void test_message_checksum_is_crc32(void) {
+  TEST_ASSERT_EQUAL_UINT32(UR_SPEC_CHECKSUM, crc32(UR_SPEC_MESSAGE, UR_SPEC_MESSAGE_LEN));
+}
+
+static void test_encoder_emits_the_published_parts(void) {
+  ur_out_t out;
+  ur_out_init(&out, BYTES, UR_SPEC_MESSAGE, UR_SPEC_MESSAGE_LEN, UR_SPEC_FRAGMENT_LEN);
+  TEST_ASSERT_EQUAL_UINT32(UR_SPEC_SEQ_LEN, out.part.ur_part_seqLen);
+  TEST_ASSERT_EQUAL_UINT32(UR_SPEC_CHECKSUM, out.part.ur_part_checksum);
+
+  char text[PART_STR_MAX];
+  for (uint32_t i = 0; i < UR_SPEC_PARTS_COUNT; i++) {
+    TEST_ASSERT_EQUAL_INT(ERR_OK, ur_encode_next(&out, text, sizeof(text)));
+    expect_part_fields(text, &UR_SPEC_PARTS[i]);
+  }
+}
+
+static size_t spec_part(uint32_t seq_num) {
+  const ur_spec_part_t* p = &UR_SPEC_PARTS[seq_num - 1];
+  return part(p->seq_num, p->seq_len, p->message_len, p->checksum, p->data,
+              UR_SPEC_FRAGMENT_LEN, "ur:bytes");
+}
+
+static void test_published_parts_reassemble_the_message(void) {
+  for (uint32_t i = 1; i <= UR_SPEC_PARTS_COUNT; i++) {
+    size_t len = spec_part(i);
+    app_err_t err = ur_process_part(&ur, (const uint8_t*)part_str, len);
+
+    if (i < UR_SPEC_SEQ_LEN) {
+      TEST_ASSERT_EQUAL_INT(ERR_NEED_MORE_DATA, err);
+    } else if (i == UR_SPEC_SEQ_LEN) {
+      TEST_ASSERT_EQUAL_INT(ERR_OK, err);
+      TEST_ASSERT_EQUAL_UINT32(UR_SPEC_MESSAGE_LEN, ur.data_len);
+      TEST_ASSERT_EQUAL_MEMORY(UR_SPEC_MESSAGE, ur.data, ur.data_len);
+    } else {
+      /* the message is already whole: further parts of the same sequence change nothing */
+      TEST_ASSERT_EQUAL_INT(ERR_NEED_MORE_DATA, err);
+      TEST_ASSERT_EQUAL_UINT32(UR_SPEC_MESSAGE_LEN, ur.data_len);
+      TEST_ASSERT_EQUAL_MEMORY(UR_SPEC_MESSAGE, ur.data, ur.data_len);
+    }
+  }
+}
+
+static void test_published_parts_in_reverse_order(void) {
+  for (uint32_t i = UR_SPEC_SEQ_LEN; i-- > 0;) {
+    size_t len = spec_part(i + 1);
+    ur_process_part(&ur, (const uint8_t*)part_str, len);
+  }
+
+  TEST_ASSERT_EQUAL_UINT32(UR_SPEC_MESSAGE_LEN, ur.data_len);
+  TEST_ASSERT_EQUAL_MEMORY(UR_SPEC_MESSAGE, ur.data, ur.data_len);
+}
+
+/* The published mixed parts have to stand in for the fragments that were never seen, which pins
+ * both the mixing and the set of fragments a part is made of. */
+static void test_published_mixed_parts_replace_a_missed_fragment(void) {
+  for (uint32_t missed = 1; missed <= UR_SPEC_SEQ_LEN; missed++) {
+    setUp();
+
+    bool done = false;
+    for (uint32_t i = 1; i <= UR_SPEC_PARTS_COUNT && !done; i++) {
+      if (i == missed) {
+        continue;
+      }
+      size_t len = spec_part(i);
+      done = ur_process_part(&ur, (const uint8_t*)part_str, len) == ERR_OK;
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(done, "the published fountain parts never replaced the missed one");
+    TEST_ASSERT_EQUAL_UINT32(UR_SPEC_MESSAGE_LEN, ur.data_len);
+    TEST_ASSERT_EQUAL_MEMORY(UR_SPEC_MESSAGE, ur.data, ur.data_len);
+  }
+}
+
+/* "Once the first part of a sequence is decoded, any subsequent parts with different seqLen,
+ * messageLen, or checksum, or where data is a different length from the first received part MUST
+ * be rejected." A refusal must not wedge the receiver: the sequence still completes afterwards. */
+static void test_part_disagreeing_with_the_sequence_is_refused(void) {
+  static const struct {
+    const char* what;
+    uint32_t seq_len;
+    uint32_t message_len;
+    size_t data_len;
+  } variants[] = {
+    {"seqLen", UR_SPEC_SEQ_LEN + 1, UR_SPEC_MESSAGE_LEN, UR_SPEC_FRAGMENT_LEN},
+    {"messageLen", UR_SPEC_SEQ_LEN, UR_SPEC_MESSAGE_LEN + 1, UR_SPEC_FRAGMENT_LEN},
+    {"data", UR_SPEC_SEQ_LEN, UR_SPEC_MESSAGE_LEN, UR_SPEC_FRAGMENT_LEN - 1},
+  };
+
+  const ur_spec_part_t* second = &UR_SPEC_PARTS[1];
+
+  for (size_t i = 0; i < sizeof(variants) / sizeof(variants[0]); i++) {
+    setUp();
+
+    size_t len = spec_part(1);
+    TEST_ASSERT_EQUAL_INT(ERR_NEED_MORE_DATA, ur_process_part(&ur, (const uint8_t*)part_str, len));
+
+    len = part(second->seq_num, variants[i].seq_len, variants[i].message_len, second->checksum,
+               second->data, variants[i].data_len, "ur:bytes");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ERR_DATA,
+                                  ur_process_part(&ur, (const uint8_t*)part_str, len), variants[i].what);
+
+    for (uint32_t n = 2; n <= UR_SPEC_SEQ_LEN; n++) {
+      len = spec_part(n);
+      ur_process_part(&ur, (const uint8_t*)part_str, len);
+    }
+
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(UR_SPEC_MESSAGE_LEN, ur.data_len, variants[i].what);
+    TEST_ASSERT_EQUAL_MEMORY(UR_SPEC_MESSAGE, ur.data, ur.data_len);
+  }
+}
+
+static void test_rateless_parts_mix_the_published_fragments(void) {
+  double probs[UR_MAX_PART_COUNT];
+  int aliases[UR_MAX_PART_COUNT];
+  random_sampler_init(UR_FRAGMENT_SEQ_LEN, probs, aliases);
+
+  for (size_t i = 0; i < UR_FRAGMENT_CHOICES_COUNT; i++) {
+    ur_desc_t indexes;
+    fountain_part_indexes(UR_FRAGMENT_CHOICES[i].seq_num, UR_FRAGMENT_CHECKSUM,
+                          UR_FRAGMENT_SEQ_LEN, probs, aliases, &indexes);
+
+    uint16_t fragments = 0;
+    for (int f = 0; f < UR_FRAGMENT_SEQ_LEN; f++) {
+      if (ur_desc_get_bit(&indexes, (uint32_t)f)) {
+        fragments |= (uint16_t)(1u << f);
+      }
+    }
+    TEST_ASSERT_EQUAL_UINT16(UR_FRAGMENT_CHOICES[i].fragments, fragments);
+  }
+}
+
+static const char* const* registry_row_for(const char* label) {
+  for (size_t r = 0; r < UR_REGISTRY_COUNT; r++) {
+    for (size_t n = 0; n < 3; n++) {
+      if (strcmp(UR_REGISTRY_LABELS[r][n], label) == 0) {
+        return UR_REGISTRY_LABELS[r];
+      }
+    }
+  }
+  return NULL;
+}
+
+static size_t relabel(char* out, size_t max, const char* text, const char* label) {
+  const char* body = strchr(text, '/');
+  TEST_ASSERT_NOT_NULL(body);
+  int written = snprintf(out, max, "ur:%s/%s", label, body + 1);
+  TEST_ASSERT_TRUE((written > 0) && ((size_t)written < max));
+  return (size_t)written;
+}
+
+/* The papers were written across a rename of these types, so an example's own label is not
+ * necessarily the spelling this device registers. Either way the body is the published CBOR: the
+ * label decides acceptance and nothing else.
+ *
+ * The body is compared as bytes rather than run through cbor_decode_hd_key or
+ * cbor_decode_crypto_account: cddl/ur.cddl makes is-private, origin, parent-fingerprint and name
+ * mandatory in hd-key, and crypto-output has no form for the tag 410 multi-key descriptors these
+ * examples use, so the published bodies are not representable in this device's schema at all. */
+static void test_published_ur_texts_decode_to_their_published_cbor(void) {
+  for (size_t i = 0; i < UR_PUBLISHED_COUNT; i++) {
+    const ur_published_t* row = &UR_PUBLISHED[i];
+    const char* const* names = registry_row_for(row->label);
+    TEST_ASSERT_NOT_NULL(names);
+
+    int accepted = 0;
+    for (size_t n = 0; (n < 3) && names[n][0]; n++) {
+      size_t len = relabel(part_str, sizeof(part_str), row->ur, names[n]);
+      app_err_t err = ur_process_part(&ur, (const uint8_t*)part_str, len);
+
+      if (err == ERR_OK) {
+        accepted++;
+        TEST_ASSERT_EQUAL_UINT32(row->cbor_len, ur.data_len);
+        TEST_ASSERT_EQUAL_MEMORY(row->cbor, ur.data, row->cbor_len);
+      } else {
+        TEST_ASSERT_EQUAL_INT(ERR_DATA, err);
+      }
+    }
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, accepted, row->ur);
+  }
+}
+
 int main(void) {
   /* a sanitizer abort must not cost the output of the assertions that ran before it */
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -667,5 +877,13 @@ int main(void) {
   RUN_TEST(test_progress_reported);
   RUN_TEST(test_part_sizes_within_the_receiver_buffer);
   RUN_TEST(test_encode_refuses_too_small_a_buffer);
+  RUN_TEST(test_message_checksum_is_crc32);
+  RUN_TEST(test_encoder_emits_the_published_parts);
+  RUN_TEST(test_published_parts_reassemble_the_message);
+  RUN_TEST(test_published_parts_in_reverse_order);
+  RUN_TEST(test_published_mixed_parts_replace_a_missed_fragment);
+  RUN_TEST(test_part_disagreeing_with_the_sequence_is_refused);
+  RUN_TEST(test_rateless_parts_mix_the_published_fragments);
+  RUN_TEST(test_published_ur_texts_decode_to_their_published_cbor);
   return UNITY_END();
 }

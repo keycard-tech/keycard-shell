@@ -89,6 +89,9 @@ typedef enum {
 typedef struct {
   ur_type_t type;
   uint32_t crc;
+  uint32_t seq_len;
+  uint32_t message_len;
+  uint32_t fragment_len;
   ur_desc_t part_desc[UR_PART_DESC_COUNT];
   ur_desc_t part_mask;
   double sampler_probs[UR_MAX_PART_COUNT];

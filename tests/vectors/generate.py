@@ -71,6 +71,11 @@ SOURCES = {
     "eip712_example.js": "https://raw.githubusercontent.com/ethereum/EIPs/master/assets/eip-712/Example.js",
     "key_io_valid.json": "https://raw.githubusercontent.com/bitcoin/bitcoin/master/src/test/data/key_io_valid.json",
     "bip340_vectors.csv": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0340/test-vectors.csv",
+    "bc_multipart_ur.md": "https://raw.githubusercontent.com/BlockchainCommons/Research/master/papers/bcr-2024-001-multipart-ur.md",
+    "bc_ur_types_registry.md": "https://raw.githubusercontent.com/BlockchainCommons/Research/master/papers/bcr-2020-006-urtypes.md",
+    "bc_hdkey.md": "https://raw.githubusercontent.com/BlockchainCommons/Research/master/papers/bcr-2020-007-hdkey.md",
+    "bc_output_desc.md": "https://raw.githubusercontent.com/BlockchainCommons/Research/master/papers/bcr-2020-010-output-desc.md",
+    "bc_account.md": "https://raw.githubusercontent.com/BlockchainCommons/Research/master/papers/bcr-2020-015-account.md",
     "bc_bytewords.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/src/bc-bytewords.c",
     "bc_bytewords_test.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/test/test.c",
 }
@@ -7397,6 +7402,362 @@ static const eip712_case_t EIP712_CASES[] = {{
 """
 
 
+# ------------------------------------------------------- multipart UR (ur.c, sampler.c, ur_encode.c)
+
+
+class Xoshiro256:
+    """The generator BCR-2024-001 names, seeded as that document seeds it: the sha256 of the seed
+    bytes read as four big-endian words. Used only to rebuild the message the document's own
+    vectors were computed over; the vectors themselves are parsed out of the document."""
+
+    MASK = (1 << 64) - 1
+
+    def __init__(self, seed: bytes):
+        digest = hashlib.sha256(seed).digest()
+        self.s = [int.from_bytes(digest[i * 8:i * 8 + 8], "big") for i in range(4)]
+
+    def next(self) -> int:
+        s = self.s
+        five = (s[1] * 5) & self.MASK
+        result = ((((five << 7) | (five >> 57)) & self.MASK) * 9) & self.MASK
+        carry = (s[1] << 17) & self.MASK
+        s[2] ^= s[0]
+        s[3] ^= s[1]
+        s[1] ^= s[2]
+        s[0] ^= s[3]
+        s[2] ^= carry
+        s[3] = ((s[3] << 45) | (s[3] >> 19)) & self.MASK
+        return result
+
+    def next_double(self) -> float:
+        return self.next() / float(1 << 64)
+
+    def next_bytes(self, count: int) -> bytes:
+        return bytes(int(self.next_double() * 256) for _ in range(count))
+
+
+def mur_message(length: int, seed: str = "Wolf") -> bytes:
+    """makeMessage(len:seed:) of the document's test vectors."""
+    return Xoshiro256(seed.encode()).next_bytes(length)
+
+
+def cbor_uint(value: int) -> bytes:
+    """A CBOR unsigned integer in the shortest form that holds it, which is what the document's own
+    part serialization uses: 12 inline as 0x0c, 100 as 0x18 0x64, 0x12345678 as 0x1a and four."""
+    if value < 24:
+        return bytes([value])
+    for additional, width in ((24, 1), (25, 2), (26, 4), (27, 8)):
+        if value < (1 << (8 * width)):
+            return bytes([additional]) + value.to_bytes(width, "big")
+    raise ValueError(value)
+
+
+def cbor_head(major: int, length: int) -> bytes:
+    if length < 24:
+        return bytes([(major << 5) | length])
+    for additional, width in ((24, 1), (25, 2), (26, 4), (27, 8)):
+        if length < (1 << (8 * width)):
+            return bytes([(major << 5) | additional]) + length.to_bytes(width, "big")
+    raise ValueError(length)
+
+
+def cbor_part(seq_num: int, seq_len: int, message_len: int, checksum: int, data: bytes) -> bytes:
+    return (cbor_head(4, 5) + cbor_uint(seq_num) + cbor_uint(seq_len) + cbor_uint(message_len)
+            + cbor_uint(checksum) + cbor_head(2, len(data)) + data)
+
+
+def parse_mur_rng_stream(paper: str) -> list[int]:
+    block = paper[paper.index("func testRNG1"):paper.index("func testRNG2")]
+    stream = re.search(r"let expectedNumbers = \[([0-9, ]+)\]", block)
+    assert stream, "testRNG1 lost its expected stream"
+    return [int(v) for v in stream.group(1).split(",")]
+
+
+def parse_mur_parts(paper: str) -> list[tuple[int, int, int, int, bytes]]:
+    rows = []
+    for line in paper.splitlines():
+        match = re.match(
+            r'\s*"seqNum:(\d+), seqLen:(\d+), messageLen:(\d+), checksum:(\d+), data:([0-9a-f]+)"',
+            line)
+        if match:
+            seq_num, seq_len, message_len, checksum, data = match.groups()
+            rows.append((int(seq_num), int(seq_len), int(message_len), int(checksum),
+                         bytes.fromhex(data)))
+    return rows
+
+
+def parse_mur_fragment_choices(paper: str) -> list[list[int]]:
+    block = paper[paper.index("let expectedFragmentIndexes"):]
+    block = block[:block.index("\n    ]")]
+    return [[int(v) for v in inner.split(",")] for inner in re.findall(r"\[([0-9, ]+)\]", block)]
+
+
+def parse_mur_part_cbor(paper: str) -> tuple[tuple[int, int, int, int, bytes], bytes]:
+    """The one part the document gives as fields and as CBOR together."""
+    block = paper[paper.index("func testCBOR"):]
+    fields = re.search(r"seqNum: (\d+), seqLen: (\d+), messageLen: (\d+), checksum: (0x[0-9a-fA-F]+),"
+                       r" data: Data\(\[([0-9, ]+)\]\)", block)
+    hexed = re.search(r'cbor\.hex, "([0-9a-f]+)"', block)
+    assert fields and hexed, "the part serialization vector changed shape"
+    data = bytes(int(v) for v in fields.group(5).split(","))
+    return ((int(fields.group(1)), int(fields.group(2)), int(fields.group(3)), int(fields.group(4), 0),
+             data), bytes.fromhex(hexed.group(1)))
+
+
+PUBLISHED_PAIR = re.compile(
+    r"\* As a hex string[^:]*:\s*```([0-9a-f\n ]+?)```"
+    r"\s*\* As a UR:\s*```\s*(ur:[a-z0-9-]+/[A-Za-z0-9]+)\s*```")
+
+
+def parse_published_pairs(source: str) -> list[tuple[str, str, bytes]]:
+    """The examples a document publishes twice, once as CBOR hex and once as UR text."""
+    pairs = []
+    for hex_run, ur in PUBLISHED_PAIR.findall(fetch(source)):
+        cbor = bytes.fromhex("".join(hex_run.split()))
+        pairs.append((ur[len("ur:"):ur.index("/")], ur, cbor))
+    return pairs
+
+
+def parse_registry_labels() -> dict[str, list[str]]:
+    """The type registry, keyed by the current label: every spelling it lists for that type, struck
+    out ones included, so a device label can be checked against the whole list."""
+    labels = {}
+    for line in fetch("bc_ur_types_registry.md").splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3:
+            continue
+        names = re.findall(r"`([a-z0-9-]+)`", cells[1])
+        if names:
+            labels[names[0]] = names
+    return labels
+
+
+def c_array(data: bytes, per_line: int = 12, indent: str = "   ") -> str:
+    chunks = [", ".join(f"0x{b:02x}" for b in data[i:i + per_line])
+              for i in range(0, len(data), per_line)]
+    return indent + (",\n" + indent).join(chunks)
+
+
+def ur_part_row(part: tuple[int, int, int, int, bytes]) -> str:
+    seq_num, seq_len, message_len, checksum, data = part
+    return (f"  {{{seq_num}, {seq_len}, {message_len}, {checksum}u,\n"
+            f"   {{ {c_array(data, 12, '   ')} }}}},")
+
+
+def ur_choice_row(seq_num: int, choice: list[int]) -> str:
+    bits = 0
+    for index in choice:
+        bits |= 1 << index
+    return f"  {{{seq_num}, 0x{bits:03x}}},"
+
+
+UR_REGISTRY_TYPES = ("psbt", "hdkey", "output-descriptor", "account-descriptor")
+
+
+def ur_registry_rows(registry: dict[str, list[str]]) -> str:
+    rows = []
+    for name in UR_REGISTRY_TYPES:
+        assert name in registry, f"the type registry no longer lists {name}"
+        listed = registry[name] + ([""] * (3 - len(registry[name])))
+        rows.append("  {" + ", ".join(f'"{n}"' for n in listed[:3]) + "},")
+    return "\n".join(rows)
+
+
+def ur_vectors() -> str:
+    paper = fetch("bc_multipart_ur.md")
+
+    cddl = paper[paper.index("part = ["):paper.index("]", paper.index("part = ["))]
+    for field in ("seqNum", "seqLen", "messageLen", "checksum", "data"):
+        assert field in cddl, f"the part CDDL no longer carries {field}"
+    assert (cddl.index("seqNum") < cddl.index("seqLen") < cddl.index("messageLen")
+            < cddl.index("checksum") < cddl.index("data")), "the part fields changed order"
+    assert "MUST be rejected" in paper, \
+        "a part that disagrees with the first received one is no longer required to be rejected"
+    assert "(seqNum || checksum) -> SHA256 -> Xoshiro256" in paper, "the rateless seed rule changed"
+    assert "padded with zeroes" in paper, "the last fragment is no longer zero padded"
+    assert "MAY be chosen by the implementer" in paper, "the fragment size is no longer a choice"
+
+    rng_stream = parse_mur_rng_stream(paper)
+    seeded = Xoshiro256(b"Wolf")
+    assert [seeded.next() % 100 for _ in rng_stream] == rng_stream, \
+        "this xoshiro256** model does not reproduce the document's own stream"
+
+    parts = parse_mur_parts(paper)
+    assert len(parts) == 20, f"expected 20 encoder parts, parsed {len(parts)}"
+    assert [p[0] for p in parts] == list(range(1, 21)), "the published parts are out of order"
+    message = mur_message(256)
+    checksum = zlib.crc32(message) & 0xffffffff
+    assert {p[1] for p in parts} == {9}, "the parts are no longer a sequence of nine"
+    assert {p[2] for p in parts} == {256}, "the message length the parts carry changed"
+    assert {p[3] for p in parts} == {checksum}, \
+        "the checksum the parts carry is not crc32 of the message rebuilt from the document"
+    assert {len(p[4]) for p in parts} == {29}, "the fragments are no longer 29 bytes each"
+
+    fragment_len = 29
+    fragments = [message[i:i + fragment_len] for i in range(0, 256, fragment_len)]
+    fragments[-1] += bytes(fragment_len - len(fragments[-1]))
+    assert parts[0][4] == fragments[0], "the first published part is not the first fragment"
+    assert parts[8][4] == fragments[-1], "the last simple part is not the padded last fragment"
+
+    choices = parse_mur_fragment_choices(paper)
+    assert len(choices) == 50, f"expected 50 fragment choices, parsed {len(choices)}"
+    assert choices[:11] == [[i] for i in range(11)], "the first seqLen choices are not the fragments"
+    fragment_checksum = zlib.crc32(mur_message(1024)) & 0xffffffff
+
+    (part_fields, part_cbor) = parse_mur_part_cbor(paper)
+    assert cbor_part(*part_fields) == part_cbor, \
+        "the document's part fields no longer serialize to the document's own CBOR"
+
+    published = []
+    for source in ("bc_hdkey.md", "bc_output_desc.md", "bc_account.md"):
+        found = parse_published_pairs(source)
+        assert found, f"{source} no longer publishes an example as CBOR hex and as UR text together"
+        published += found
+    assert all(len(cbor) <= 1024 for _, _, cbor in published), "a published example outgrew the row"
+
+    registry = parse_registry_labels()
+
+    rows = []
+    for label, ur, cbor in published:
+        rows.append(f'  {{"{label}",\n   "{ur}",\n   {{ {c_array(cbor, 16, "   ")} }},\n'
+                    f'   {len(cbor)}}},')
+
+    head = """#ifndef VECTORS_UR_H
+#define VECTORS_UR_H
+
+/* What the UR framing and the fountain codes of app/ur are required to produce, by Blockchain
+ * Commons' BCR-2024-001 (multipart UR) and by the type papers that publish an example twice, once
+ * as CBOR hex and once as UR text.
+ *
+ * No expectation here is a round trip through the code under test. The 20 parts, the 50 fragment
+ * choices and the CBOR of one part are copied out of the document's own test vectors. The message
+ * they were computed over is rebuilt from the generator the document names, and generate.py refuses
+ * to emit anything unless that rebuild reproduces the document's published RNG stream, its published
+ * checksum and its published first and last fragments.
+ *
+ * Left out, and why:
+ *   - the fragment size a sender uses. The document leaves it to the implementer, so the device's
+ *     choice is not a conformance question; what has to conform is that every part of one sequence
+ *     carries fragments of a single length, the last zero padded.
+ *   - URs whose label the device does not register. The registry was renamed once: `psbt`, `hdkey`,
+ *     `output-descriptor` and `account-descriptor` now list ~~crypto-psbt~~, ~~crypto-hdkey~~,
+ *     ~~crypto-output~~ and ~~crypto-account~~ as the old spellings, and the device registers only
+ *     the crypto-* generation. UR_REGISTRY_LABELS carries both generations; which one the device
+ *     answers to is a product decision, not a fact from this document.
+ */
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#define UR_SPEC_SEQ_LEN 9
+#define UR_SPEC_FRAGMENT_LEN 29
+#define UR_SPEC_MESSAGE_LEN 256
+#define UR_SPEC_CHECKSUM @@CHECKSUM@@
+
+/* makeMessage(len: 256) of the document's vectors: the message all 20 parts are generated from. */
+static const uint8_t UR_SPEC_MESSAGE[UR_SPEC_MESSAGE_LEN] = {
+@@MESSAGE@@
+};
+
+typedef struct {
+  uint32_t seq_num;
+  uint32_t seq_len;
+  uint32_t message_len;
+  uint32_t checksum;
+  uint8_t data[UR_SPEC_FRAGMENT_LEN];
+} ur_spec_part_t;
+
+/* testEncoder, run in order without skipping a part: the first nine parts are the fragments
+ * themselves, the eleven after them are mixtures. */
+static const ur_spec_part_t UR_SPEC_PARTS[] = {
+@@PARTS@@
+};
+
+#define UR_SPEC_PARTS_COUNT (sizeof(UR_SPEC_PARTS) / sizeof(UR_SPEC_PARTS[0]))
+
+#define UR_FRAGMENT_SEQ_LEN 11
+#define UR_FRAGMENT_CHECKSUM @@FRAGMENT_CHECKSUM@@
+
+typedef struct {
+  uint32_t seq_num;
+  uint16_t fragments;   /* bit i set is fragment i: the set the sender mixed into this part */
+} ur_fragment_choice_t;
+
+/* testFragmentChooser, rateless parts only: seqNum 12 through 50 of a sequence of eleven. */
+static const ur_fragment_choice_t UR_FRAGMENT_CHOICES[] = {
+@@CHOICES@@
+};
+
+#define UR_FRAGMENT_CHOICES_COUNT (sizeof(UR_FRAGMENT_CHOICES) / sizeof(UR_FRAGMENT_CHOICES[0]))
+
+/* One part as its fields and as its bytes, from the document that states both. */
+typedef struct {
+  uint32_t seq_num;
+  uint32_t seq_len;
+  uint32_t message_len;
+  uint32_t checksum;
+  uint8_t data[5];
+  uint8_t cbor[32];
+  size_t cbor_len;
+} ur_part_cbor_t;
+
+static const ur_part_cbor_t UR_PART_CBOR = {
+@@PART_FIELDS@@
+  { @@PART_DATA@@ },
+  { @@PART_CBOR@@ },
+  @@PART_CBOR_LEN@@
+};
+
+typedef struct {
+  const char* label;    /* as published, which is not always the spelling the device registers */
+  const char* ur;       /* the published text in full */
+  uint8_t cbor[1024];   /* the CBOR the same document prints for the same example */
+  size_t cbor_len;
+} ur_published_t;
+
+static const ur_published_t UR_PUBLISHED[] = {
+@@PUBLISHED@@
+};
+
+#define UR_PUBLISHED_COUNT (sizeof(UR_PUBLISHED) / sizeof(UR_PUBLISHED[0]))
+
+/* The four of these types the device implements, and every spelling the registry lists for each:
+ * the current one first, the struck-out ones after, then an empty string. Only the registry's own
+ * types are here -- the device's other labels (eth-sign-request, btc-sign-request, btc-signature,
+ * eth-signature, bytes, fs-data, fw-update, dev-auth, crypto-multi-accounts) are Keycard's and the
+ * registry has never carried them. */
+static const char* const UR_REGISTRY_LABELS[][3] = {
+@@REGISTRY@@
+};
+
+#define UR_REGISTRY_COUNT (sizeof(UR_REGISTRY_LABELS) / sizeof(UR_REGISTRY_LABELS[0]))
+
+#endif\t/* VECTORS_UR_H */
+"""
+
+    seq_num, seq_len, message_len, part_checksum, data = part_fields
+    for token, value in (
+        ("@@CHECKSUM@@", f"{checksum}u"),
+        ("@@MESSAGE@@", c_array(message, 12, "  ")),
+        ("@@PARTS@@", "\n".join(ur_part_row(part) for part in parts)),
+        ("@@FRAGMENT_CHECKSUM@@", f"{fragment_checksum}u"),
+        ("@@CHOICES@@", "\n".join(ur_choice_row(12 + i, choice)
+                                  for i, choice in enumerate(choices[11:]))),
+        ("@@PART_FIELDS@@", f"  {seq_num}, {seq_len}, {message_len}, {part_checksum}u,"),
+        ("@@PART_DATA@@", c_array(data, 5, "   ")),
+        ("@@PART_CBOR@@", c_array(part_cbor, 8, "   ")),
+        ("@@PART_CBOR_LEN@@", str(len(part_cbor))),
+        ("@@PUBLISHED@@", "\n".join(rows)),
+        ("@@REGISTRY@@", ur_registry_rows(registry)),
+    ):
+        assert token in head, f"the vectors template lost {token}"
+        head = head.replace(token, value)
+    assert "@@" not in head, "a vectors template placeholder survived"
+    return head
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -7423,6 +7784,7 @@ def main() -> None:
         "vectors_ecdsa_der.h": ecdsa_der_vectors(),
         "vectors_keycard_signature.h": sign_reply_vectors(),
         "vectors_eip712.h": eip712_vectors(),
+        "vectors_ur.h": ur_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)
