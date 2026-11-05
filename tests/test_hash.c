@@ -32,6 +32,16 @@ static void load(const char* hex) {
   }
 }
 
+static void sha1_chunked(size_t chunk) {
+  SHA1_CTX ctx;
+  sha1_Init(&ctx);
+  for (size_t off = 0; off < msg_len; off += chunk) {
+    size_t n = (msg_len - off < chunk) ? msg_len - off : chunk;
+    sha1_Update(&ctx, &msg[off], n);
+  }
+  sha1_Final(&ctx, digest);
+}
+
 static void sha256_chunked(size_t chunk) {
   SHA256_CTX ctx;
   sha256_Init(&ctx);
@@ -74,6 +84,19 @@ static void keccak_chunked(size_t chunk) {
     keccak_Update(&ctx, &msg[off], n);
   }
   keccak_Final(&ctx, digest);
+}
+
+static void test_sha1(void) {
+  for (size_t i = 0; i < HASH_KAT_COUNT; i++) {
+    load(HASH_KAT[i].msg);
+    sha1_Raw(msg, msg_len, digest);
+    TEST_ASSERT_HEX(digest, SHA1_DIGEST_LENGTH, HASH_KAT[i].sha1);
+
+    sha1_chunked(1);
+    TEST_ASSERT_HEX(digest, SHA1_DIGEST_LENGTH, HASH_KAT[i].sha1);
+    sha1_chunked(3);
+    TEST_ASSERT_HEX(digest, SHA1_DIGEST_LENGTH, HASH_KAT[i].sha1);
+  }
 }
 
 static void test_sha256(void) {
@@ -152,6 +175,7 @@ static void test_crc32(void) {
 
 int main(void) {
   UNITY_BEGIN();
+  RUN_TEST(test_sha1);
   RUN_TEST(test_sha256);
   RUN_TEST(test_sha512);
   RUN_TEST(test_ripemd160);

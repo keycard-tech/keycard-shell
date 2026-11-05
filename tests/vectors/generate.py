@@ -37,6 +37,7 @@ HERE = Path(__file__).resolve().parent
 CACHE = HERE / ".cache"
 
 SOURCES = {
+    "rfc4880.txt": "https://www.rfc-editor.org/rfc/rfc4880.txt",
     "bip39_wordlist.txt": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/english.txt",
     "bip39_vectors.json": "https://raw.githubusercontent.com/trezor/python-mnemonic/master/vectors.json",
     "bip32.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0032.mediawiki",
@@ -154,6 +155,7 @@ def hash_vectors() -> str:
                 hexs(msg),
                 hexs(hashlib.sha256(msg).digest()),
                 hexs(hashlib.sha512(msg).digest()),
+                hexs(hashlib.sha1(msg).digest()),
                 hexs(hashlib.new("ripemd160", msg).digest()),
                 hexs(hashlib.sha3_256(msg).digest()),
                 hexs(hashlib.sha3_512(msg).digest()),
@@ -163,7 +165,7 @@ def hash_vectors() -> str:
         )
 
     body = ",\n".join(
-        "  {%s, %s, %s, %s, %s, %s, %s, %s}" % tuple(cstr(v) for v in row) for row in rows
+        "  {%s, %s, %s, %s, %s, %s, %s, %s, %s}" % tuple(cstr(v) for v in row) for row in rows
     )
     return f"""#ifndef VECTORS_HASH_H
 #define VECTORS_HASH_H
@@ -176,6 +178,8 @@ typedef struct {{
   const char* msg;
   const char* sha256;
   const char* sha512;
+  /* SHA-1 is dead for signatures but is what an OpenPGP v4 fingerprint is, RFC 4880 12.1. */
+  const char* sha1;
   const char* ripemd160;
   const char* sha3_256;
   const char* sha3_512;
@@ -7758,6 +7762,684 @@ static const char* const UR_REGISTRY_LABELS[][3] = {
     return head
 
 
+# ------------------------------------------------------- OpenPGP (app/openpgp)
+
+OPENPGP_SECP256K1_OID = bytes.fromhex("2b8104000a")
+OPENPGP_UID_MAX_LEN = 255
+OPENPGP_MESSAGE_MAX_LEN = 255
+
+
+def openpgp_packets(data: bytes) -> list:
+    """(tag, header, body) per RFC 4880 4.2, both header formats. A body whose length is not in its
+    own header -- a partial body length, an indeterminate old-format length -- is an error here,
+    because these vectors only ever walk a complete packet stream."""
+    out, offset = [], 0
+    while offset < len(data):
+        ctb = data[offset]
+        if not ctb & 0x80:
+            raise AssertionError(f"{ctb:#04x} at {offset} is not a packet header")
+        if ctb & 0x40:
+            tag, pos = ctb & 0x3F, offset + 1
+            first = data[pos]
+            if first < 192:
+                body_len, pos = first, pos + 1
+            elif first < 224:
+                body_len, pos = ((first - 192) << 8) + data[pos + 1] + 192, pos + 2
+            elif first == 255:
+                body_len, pos = int.from_bytes(data[pos + 1:pos + 5], "big"), pos + 5
+            else:
+                raise AssertionError(f"partial body length {first:#04x} at {offset}")
+        else:
+            tag, length_type, pos = (ctb >> 2) & 0x0F, ctb & 0x03, offset + 1
+            if length_type == 0:
+                body_len, pos = data[pos], pos + 1
+            elif length_type == 1:
+                body_len, pos = int.from_bytes(data[pos:pos + 2], "big"), pos + 2
+            elif length_type == 2:
+                body_len, pos = int.from_bytes(data[pos:pos + 4], "big"), pos + 4
+            else:
+                raise AssertionError(f"indeterminate length at {offset}")
+        assert pos + body_len <= len(data), "a packet runs past the end of the stream"
+        out.append((tag, data[offset:pos], data[pos:pos + body_len]))
+        offset = pos + body_len
+    return out
+
+
+def openpgp_wrap(tag: int, body: bytes, form: str) -> bytes:
+    """A packet header in the requested format.
+
+    "old" and "new" are the shortest header of that format, which is what GnuPG writes. The numbered
+    forms force one of the definite-length headers RFC 4880 4.2.1 and 4.2.2 define, including the
+    longer ones no implementation writes for a body this small: old format counts length types
+    0, 1 and 2 as one, two and four octets, new format counts one, two and five octets, and new
+    format's two-octet form only exists for bodies of 192 to 8383 octets.
+    """
+    old_length_types = {"old1": 0, "old2": 1, "old4": 2}
+    if form in old_length_types:
+        length_type = old_length_types[form]
+        octets = 1 << length_type
+        assert len(body) < (1 << (8 * octets)), f"{len(body)} octets in a {octets}-octet length"
+        return (bytes([0x80 | (tag << 2) | length_type]) + len(body).to_bytes(octets, "big") + body)
+    if form == "new1":
+        assert len(body) < 192, f"{len(body)} octets is not a one-octet new-format length"
+        return bytes([0xC0 | tag, len(body)]) + body
+    if form == "new2":
+        assert 192 <= len(body) < 8384, f"{len(body)} octets is not a two-octet new-format length"
+        return bytes([0xC0 | tag, 192 + ((len(body) - 192) >> 8), (len(body) - 192) & 0xFF]) + body
+    if form == "new5":
+        assert len(body) < (1 << 32)
+        return bytes([0xC0 | tag, 255]) + len(body).to_bytes(4, "big") + body
+    if form == "old":
+        return openpgp_wrap(tag, body, "old1" if len(body) < 256 else ("old2" if len(body) < 65536 else "old4"))
+    return openpgp_wrap(tag, body, "new1" if len(body) < 192 else ("new2" if len(body) < 8384 else "new5"))
+
+
+def openpgp_header_forms(data: bytes) -> list:
+    """(tag, octets of the length field) for every packet in a stream, shortest form assumed."""
+    out = []
+    for tag, header, body in openpgp_packets(data):
+        out.append((tag, len(header) - 1))
+    return out
+
+
+def openpgp_sig_areas(body: bytes):
+    """(hash material, unhashed area with its length, left 16 bits, MPIs) of a v4 signature body."""
+    hashed_len = int.from_bytes(body[4:6], "big")
+    pos = 6 + hashed_len
+    unhashed_len = int.from_bytes(body[pos:pos + 2], "big")
+    tail_start = pos
+    pos += 2 + unhashed_len
+    values, end = [], pos + 2
+    while end < len(body):
+        bits = int.from_bytes(body[end:end + 2], "big")
+        count = (bits + 7) // 8
+        plain = int.from_bytes(body[end + 2:end + 2 + count], "big")
+        assert plain.bit_length() == bits, "an MPI whose bit count is not its significant bits"
+        values.append(body[end:end + 2 + count])
+        end += 2 + count
+    assert end == len(body), "a signature body does not end with its MPIs"
+    return (body[:6 + hashed_len], body[tail_start:tail_start + 2 + unhashed_len],
+            body[pos:pos + 2], values)
+
+
+def openpgp_digest(signed_data: bytes, material: bytes) -> bytes:
+    """RFC 4880 5.2.4: the signed data, the signature header and its hashed subpackets, then a
+    trailer of the version, 0xFF, and a count that covers the hash material and not the trailer."""
+    return hashlib.sha256(signed_data + material
+                          + b"\x04\xff" + len(material).to_bytes(4, "big")).digest()
+
+
+def openpgp_certification_data(key_body: bytes, uid: bytes) -> bytes:
+    """RFC 4880 5.2.4: 0x99 and a two-octet length before the key, 0xB4 and a four-octet length
+    before the user ID."""
+    return (b"\x99" + len(key_body).to_bytes(2, "big") + key_body
+            + b"\xb4" + len(uid).to_bytes(4, "big") + uid)
+
+
+OPENPGP_CURVE_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+
+def openpgp_der(mpi_r: bytes, mpi_s: bytes) -> bytes:
+    """An (r, s) pair as an ECDSA-Signature ASN.1 value, S normalized to the low half of the order.
+
+    GnuPG emits high-S signatures; libsecp256k1 refuses them. Normalizing before the independent
+    check is what a verifier that accepts both forms does -- it is ECDSA's malleability, not a
+    difference in the digest -- and the vectors keep the MPIs exactly as GnuPG wrote them.
+    """
+    def integer(mpi: bytes) -> bytes:
+        raw = mpi[2:].lstrip(b"\x00") or b"\x00"
+        if raw[0] & 0x80:
+            raw = b"\x00" + raw
+        return b"\x02" + bytes([len(raw)]) + raw
+    r, s = (int.from_bytes(mpi[2:], "big") for mpi in (mpi_r, mpi_s))
+    if s > OPENPGP_CURVE_N // 2:
+        s = OPENPGP_CURVE_N - s
+    s_mpi = s.to_bytes(len(mpi_s) - 2, "big")
+    body = integer(mpi_r) + integer(b"\0\0" + s_mpi)
+    return b"\x30" + bytes([len(body)]) + body
+
+
+def openpgp_verify(point: bytes, mpi_r: bytes, mpi_s: bytes, digest: bytes) -> bool:
+    from coincurve import PublicKey
+
+    try:
+        return PublicKey(point).verify(openpgp_der(mpi_r, mpi_s), digest, hasher=None)
+    except Exception:
+        return False
+
+
+def openpgp_fixture(name: str) -> bytes:
+    path = Path(__file__).with_name("openpgp_fixture") / name
+    assert path.exists(), f"{path} is missing; run tests/vectors/oracle/openpgp.sh"
+    return path.read_bytes()
+
+
+def openpgp_canonicalize(text: bytes) -> bytes | None:
+    """What openpgp_v4_canonicalize_text does: LF becomes CRLF, an existing CRLF stays, and a CR
+    that does not begin a CRLF is refused rather than guessed at."""
+    out, i = bytearray(), 0
+    while i < len(text):
+        c = text[i:i + 1]
+        if c == b"\r":
+            if text[i + 1:i + 2] != b"\n":
+                return None
+            out += b"\r\n"
+            i += 2
+        elif c == b"\n":
+            out += b"\r\n"
+            i += 1
+        else:
+            out += c
+            i += 1
+    return bytes(out)
+
+
+def openpgp_vectors() -> str:
+    rfc = fetch("rfc4880.txt")
+    for sentence in (
+        "A V4 fingerprint is the 160-bit SHA-1 hash of the octet 0x99",
+        "canonicalized by converting line endings to <CR><LF>",
+        "note that this number does not include these final\n   six octets",
+        "A certification signature (type 0x10 through 0x13) hashes the User",
+        "the constant 0xB4 for User ID certifications",
+        "Two-octet field holding left 16 bits of signed hash value",
+        "a two-octet scalar that is the length\n   of the MPI in bits",
+        "greater than or equal to 224, and less than 255",
+        "A one-octet Body Length header encodes a length of 0 to 191 octets",
+        "bodyLen = ((1st_octet - 192) << 8) + (2nd_octet) + 192",
+        "The packet has a two-octet length.  The header is 3 octets long.",
+        "The packet has a four-octet length.  The header is 5 octets long.",
+        "the value 255, followed by a four-octet scalar",
+    ):
+        assert sentence in rfc, f"RFC 4880 no longer says {sentence!r}"
+
+    exported = openpgp_packets(openpgp_fixture("key-minimal.gpg"))
+    assert [t for t, _, _ in exported] == [6, 13, 2], \
+        f"the minimal export is {[t for t, _, _ in exported]}, not key, user ID, certification"
+    key_body, uid, cert_body = (b for _, _, b in exported)
+
+    assert key_body[0] == 4 and key_body[5] == 19, "the fixture key is not a v4 ECDSA key"
+    assert key_body[6] == 5 and key_body[7:12] == OPENPGP_SECP256K1_OID, \
+        f"the fixture key names OID {key_body[7:12].hex()}, not 1.3.132.0.10"
+    creation_time = int.from_bytes(key_body[1:5], "big")
+    point = key_body[14:]
+    assert len(point) == 65 and point[0] == 0x04, "the fixture point is not a 65-octet SEC1 point"
+    assert int.from_bytes(key_body[12:14], "big") == 515, \
+        "the point MPI is not 515 bits: 64 octets plus the three significant bits of 0x04"
+    assert len(key_body) == 79, "a secp256k1 v4 public key body is not 79 octets"
+
+    assert len(uid) >= 192, (
+        f"the fixture user ID is {len(uid)} octets, too short for a new-format two-octet length to "
+        "exist; make the fixture key's comment longer"
+    )
+
+    published = [l.split(":")[9] for l in openpgp_fixture("report.txt").decode().splitlines()
+                 if l.startswith("fpr")][0]
+    fingerprint = hashlib.sha1(b"\x99" + len(key_body).to_bytes(2, "big") + key_body).digest()
+    assert fingerprint.hex().upper() == published, \
+        "SHA1(0x99||len||body) is not the fingerprint GnuPG publishes for this key"
+
+    material, unhashed, left16, mpis = openpgp_sig_areas(cert_body)
+    sig_type = cert_body[1]
+    assert 0x10 <= sig_type <= 0x13, "the fixture signature is not a certification"
+    assert cert_body[2] == 19 and cert_body[3] == 8, "the certification is not ECDSA/SHA-256"
+    assert unhashed[:2] == b"\x00\x0a" and unhashed[3] == 0x10, \
+        "GnuPG's unhashed area is not a 10-octet issuer-key-id block"
+    assert len(mpis) == 2, "the certification does not carry exactly two MPIs"
+    cert_data = openpgp_certification_data(key_body, uid)
+    cert_digest = openpgp_digest(cert_data, material)
+    assert cert_digest[:2] == left16, "our digest is not the one GnuPG recorded in its signature"
+    assert openpgp_verify(point, mpis[0], mpis[1], cert_digest), \
+        "coincurve does not accept our digest as what GnuPG signed"
+    issuer_key_id = unhashed[4:12]
+    cert_tail = cert_body[6 + int.from_bytes(cert_body[4:6], "big"):]
+    hashed_area = material[6:]
+
+    def subpacket(area: bytes, kind: int) -> bytes:
+        """One hashed subpacket as GnuPG wrote it, length octet and all."""
+        pos = 0
+        while pos < len(area):
+            length = area[pos]
+            assert length, "a zero-length subpacket needs the two-octet length form"
+            if area[pos + 1] == kind:
+                return area[pos:pos + 1 + length]
+            pos += 1 + length
+        raise AssertionError(f"the fixture certification has no hashed subpacket {kind:#04x}")
+
+    creation_subpacket = subpacket(hashed_area, 0x02)
+    fingerprint_subpacket = subpacket(hashed_area, 0x21)
+    assert len(creation_subpacket) == 6, "GnuPG's creation-time subpacket is not 05 02 <time>"
+    assert int.from_bytes(creation_subpacket[2:6], "big") == creation_time, \
+        "the certification was made in a different second than the key was born"
+    assert fingerprint_subpacket[:3] == bytes([0x16, 0x21, 0x04]) and \
+        fingerprint_subpacket[3:] == fingerprint, \
+        "GnuPG's issuer-fingerprint subpacket is not 16 21 04 <the v4 fingerprint>"
+    raw_sig = mpis[0][2:].rjust(32, b"\x00") + mpis[1][2:].rjust(32, b"\x00")
+
+    text_rows, refused = [], []
+    for index in range(1, 40):
+        try:
+            message = openpgp_fixture(f"text-{index}.msg")
+            signature = openpgp_fixture(f"text-{index}.sig")
+        except AssertionError:
+            break
+        own_material, _, want, own_mpis = openpgp_sig_areas(openpgp_packets(signature)[0][2])
+        assert own_material[:4] == bytes([4, 1, 19, 8]), \
+            f"text-{index} is not a v4 canonical-text ECDSA/SHA-256 signature"
+        canonical = openpgp_canonicalize(message)
+        if canonical is None:
+            refused.append(message)
+            continue
+        digest = openpgp_digest(canonical, own_material)
+        assert digest[:2] == want and openpgp_verify(point, own_mpis[0], own_mpis[1], digest), \
+            f"text-{index}: GnuPG did not sign what our canonicalization produces"
+        text_rows.append((message, own_material, digest))
+    assert text_rows and len(refused) == 1, \
+        f"{len(text_rows)} canonical texts and {len(refused)} refused"
+
+    binary_body = openpgp_packets(openpgp_fixture("binary.sig"))[0][2]
+    binary_material, _, binary_left16, binary_mpis = openpgp_sig_areas(binary_body)
+    assert binary_body[1] == 0x00, "the binary signature is not a binary document signature"
+    binary_msg = openpgp_fixture("binary.msg")
+    binary_digest = openpgp_digest(binary_msg, binary_material)
+    assert binary_digest[:2] == binary_left16 and \
+        openpgp_verify(point, binary_mpis[0], binary_mpis[1], binary_digest), \
+        "GnuPG did not sign the binary message as it came"
+
+    def bundle(key_form, uid_form, cert_form, key=key_body, idn=uid, cert=cert_body):
+        return (openpgp_wrap(6, key, key_form) + openpgp_wrap(13, idn, uid_form)
+                + openpgp_wrap(2, cert, cert_form))
+
+    def only(*packets):
+        return b"".join(packets)
+
+    key_p, uid_p, cert_p = (openpgp_wrap(6, key_body, "old"), openpgp_wrap(13, uid, "old"),
+                            openpgp_wrap(2, cert_body, "old"))
+
+    def sig_of_type(kind: int) -> bytes:
+        return openpgp_wrap(2, cert_body[:1] + bytes([kind]) + cert_body[2:], "old")
+
+    bundles = [
+        ("GnuPG's own export, old-format headers", bundle("old", "old", "old"), True),
+        ("the same three packets under new-format headers", bundle("new", "new", "new"), True),
+        ("one header of each format", bundle("new", "old", "new"), True),
+        ("the key packet missing", only(uid_p, cert_p), False),
+        ("the user ID missing", only(key_p, cert_p), False),
+        ("the certification missing", only(key_p, uid_p), False),
+        ("a fourth packet after the certification", only(key_p, uid_p, cert_p, key_p), False),
+        ("user ID and certification the other way round", only(key_p, cert_p, uid_p), False),
+        ("a subkey packet where the primary key is",
+         only(openpgp_wrap(14, key_body, "old"), uid_p, cert_p), False),
+        ("a key packet holding a user ID body",
+         only(openpgp_wrap(6, uid, "old"), uid_p, cert_p), False),
+        ("an empty user ID", only(key_p, openpgp_wrap(13, b"", "old"), cert_p), False),
+        ("a version 3 key body",
+         only(openpgp_wrap(6, b"\x03" + key_body[1:], "old"), uid_p, cert_p), False),
+        ("a version 3 certification",
+         only(key_p, uid_p, openpgp_wrap(2, b"\x03" + cert_body[1:], "old")), False),
+        ("a subkey binding signature where the certification is",
+         only(key_p, uid_p, sig_of_type(0x18)), False),
+        ("a key revocation where the certification is",
+         only(key_p, uid_p, sig_of_type(0x20)), False),
+        ("a certification body too short for a signature header",
+         only(key_p, uid_p, openpgp_wrap(2, cert_body[:5], "old")), False),
+        ("a body that stops short of the last octet the header promised",
+         only(key_p, uid_p, cert_p[:-1]), False),
+        ("a stream cut in the middle of the key packet", bundle("old", "old", "old")[:20], False),
+        ("an old-format indeterminate length",
+         only(key_p, bytes([0x80 | (13 << 2) | 3]) + uid, cert_p), False),
+        ("a new-format partial body length",
+         only(key_p, bytes([0xC0 | 13, 224]) + uid, cert_p), False),
+        ("the three packets with an old-format two-octet length each",
+         bundle("old2", "old2", "old2"), True),
+        ("the user ID under a two-octet new-format length",
+         only(key_p, openpgp_wrap(13, uid, "new2"), cert_p), True),
+        ("a key packet under a new-format five-octet length, the others short",
+         only(openpgp_wrap(6, key_body, "new5"), uid_p, cert_p), True),
+        ("a five-octet length that promises more than the stream holds",
+         only(key_p, bytes([0xC0 | 13, 255, 0, 0, 1, 0]) + uid, cert_p), False),
+        ("the three packets with an old-format four-octet length each",
+         bundle("old4", "old4", "old4"), True),
+        ("the three packets with a new-format five-octet length each",
+         bundle("new5", "new5", "new5"), True),
+        ("a new-format two-octet length over a body of 192 octets or more",
+         only(key_p, openpgp_wrap(13, uid, "new2"), cert_p), len(uid) >= 192),
+        ("a two-octet new-format length that stops after its first octet",
+         only(key_p, bytes([0xC0 | 13, 192]), cert_p), False),
+        ("a five-octet new-format length with three of its four octets",
+         only(key_p, bytes([0xC0 | 13, 255, 0, 0, 0]), cert_p), False),
+        ("an old-format two-octet length with one octet after it",
+         only(key_p, bytes([0x80 | (13 << 2) | 1, 0x00]), cert_p), False),
+        ("an old-format four-octet length with two octets after it",
+         only(key_p, bytes([0x80 | (13 << 2) | 2, 0x00, 0x01]), cert_p), False),
+        ("a new-format length octet with nothing after it",
+         only(key_p, bytes([0xC0 | 13]), cert_p), False),
+        ("a packet header that is not a packet header at all",
+         only(key_p, bytes([0x00, 0x01]) + uid, cert_p), False),
+        ("a one-octet length one short of the user ID it carries",
+         only(key_p, bytes([0x80 | (13 << 2), len(uid) - 1]) + uid, cert_p), False),
+        ("a two-octet old-format length one short of the user ID it carries",
+         only(key_p, bytes([0x80 | (13 << 2) | 1]) + (len(uid) - 1).to_bytes(2, "big") + uid,
+              cert_p), False),
+        ("a four-octet old-format length one short of the user ID it carries",
+         only(key_p, bytes([0x80 | (13 << 2) | 2]) + (len(uid) - 1).to_bytes(4, "big") + uid,
+              cert_p), False),
+        # A length field that is cut short in the middle is its own failure, distinct from a body
+        # that is short: RFC 4880 4.2.1 and 4.2.2 give each form a fixed header size.
+        ("an old-format one-octet length with no length", bytes([0x80 | (6 << 2)]), False),
+        ("an old-format two-octet length with one of its two octets",
+         bytes([0x80 | (6 << 2) | 1, 0x00]), False),
+        ("an old-format four-octet length with three of its four octets",
+         bytes([0x80 | (6 << 2) | 2, 0x00, 0x01, 0x00]), False),
+        ("a new-format header with no length octet at all", bytes([0xC0 | 6]), False),
+        ("a new-format two-octet length with one of its two octets", bytes([0xC0 | 6, 192]), False),
+        ("a new-format five-octet length with three of its four octets",
+         bytes([0xC0 | 6, 255, 0x00, 0x00, 0x00]), False),
+        ("no packets at all", b"", False),
+        ("one octet", bytes([0x88]), False),
+    ]
+
+    def cbor_map(entries: list[tuple[int, bytes]]) -> bytes:
+        return (cbor_head(5, len(entries))
+                + b"".join(cbor_uint(k) + v for k, v in entries))
+
+    def bstr(data: bytes) -> bytes:
+        return cbor_head(2, len(data)) + data
+
+    create = [(1, cbor_uint(1)), (2, cbor_uint(1)), (3, bstr(uid)), (4, cbor_uint(creation_time))]
+    sign = [(1, cbor_uint(1)), (2, cbor_uint(2)), (3, bstr(b"hello\n")),
+            (4, cbor_uint(creation_time)), (5, cbor_uint(creation_time + 60))]
+
+    def create_expect(payload=uid, at=creation_time):
+        return dict(operation=1, payload=payload, creation_time=at, key_creation_time=0,
+                    signature_creation_time=0)
+
+    def sign_expect(payload=b"hello\n", key_at=creation_time, sig_at=creation_time + 60):
+        return dict(operation=2, payload=payload, creation_time=key_at, key_creation_time=key_at,
+                    signature_creation_time=sig_at)
+
+    requests = [
+        ("CREATE_IDENTITY as the protocol defines it", cbor_map(create), create_expect()),
+        ("SIGN_MESSAGE as the protocol defines it", cbor_map(sign), sign_expect()),
+        ("an unknown protocol version", cbor_map([(1, cbor_uint(2))] + create[1:]), None),
+        ("protocol version zero", cbor_map([(1, cbor_uint(0))] + create[1:]), None),
+        ("an unknown operation", cbor_map([create[0], (2, cbor_uint(3))] + create[2:]), None),
+        ("operation zero", cbor_map([create[0], (2, cbor_uint(0))] + create[2:]), None),
+        ("no payload", cbor_map(create[:2] + create[3:]), None),
+        ("no creation time", cbor_map(create[:3]), None),
+        ("an empty user ID", cbor_map(create[:2] + [(3, bstr(b""))] + create[3:]), None),
+        (f"a user ID of {OPENPGP_UID_MAX_LEN} octets",
+         cbor_map(create[:2] + [(3, bstr(b"u" * OPENPGP_UID_MAX_LEN))] + create[3:]),
+         create_expect(b"u" * OPENPGP_UID_MAX_LEN)),
+        (f"a user ID of {OPENPGP_UID_MAX_LEN + 1} octets",
+         cbor_map(create[:2] + [(3, bstr(b"u" * (OPENPGP_UID_MAX_LEN + 1)))] + create[3:]), None),
+        ("a creation time of zero", cbor_map(create[:3] + [(4, cbor_uint(0))]), None),
+        ("a payload given as a text string, not a byte string",
+         cbor_map(create[:2] + [(3, cbor_head(3, len(uid)) + uid)] + create[3:]), None),
+        ("keys out of canonical order",
+         cbor_map([(2, cbor_uint(1)), (1, cbor_uint(1))] + create[2:]), None),
+        ("a repeated key", cbor_map(create + [(4, cbor_uint(creation_time))]), None),
+        ("bytes after the map", cbor_map(create) + b"\xf6", None),
+        ("an indefinite-length map",
+         b"\xbf" + b"".join(cbor_uint(k) + v for k, v in create) + b"\xff", None),
+        ("a map of two items", cbor_map(create[:2]), None),
+        ("an empty map", cbor_map([]), None),
+        ("a key creation time of zero on SIGN_MESSAGE",
+         cbor_map(sign[:3] + [(4, cbor_uint(0)), sign[4]]), None),
+        ("a signature created before the key",
+         cbor_map(sign[:3] + [(4, cbor_uint(creation_time)),
+                              (5, cbor_uint(creation_time - 1))]), None),
+        ("a signature creation time of zero",
+         cbor_map(sign[:3] + [(4, cbor_uint(creation_time))]), None),
+        ("a signature creation time given twice",
+         cbor_map(sign + [(5, cbor_uint(creation_time + 60))]), None),
+        (f"a message of {OPENPGP_MESSAGE_MAX_LEN} octets",
+         cbor_map(sign[:2] + [(3, bstr(b"m" * OPENPGP_MESSAGE_MAX_LEN))] + sign[3:]),
+         sign_expect(b"m" * OPENPGP_MESSAGE_MAX_LEN)),
+        (f"a message of {OPENPGP_MESSAGE_MAX_LEN + 1} octets",
+         cbor_map(sign[:2] + [(3, bstr(b"m" * (OPENPGP_MESSAGE_MAX_LEN + 1)))] + sign[3:]), None),
+        ("an empty message", cbor_map(sign[:2] + [(3, bstr(b""))] + sign[3:]), None),
+        ("SIGN_MESSAGE with no signature creation time", cbor_map(sign[:4]), None),
+        ("SIGN_MESSAGE in the same second the key was made",
+         cbor_map(sign[:4] + [(5, cbor_uint(creation_time))]), sign_expect(sig_at=creation_time)),
+        ("not a map", bstr(b"\x01\x02"), None),
+        ("one octet", b"\x00", None),
+        ("nothing at all", b"", None),
+    ]
+
+    def request_row(what, data, expect):
+        fields = [f' .what = "{what}"',
+                  f' .cbor = {{ {c_array(data, 12, "      ")} }}',
+                  f' .len = {len(data)}',
+                  f' .accepted = {"true" if expect is not None else "false"}']
+        if expect is not None:
+            fields += [f' .operation = {expect["operation"]}',
+                       f' .payload = {{ {c_array(expect["payload"], 12, "      ")} }}',
+                       f' .payload_len = {len(expect["payload"])}',
+                       f' .creation_time = {expect["creation_time"]}u',
+                       f' .key_creation_time = {expect["key_creation_time"]}u',
+                       f' .signature_creation_time = {expect["signature_creation_time"]}u']
+        return "  { " + ",\n    ".join(fields) + " },"
+
+    def text_row(message, own_material, digest):
+        return ('  {\n'
+                f'    .message = {{ {c_array(message, 10, "    ")} }},\n'
+                f'    .message_len = {len(message)},\n'
+                f'    .material = {{ {c_array(own_material, 10, "    ")} }},\n'
+                f'    .material_len = {len(own_material)},\n'
+                f'    .digest = {{ {c_array(digest, 10, "    ")} }},\n'
+                '  },')
+
+    out = f"""#ifndef VECTORS_OPENPGP_H
+#define VECTORS_OPENPGP_H
+
+/* app/openpgp against GnuPG and RFC 4880.
+ *
+ * The key material was made by GnuPG 2.4 on secp256k1 -- the curve this device implements -- and is
+ * kept verbatim in tests/vectors/openpgp_fixture; regenerate with tests/vectors/oracle/openpgp.sh,
+ * which replaces the key and every signature with it. Expectations are GnuPG's own bytes (a public
+ * key packet body, the fingerprint it publishes, the octet string its signature covers) or rules
+ * quoted from RFC 4880, and generate.py emits nothing until coincurve has verified that the digest
+ * we compute is the digest GnuPG signed. So the certification rows are pinned by a signature an
+ * independent ECDSA implementation accepts, not by agreement with this firmware.
+ *
+ * What GnuPG settled here, each a fact about the wire:
+ *   - a v4 fingerprint is SHA1(0x99 || uint16 length || key body) -- RFC 4880 12.1, and it is
+ *     exactly the fingerprint GnuPG publishes for this key;
+ *   - a v4 user ID certification hashes 0x99||len||key then 0xB4||uint32 len||user ID, then the
+ *     signature header and hashed subpackets, then a trailer whose four-octet count covers the hash
+ *     material and not the trailer's own six octets -- RFC 4880 5.2.4;
+ *   - a canonical text signature hashes the text with LF mapped to CRLF and nothing else removed:
+ *     RFC 4880 5.2.4 asks only for "canonicalized by converting line endings to <CR><LF>", and
+ *     GnuPG signs trailing spaces, trailing tabs and a "From " line through unchanged, so there is
+ *     no trailing-whitespace stripping and no dash-escaping to implement;
+ *   - an MPI is a bit count followed by exactly that many significant bits -- RFC 4880 3.2 -- so a
+ *     65-octet uncompressed point is 515 bits, not 520;
+ *   - the unhashed area of a signature GnuPG actually produces is a 10-octet issuer-key-id block,
+ *     00 0a 09 10 followed by the key id, which is what our signature packet ends with.
+ *
+ * Left to the device, and pinned as its own choice rather than as RFC 4880:
+ *   - a certification bundle is exactly three packets: a version 4 public key, a non-empty user ID,
+ *     and a version 4 certification of type 0x10 through 0x13. RFC 4880 allows streams of many
+ *     packets and many signature types; this operation reviews one identity at a time, so a subkey
+ *     binding (0x18) or a revocation (0x20) is refused -- those rows are GnuPG's own signature body
+ *     with its type octet replaced by what RFC 4880 5.2.1 says each type is;
+ *   - a new-format partial body length (224 to 254) and an old-format indeterminate length are
+ *     refused although RFC 4880 4.2.2.4 and 4.2.1 define them: the bundle arrives complete in one
+ *     buffer, so a length that is not in the header has no honest reading;
+ *   - text containing a CR that does not begin a CRLF is refused by
+ *     openpgp_v4_canonicalize_text, while GnuPG signs a bare CR through as an ordinary octet. The
+ *     fixture has such a message, so the divergence is measured rather than assumed;
+ *   - the request map, its bounds and the canonical CBOR ordering are the Shell's protocol, stated
+ *     in app/openpgp/openpgp_protocol.h.
+ *
+ * Not covered: openpgp_v4_verify_uid_self_cert beyond the point where it hands the digest and the
+ * point to ecdsa_verify_raw_pub, which needs the public-key accelerator and aborts in a host build.
+ * Its refusals before that call are covered, as is everything up to it.
+ */
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+/* The primary key GnuPG generated. Packet body: version, creation time, algorithm 19, OID length
+ * and OID 1.3.132.0.10, then the point as an MPI. */
+#define OPENPGP_CREATION_TIME {creation_time}u
+#define OPENPGP_KEY_BODY_LEN {len(key_body)}
+static const uint8_t OPENPGP_KEY_POINT[65] = {{
+  {c_array(point, 12, "  ")}
+}};
+
+static const uint8_t OPENPGP_KEY_BODY[OPENPGP_KEY_BODY_LEN] = {{
+  {c_array(key_body, 12, "  ")}
+}};
+
+/* The fingerprint GnuPG publishes for that key, taken from its keyring listing. */
+static const uint8_t OPENPGP_FINGERPRINT[20] = {{
+  {c_array(fingerprint, 12, "  ")}
+}};
+
+static const uint8_t OPENPGP_UID[] = {{
+  {c_array(uid, 12, "  ")}
+}};
+#define OPENPGP_UID_LEN {len(uid)}
+
+/* GnuPG's self-certification of that key and user ID, and the pieces of it the digest needs. */
+#define OPENPGP_SIG_TYPE {sig_type}
+#define OPENPGP_CERT_BODY_LEN {len(cert_body)}
+static const uint8_t OPENPGP_CERT_BODY[] = {{
+  {c_array(cert_body, 12, "  ")}
+}};
+
+static const uint8_t OPENPGP_CERT_MATERIAL[] = {{
+  {c_array(material, 12, "  ")}
+}};
+#define OPENPGP_CERT_MATERIAL_LEN {len(material)}
+
+static const uint8_t OPENPGP_CERT_DATA[] = {{
+  {c_array(cert_data, 12, "  ")}
+}};
+#define OPENPGP_CERT_DATA_LEN {len(cert_data)}
+
+static const uint8_t OPENPGP_CERT_DIGEST[32] = {{
+  {c_array(cert_digest, 12, "  ")}
+}};
+
+/* What follows the hashed area: the unhashed subpackets with their length, the two octets of the
+ * signed hash GnuPG recorded, and the two MPIs. */
+static const uint8_t OPENPGP_CERT_TAIL[] = {{
+  {c_array(cert_tail, 12, "  ")}
+}};
+#define OPENPGP_CERT_TAIL_LEN {len(cert_tail)}
+
+static const uint8_t OPENPGP_ISSUER_KEY_ID[8] = {{
+  {c_array(issuer_key_id, 12, "  ")}
+}};
+
+/* Two hashed subpackets as GnuPG wrote them into its own certification: the creation time, and the
+ * issuer fingerprint whose bytes are the fingerprint above. RFC 4880 5.2.3.1 gives the
+ * length-and-type framing; these are what a real certification carries inside it. */
+static const uint8_t OPENPGP_CREATION_SUBPACKET[] = {{
+  {c_array(creation_subpacket, 12, "  ")}
+}};
+#define OPENPGP_CREATION_SUBPACKET_LEN {len(creation_subpacket)}
+
+static const uint8_t OPENPGP_FINGERPRINT_SUBPACKET[] = {{
+  {c_array(fingerprint_subpacket, 12, "  ")}
+}};
+#define OPENPGP_FINGERPRINT_SUBPACKET_LEN {len(fingerprint_subpacket)}
+
+/* The certification's signature the way the secure element hands one over: r then s, 32 octets
+ * each, without the MPI framing. */
+static const uint8_t OPENPGP_CERT_RAW_SIG[64] = {{
+  {c_array(raw_sig, 12, "  ")}
+}};
+
+/* The same key's signature over a binary document: the octets as they came, no canonicalization. */
+static const uint8_t OPENPGP_BINARY_MESSAGE[] = {{
+  {c_array(binary_msg, 12, "  ")}
+}};
+#define OPENPGP_BINARY_MESSAGE_LEN {len(binary_msg)}
+
+static const uint8_t OPENPGP_BINARY_MATERIAL[] = {{
+  {c_array(binary_material, 12, "  ")}
+}};
+#define OPENPGP_BINARY_MATERIAL_LEN {len(binary_material)}
+
+static const uint8_t OPENPGP_BINARY_DIGEST[32] = {{
+  {c_array(binary_digest, 12, "  ")}
+}};
+
+typedef struct {{
+  uint8_t message[64];
+  size_t message_len;
+  uint8_t material[128];   /* GnuPG's own hash material for this signature */
+  size_t material_len;
+  uint8_t digest[32];      /* what its signature covers, after canonicalization */
+}} openpgp_text_t;
+
+/* One canonical text signature per row: canonicalize the message, hash that followed by this row's
+ * material, and the result is what GnuPG signed. */
+static const openpgp_text_t OPENPGP_TEXTS[] = {{
+{chr(10).join(text_row(m, mat, dig) for m, mat, dig in text_rows)}
+}};
+
+#define OPENPGP_TEXTS_COUNT (sizeof(OPENPGP_TEXTS) / sizeof(OPENPGP_TEXTS[0]))
+
+/* The message GnuPG signed with its own idea of canonicalization and this device refuses: a bare
+ * CR, kept by GnuPG as an ordinary octet. */
+static const uint8_t OPENPGP_CANONICAL_REFUSALS[][32] = {{
+{chr(10).join(f'  {{ {c_array(m, 10, "    ")} }},' for m in refused)}
+}};
+static const size_t OPENPGP_CANONICAL_REFUSAL_LENS[] = {{
+{chr(10).join(f'  {len(m)},' for m in refused)}
+}};
+#define OPENPGP_CANONICAL_REFUSALS_COUNT (sizeof(OPENPGP_CANONICAL_REFUSALS) / sizeof(OPENPGP_CANONICAL_REFUSALS[0]))
+
+typedef struct {{
+  const char* what;
+  uint8_t packets[1024];
+  size_t len;
+  bool accepted;
+}} openpgp_bundle_t;
+
+/* Inputs to openpgp_parse_cert_target. The bodies are GnuPG's; the headers and the mutations are
+ * built here, and each row says what it is about. */
+static const openpgp_bundle_t OPENPGP_BUNDLES[] = {{
+{chr(10).join(f'  {{ .what = "{what}",\n    .packets = {{ {c_array(data, 12, "      ")} }},\n    .len = {len(data)},\n    .accepted = {"true" if ok else "false"} }},' for what, data, ok in bundles)}
+}};
+
+#define OPENPGP_BUNDLES_COUNT (sizeof(OPENPGP_BUNDLES) / sizeof(OPENPGP_BUNDLES[0]))
+
+#define OPENPGP_PAYLOAD_MAX 255
+
+typedef struct {{
+  const char* what;
+  uint8_t cbor[512];
+  size_t len;
+  bool accepted;
+  uint8_t operation;
+  uint8_t payload[OPENPGP_PAYLOAD_MAX];
+  size_t payload_len;
+  uint32_t creation_time;
+  uint32_t key_creation_time;
+  uint32_t signature_creation_time;
+}} openpgp_request_row_t;
+
+/* Inputs to openpgp_protocol_parse_request: the request map as app/openpgp/openpgp_protocol.h
+ * defines it, and every way a host could send something else. The map is parsed under
+ * ZCBOR_CANONICAL, so keys arrive in increasing order and no key arrives twice. */
+static const openpgp_request_row_t OPENPGP_REQUESTS[] = {{
+{chr(10).join(request_row(what, data, expect) for what, data, expect in requests)}
+}};
+
+#define OPENPGP_REQUESTS_COUNT (sizeof(OPENPGP_REQUESTS) / sizeof(OPENPGP_REQUESTS[0]))
+
+#endif\t/* VECTORS_OPENPGP_H */
+"""
+    return out
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -7785,6 +8467,7 @@ def main() -> None:
         "vectors_keycard_signature.h": sign_reply_vectors(),
         "vectors_eip712.h": eip712_vectors(),
         "vectors_ur.h": ur_vectors(),
+    "vectors_openpgp.h": openpgp_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

@@ -1,0 +1,5 @@
+tru:o:1:1793869996:1:3:1:5
+pub:u:256:19:FACAC3FD658D9FB6:1793869996:::u:::scSC:::::secp256k1:::0:
+fpr:::::::::8360CB8C5A166580DB8183CAFACAC3FD658D9FB6:
+uid:u::::1793869996::BC45572310F68478895055817866CBA69163CE0E::Keycard Host Test (An identity long enough that a user ID packet needs a two octet length, because a hostile host can send one and the packet parser must not be the thing that notices) <openpgp-test@example.invalid>::::::::::0:
+sig:::19:FACAC3FD658D9FB6:1793869996::::Keycard Host Test (An identity long enough that a user ID packet needs a two octet length, because a hostile host can send one and the packet parser must not be the thing that notices) <openpgp-test@example.invalid>:13x::8360CB8C5A166580DB8183CAFACAC3FD658D9FB6:::8:
