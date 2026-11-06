@@ -11039,11 +11039,81 @@ static const multisig_crypto_kat_t MULTISIG_CRYPTO_KAT[] = {{
 """
 
 
+def pbkdf2_vectors() -> str:
+    """PBKDF2-HMAC-SHA256, computed by pycryptodome's PBKDF2 -- a released implementation, not this
+    tree's. The cases are the shapes the callers use plus the ones they will use next time: the
+    exact call keycard.c makes for a pairing password, key lengths that are not a multiple of the
+    digest, iteration counts around the loop's arms, and salt lengths across the SHA-256 block."""
+    from Crypto.Hash import SHA256
+    from Crypto.Protocol.KDF import PBKDF2
+
+    pairing_salt = b"Keycard Pairing Password Salt"
+    if len(pairing_salt) != 29:
+        raise ValueError("keycard.c passes 29 as this salt's length")
+
+    rows = []
+
+    def add(name: str, password: bytes, salt: bytes, iterations: int, dk_len: int):
+        dk = PBKDF2(password, salt, dkLen=dk_len, count=iterations, hmac_hash_module=SHA256)
+        rows.append((name, password, salt, iterations, dk))
+
+    for pw in (b"", b"1234", b"password", b"p" * 63, b"p" * 64, b"p" * 65, "pässwörd".encode()):
+        add(f"pairing password, {len(pw)}B", pw, pairing_salt, 50000, 32)
+
+    for dk_len in (8, 16, 31, 32, 33, 40, 64, 72):
+        add(f"derived key of {dk_len} bytes", b"password", b"salt", 4096, dk_len)
+
+    for it in (1, 2, 3, 1000, 4096):
+        add(f"{it} iterations", b"password", b"salt", it, 32)
+
+    for n in (0, 1, 15, 63, 64, 65, 200):
+        add(f"salt of {n} bytes", b"password", b"S" * n, 1000, 32)
+
+    body = "\n".join(
+        f'    {{ "{name}", "{hexs(passw)}", "{hexs(salt)}", {it}, "{hexs(dk)}" }},'
+        for name, passw, salt, it, dk in rows
+    )
+
+    return f"""#ifndef VECTORS_PBKDF2_H
+#define VECTORS_PBKDF2_H
+
+/* reference: pycryptodome {PBKDF2.__module__} PBKDF2, HMAC-SHA256.
+ *
+ * The first group is the call keycard.c:722 makes -- password, the literal salt
+ * "Keycard Pairing Password Salt" with its length passed as 29, 50000 iterations, 32 bytes -- which is
+ * how a pairing password becomes the key that seals the session, so the two implementations have to
+ * agree byte for byte or the card rejects every pairing. The rest is the surrounding shape: a derived
+ * key shorter or longer than one digest (slip39.c derives 8 and 16), the iteration loop entered once
+ * or many times, and salt lengths on both sides of the SHA-256 block.
+ *
+ * Password and salt are hex rather than string literals so that a UTF-8 password and an empty salt
+ * are both expressible; the derived key's length is half the hex string's.
+ */
+
+typedef struct {{
+  const char* name;
+  const char* pass_hex;
+  const char* salt_hex;
+  uint32_t iterations;
+  const char* dk_hex;
+}} pbkdf2_kat_t;
+
+static const pbkdf2_kat_t PBKDF2_KAT[] = {{
+{body}
+}};
+
+#define PBKDF2_KAT_COUNT (sizeof(PBKDF2_KAT) / sizeof(PBKDF2_KAT[0]))
+
+#endif
+"""
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
         "vectors_hmac.h": hmac_vectors(),
         "vectors_hkdf.h": hkdf_vectors(),
+        "vectors_pbkdf2.h": pbkdf2_vectors(),
         "vectors_bip39.h": bip39_vectors(),
         "vectors_multisig.h": multisig_vectors(),
         "vectors_slip39.h": slip39_vectors(),
