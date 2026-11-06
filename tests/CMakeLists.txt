@@ -197,6 +197,21 @@ target_include_directories(app_storage PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURREN
 # about the narrowing cast goes with the difference in word size.
 target_compile_options(app_storage PRIVATE ${SHELLOS_COMMON_FLAGS} -Wno-pointer-to-int-cast)
 
+# Settings: the store half is the point of the test, and the four menus it hangs off are scripted in
+# host/ui_host.c. i18n.c and english.c compile as they are, so the string table is the device's own --
+# menu.c is the one that cannot, needing FreeRTOS for data the seam only takes the address of.
+add_library(app_settings STATIC
+    ${SHELLOS_ROOT}/app/core/settings.c
+    ${SHELLOS_ROOT}/app/ui/i18n.c
+    ${SHELLOS_ROOT}/app/ui/english.c
+)
+target_include_directories(app_settings PUBLIC ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_settings PRIVATE ${SHELLOS_COMMON_FLAGS})
+
+add_library(settings_seam STATIC host/ui_host.c)
+target_include_directories(settings_seam PUBLIC ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(settings_seam PRIVATE ${SHELLOS_COMMON_FLAGS})
+
 # The OpenPGP card mode's packet and request parsers, which are every byte of this device that
 # reads an OpenPGP stream. They need no hardware and no UI: the one function that touches the
 # curve, openpgp_v4_verify_uid_self_cert, calls ecdsa_verify_raw_pub, which is real code here and
@@ -294,6 +309,7 @@ shellos_test(shamir LIBS app_crypto)
 shellos_test(storage_fs LIBS app_storage)
 shellos_test(eth_db LIBS app_ethereum app_storage)
 shellos_test(scv2_whitelist LIBS app_keycard app_storage)
+shellos_test(settings LIBS app_settings settings_seam app_storage)
 shellos_test(hal_pka LIBS app_crypto)
 shellos_test(bip32 LIBS app_crypto)
 shellos_test(taproot LIBS app_bitcoin app_crypto)
