@@ -157,7 +157,6 @@ set(APP_SOURCES
     app/ethereum/ethUtils.c
     app/ethereum/eth_data.c
     app/ethereum/eth_db.c
-    app/crypto/aes/lookup_tables.c
     app/crypto/address.c
     app/crypto/addr_uri.c
     app/crypto/aes.c
@@ -269,22 +268,6 @@ set(CORE_SOURCES
     stm32/Core/Src/stm32h5xx_it.c
     stm32/Core/Src/stubs.c
     stm32/Core/Src/system_stm32h5xx.c
-)
-
-# Source files - soft AES (unused)
-set(AES_SOURCES
-    app/crypto/aes/CM7_1T/CM7_1T_AES_128_keyschedule_enc.S
-    app/crypto/aes/CM7_1T/CM7_1T_AES_192_keyschedule_enc.S
-    app/crypto/aes/CM7_1T/CM7_1T_AES_256_keyschedule_enc.S
-    app/crypto/aes/CM7_1T/CM7_1T_AES_decrypt.S
-    app/crypto/aes/CM7_1T/CM7_1T_AES_encrypt.S
-    app/crypto/aes/CM7_1T/CM7_1T_AES_keyschedule_dec.S
-    app/crypto/aes/CM3_1T/CM3_1T_AES_128_keyschedule_enc.S
-    app/crypto/aes/CM3_1T/CM3_1T_AES_192_keyschedule_enc.S
-    app/crypto/aes/CM3_1T/CM3_1T_AES_256_keyschedule_enc.S
-    app/crypto/aes/CM3_1T/CM3_1T_AES_decrypt.S
-    app/crypto/aes/CM3_1T/CM3_1T_AES_encrypt.S
-    app/crypto/aes/CM3_1T/CM3_1T_AES_keyschedule_dec.S
 )
 
 # Linker script

@@ -10828,6 +10828,94 @@ static const aes_cbc_kat_t AES_CBC_MAC_KAT[] = {{
 """.replace("{fips197}", provenance("fips-197.pdf")).replace("{sp80038c}", provenance("sp800-38c.pdf"))
 
 
+# ------------------------------------------------------------------- key store
+
+
+def keys_vectors() -> str:
+    """The one trust anchor in keys.c that an outside artifact can settle: the database verification
+    key must be the key the released database was signed with."""
+    blob = db_read_zip(SHELL_DB)["db.bin"]
+    _, _, _, _, body_len = db_parse(blob)
+
+    body, signature = blob[:body_len], blob[body_len:]
+    if len(signature) != 64:
+        sys.exit(f"{SHELL_DB}: expected a 64-byte signature after the body, found {len(signature)}")
+
+    return f"""#ifndef VECTORS_KEYS_H
+#define VECTORS_KEYS_H
+
+/* reference: {{shelldb}}
+ *
+ * updater_verify_db() digests the received database and checks the 64 bytes that follow it against
+ * key_read_public(DB_VERIFICATION_KEY). That makes the embedded key a trust anchor, and this is the one
+ * external thing that can say whether it is the right one: the release artifact, signed. A test verifies
+ * the release signature with the key keys.c hands back -- so a swapped or mistyped key fails the release,
+ * not just a self-consistent fixture.
+ */
+
+#define DB_RELEASE_BODY_SHA256 "{hexs(hashlib.sha256(body).digest())}"
+#define DB_RELEASE_SIGNATURE "{hexs(signature)}"
+
+#endif
+""".replace("{shelldb}", provenance(SHELL_DB))
+
+
+# ------------------------------------------------------------------- multisig
+
+
+def multisig_crypto_vectors() -> str:
+    """enc_key and blob, computed from the definitions in multisig_crypto.h by RFC 5869 and FIPS 198-1
+    rather than by the C code: HKDF-SHA256 over the EIP-1581 root with no salt -- so zeros, per the RFC --
+    and the first four bytes of HMAC-SHA256(fp_key, fingerprint little-endian)."""
+    cases = [
+        (bytes(range(32)), 0x00000000),
+        (bytes((i * 7 + 1) & 0xFF for i in range(32)), 0xDEADBEEF),
+        (bytes(32), 0x12345678),
+        (hashlib.sha256(b"eip-1581 root").digest(), 0xAABBCCDD),
+    ]
+
+    rows = []
+    for root, fingerprint in cases:
+        fp_key = hkdf_reference(bytes(32), root, b"multisig-fp", 32)[1]
+        enc_key = hkdf_reference(bytes(32), root, b"multisig-enc", 16)[1]
+        blob = hmac.new(fp_key, fingerprint.to_bytes(4, "little"), hashlib.sha256).digest()[:4]
+        rows.append((root.hex(), fingerprint, enc_key.hex(), blob.hex()))
+
+    body = ",\n".join(
+        "  {.root = %s, .master_fingerprint = 0x%08X, .enc_key = %s, .blob = %s}"
+        % (cstr(root), fp, cstr(enc), cstr(blob))
+        for root, fp, enc, blob in rows
+    )
+
+    return f"""#ifndef VECTORS_MULTISIG_CRYPTO_H
+#define VECTORS_MULTISIG_CRYPTO_H
+
+/* spec: {provenance('rfc5869.txt')}
+ *
+ * The labels, the truncation to AES-128 and the little-endian fingerprint are the module's own definitions
+ * -- they are what the header documents -- but the bytes below come from RFC 5869 extract-and-expand and
+ * FIPS 198-1 HMAC, computed here rather than read back from aes_ccm/hkdf's C. enc_key is the key that
+ * keeps a stored descriptor private; blob is the searchable index the store matches on, so it must be the
+ * same for every session with the same card and different for every card.
+ */
+
+typedef struct {{
+  const char* root;
+  uint32_t master_fingerprint;
+  const char* enc_key;
+  const char* blob;
+}} multisig_crypto_kat_t;
+
+static const multisig_crypto_kat_t MULTISIG_CRYPTO_KAT[] = {{
+{body}
+}};
+
+#define MULTISIG_CRYPTO_KAT_COUNT (sizeof(MULTISIG_CRYPTO_KAT) / sizeof(MULTISIG_CRYPTO_KAT[0]))
+
+#endif
+"""
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -10864,6 +10952,8 @@ def main() -> None:
         "vectors_ur.h": ur_vectors(),
     "vectors_openpgp.h": openpgp_vectors(),
         "vectors_hal_aes.h": aes_vectors(),
+        "vectors_keys.h": keys_vectors(),
+        "vectors_multisig_crypto.h": multisig_crypto_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

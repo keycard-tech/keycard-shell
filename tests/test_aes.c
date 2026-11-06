@@ -153,6 +153,51 @@ static void test_a_tampered_ciphertext_or_tag_is_refused(void) {
   TEST_ASSERT_EQUAL_INT(0, aes128_ccm_decrypt(ccm_key, nonce, ref, (uint32_t)(len + CCM_TAG_SIZE), io));
 }
 
+static void test_a_refused_encryption_is_reported(void) {
+  const uint8_t ccm_key[AES_128_KEY_SIZE] = {0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe, 0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81};
+  const uint8_t nonce[CCM_NONCE_SIZE] = {0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c};
+  static const char secret[] = "04a1b2c3d4e5f6";
+  const size_t len = sizeof(secret) - 1;
+
+  memcpy(io, secret, len);
+
+  /* The peripheral refusing to start has to reach the caller: secure_channel_v2.c:180 encrypts an APDU
+   * into the buffer it reads from, so on a refusal the bytes it is about to send are the plaintext. */
+  hal_host_aes_refuse_next(1);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(0, aes128_ccm_encrypt(ccm_key, nonce, io, (uint32_t)len, io), "the refusal was swallowed");
+  TEST_ASSERT_EQUAL_UINT(1, hal_host_aes_rejections());
+
+  /* Decryption fails closed for the same reason: a job that never ran compares a zeroed tag, which does
+   * not match, so a valid message refused mid-flight is refused rather than accepted. */
+  memset(io, 0, sizeof(io));
+  TEST_ASSERT_EQUAL_INT(1, aes128_ccm_encrypt(ccm_key, nonce, (const uint8_t*)secret, (uint32_t)len, io));
+
+  hal_host_aes_refuse_next(1);
+  TEST_ASSERT_EQUAL_INT(0, aes128_ccm_decrypt(ccm_key, nonce, io, (uint32_t)(len + CCM_TAG_SIZE), ref));
+}
+
+static void test_a_refused_cbc_job_is_reported(void) {
+  static const uint8_t key[AES_256_KEY_SIZE] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+                                                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f};
+  const uint8_t iv[AES_IV_SIZE] = {0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf};
+
+  /* Same requirement as for CCM: a job that never started is a failure, and secure_channel_v1_pair()
+   * encrypts into the buffer it reads from. */
+  hal_host_aes_refuse_next(1);
+  TEST_ASSERT_EQUAL_INT(0, aes_encrypt_cbc(key, iv, io, 32, io));
+
+  hal_host_aes_refuse_next(1);
+  TEST_ASSERT_EQUAL_INT(0, aes_decrypt_cbc(key, iv, io, 32, io));
+
+  hal_host_aes_refuse_next(1);
+  TEST_ASSERT_EQUAL_INT(0, aes_cbc_mac(key, io, 32, io));
+
+  TEST_ASSERT_EQUAL_UINT(3, hal_host_aes_rejections());
+
+  /* A job that does run is unaffected by the control being armed and then spent. */
+  TEST_ASSERT_EQUAL_INT(1, aes_encrypt_cbc(key, iv, io, 32, io));
+}
+
 static void test_a_message_of_nothing_authenticates(void) {
   const aes_ccm_kat_t* v = &AES_CCM_DEVICE[0];
   uint8_t ccm_key[AES_128_KEY_SIZE], nonce[CCM_NONCE_SIZE];
@@ -177,6 +222,8 @@ int main(void) {
   RUN_TEST(test_ccm_encrypts_the_way_the_reference_does);
   RUN_TEST(test_ccm_decrypt_verifies_and_recovers);
   RUN_TEST(test_a_tampered_ciphertext_or_tag_is_refused);
+  RUN_TEST(test_a_refused_encryption_is_reported);
+  RUN_TEST(test_a_refused_cbc_job_is_reported);
   RUN_TEST(test_a_message_of_nothing_authenticates);
 
   return UNITY_END();

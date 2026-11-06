@@ -50,6 +50,7 @@ target_include_directories(unity PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/unity)
 add_library(test_framework STATIC
     framework/test_util.c
     host/hal_aes_host.c
+    host/hal_derive_host.c
     host/hal_flash_host.c
     host/hal_host.c
     host/hal_pka_host.c
@@ -199,6 +200,27 @@ add_library(app_aes STATIC
 target_include_directories(app_aes PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_aes PRIVATE ${SHELLOS_COMMON_FLAGS})
 
+# The key store: embedded trust anchors, plus the two private halves that come out of the device secret.
+add_library(app_keys STATIC
+    ${SHELLOS_ROOT}/app/storage/keys.c
+)
+target_include_directories(app_keys PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_keys PRIVATE ${SHELLOS_COMMON_FLAGS})
+
+add_library(app_pairing STATIC
+    ${SHELLOS_ROOT}/app/keycard/pairing.c
+)
+target_include_directories(app_pairing PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_pairing PRIVATE ${SHELLOS_COMMON_FLAGS})
+
+# The encrypted multisig descriptors: key derivation and blob index, then the store over flash.
+add_library(app_multisig STATIC
+    ${SHELLOS_ROOT}/app/bitcoin/multisig_crypto.c
+    ${SHELLOS_ROOT}/app/storage/multisig_store.c
+)
+target_include_directories(app_multisig PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_multisig PRIVATE ${SHELLOS_COMMON_FLAGS})
+
 add_library(app_storage STATIC
     ${SHELLOS_ROOT}/app/storage/fs.c
 )
@@ -323,6 +345,10 @@ shellos_test(scv2_whitelist LIBS app_keycard app_storage)
 shellos_test(settings LIBS app_settings settings_seam app_storage)
 shellos_test(aes LIBS app_aes)
 shellos_test(hal_aes)
+shellos_test(keys LIBS app_keys app_crypto)
+shellos_test(pairing LIBS app_pairing app_keys app_aes app_storage app_crypto)
+shellos_test(multisig_crypto LIBS app_multisig app_aes app_crypto)
+shellos_test(multisig_store LIBS app_multisig app_aes app_storage app_crypto)
 shellos_test(hal_pka LIBS app_crypto)
 shellos_test(bip32 LIBS app_crypto)
 shellos_test(taproot LIBS app_bitcoin app_crypto)

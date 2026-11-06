@@ -24,6 +24,7 @@ typedef struct {
 } aes_key_t;
 
 static size_t rejections;
+static size_t refuse_init;
 
 /* ------------------------------------------------------------------ FIPS-197 core */
 
@@ -247,6 +248,10 @@ size_t hal_host_aes_rejections(void) {
   return rejections;
 }
 
+void hal_host_aes_refuse_next(size_t jobs) {
+  refuse_init = jobs;
+}
+
 size_t hal_host_aes_cbc_blocks(void) {
   return cbc.blocks;
 }
@@ -259,9 +264,16 @@ void hal_host_aes_reset(void) {
   memset(&cbc, 0, sizeof(cbc));
   memset(&ccm, 0, sizeof(ccm));
   rejections = 0;
+  refuse_init = false;
 }
 
 hal_err_t hal_aes256_init(hal_aes_mode_t mode, hal_aes_chaining_t chaining, const uint8_t key[AES_256_KEY_SIZE], const uint8_t iv[AES_IV_SIZE]) {
+  if (refuse_init) {
+    refuse_init--;
+    rejections++;
+    return HAL_FAIL;
+  }
+
   if (chaining != AES_CBC) {
     rejections++;
     return HAL_FAIL;
@@ -397,6 +409,13 @@ static void ccm_stream(const uint8_t* in, uint8_t* out, size_t len) {
 }
 
 hal_err_t hal_aes128_ccm_init(hal_aes_mode_t mode, const uint8_t key[AES_128_KEY_SIZE], const uint8_t b0[16]) {
+  if (refuse_init) {
+    /* Silicon refusing to start a job: no key loaded, no output written. */
+    refuse_init = false;
+    rejections++;
+    return HAL_FAIL;
+  }
+
   const uint8_t flags = b0[0];
   const size_t len_field = (size_t)(flags & 0x07) + 1;
   const size_t tag_len = (size_t)((((flags >> 3) & 0x07) * 2) + 2);

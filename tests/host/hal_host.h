@@ -29,7 +29,21 @@ void* hal_host_low_mem(size_t size);
  * announcing associated data, a tag longer than CCM_TAG_SIZE, a payload that does not match the length B0
  * declared) returns HAL_FAIL and is counted. Reset in setUp(). */
 void hal_host_aes_reset(void);
+
+/* hal_derive_device_unique_secret(), modelled in host/hal_derive_host.c the way the driver does it: a
+ * two-block chain under a device secret, then SHA-256 over the wrapped bytes. The fused key that
+ * AES_CR_KEYSEL_0 selects cannot be modelled, so the test supplies one -- setting it is how a test says
+ * "a different device". Reset in setUp(). */
+void hal_host_derive_reset(void);
+void hal_host_device_secret_set(const uint8_t secret[32]);
+size_t hal_host_derive_calls(void);
 size_t hal_host_aes_rejections(void);
+
+/* Make the next `jobs` AES jobs refuse to start, CBC or CCM, as silicon refusing would: HAL_FAIL and
+ * nothing written to the output. Counted per hal_aes*_init(), so a caller that derives a key first --
+ * key_read_private() does, and hal_derive_device_unique_secret() is itself a CBC job here -- needs one
+ * more than the encrypt call it is targeting. */
+void hal_host_aes_refuse_next(size_t jobs);
 size_t hal_host_aes_cbc_blocks(void);
 size_t hal_host_aes_ccm_bytes(void);
 
