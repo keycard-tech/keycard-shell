@@ -172,6 +172,23 @@ static void test_deserialize_refuses_impossible_shapes(void) {
   TEST_ASSERT_EQUAL_UINT8(7, revived.format);
 }
 
+/* The bytes the store hands back are CCM authenticated, which proves who wrote them and not that their
+ * keys are keys: a file imported before a key was checked is still in there. So the same predicate runs
+ * on the way out as on the way in. */
+static void test_deserialize_refuses_a_key_that_is_not_a_point(void) {
+  const multisig_case_t* row = &MULTISIG_CASES[0];
+  TEST_ASSERT_EQUAL_INT(ERR_OK, multisig_parse_text(row->text, row->text_len, &parsed));
+
+  for (size_t i = 0; i < parsed.key_count; i++) {
+    multisig_t stored = parsed;
+    stored.keys[i].xpub[MULTISIG_XPUB_KEY] = 0x04;
+
+    size_t len = 0;
+    TEST_ASSERT_EQUAL_INT(ERR_OK, multisig_serialize(&stored, blob, sizeof(blob), &len));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ERR_DATA, multisig_deserialize(blob, len, &revived), row->label);
+  }
+}
+
 static void assert_same_descriptor(const multisig_t* a, const multisig_t* b, const char* label) {
   TEST_ASSERT_EQUAL_INT_MESSAGE(0, memcmp(a, b, sizeof(*a)), label);
 }
@@ -323,16 +340,45 @@ static void test_derive_refuses_a_format_it_does_not_have(void) {
   }
 }
 
+/* A descriptor that did not come through parse or deserialize -- built on a caller's stack, as these
+ * tests do -- reaches the read itself, where an uncompressed key is a 64 byte copy out of a 33 byte
+ * field. The last key of a six is the one that leaves multisig_t. */
+static void test_derive_refuses_an_uncompressed_key(void) {
+  bool saw_six = false;
+
+  for (size_t i = 0; i < MULTISIG_DERIVE_COUNT; i++) {
+    const multisig_derive_t* row = &MULTISIG_DERIVE[i];
+    multisig_t d;
+    wallet_from_row(row, false, &d);
+    saw_six |= (row->n == MULTISIG_MAX_KEYS);
+
+    d.keys[row->n - 1].xpub[MULTISIG_XPUB_KEY] = 0x04;
+
+    char addr[MAX_ADDR_LEN];
+    memset(addr, 0xA5, sizeof(addr));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ERR_DATA,
+                                  multisig_derive_address(&d, row->change, row->index, addr),
+                                  row->label);
+    TEST_ASSERT_EQUAL_UINT8(0xA5, addr[0]);
+  }
+
+  /* Without a six in the corpus the poisoned key is never the last one in keys[], which is the case
+   * that read past the descriptor rather than into its neighbour. */
+  TEST_ASSERT_TRUE_MESSAGE(saw_six, "no six-cosigner row left in the derivation corpus");
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_parse);
   RUN_TEST(test_serialize_roundtrip);
   RUN_TEST(test_deserialize_refuses_impossible_shapes);
+  RUN_TEST(test_deserialize_refuses_a_key_that_is_not_a_point);
   RUN_TEST(test_reexport);
   RUN_TEST(test_has_fingerprint);
   RUN_TEST(test_derive_address);
   RUN_TEST(test_derive_address_ignores_the_order_of_the_cosigners);
   RUN_TEST(test_derive_refuses_a_hardened_step);
   RUN_TEST(test_derive_refuses_a_format_it_does_not_have);
+  RUN_TEST(test_derive_refuses_an_uncompressed_key);
   return UNITY_END();
 }

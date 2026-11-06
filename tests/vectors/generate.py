@@ -8840,6 +8840,24 @@ def multisig_case(label: str, text: str, *, name: str = '', m: int = 0, n: int =
             f'{cstr(fps)}, {cstr(xpubs)}, {serialized}, {reexport}}}')
 
 
+def xpub_rekey(key: str, key33: bytes) -> str:
+    """An extended public key with its 33 byte key field replaced and the checksum recomputed, so that a
+    refusal is about the key and not about the base58 around it."""
+    payload = bytearray(b58_decode(key))
+    assert len(payload) == 78, key
+    payload[45:78] = key33
+    return b58check_encode(bytes(payload))
+
+
+def xpub_without_point() -> bytes:
+    """A compressed key with no point above its x: x^3 + 7 is a quadratic non-residue, which
+    ec_uncompress_point answers with a y anyway."""
+    x = 1
+    while pow((x ** 3 + 7) % SECP256K1_P, (SECP256K1_P - 1) // 2, SECP256K1_P) != SECP256K1_P - 1:
+        x += 1
+    return b'\x02' + x.to_bytes(32, 'big')
+
+
 def multisig_vectors() -> str:
     raw = fetch('coldcard_multisig.html')
     doc = re.sub(r'<[^>]+>', '', raw).replace('&quot;', '"').replace('&amp;', '&')
@@ -8912,6 +8930,17 @@ def multisig_vectors() -> str:
 
     second = '6BA6CFD0: xpub' + export1.split('6BA6CFD0: xpub')[1].split('\n')[0]
 
+    pool = list(dict.fromkeys(re.findall(r'xpub[1-9A-HJ-NP-Za-km-z]{100,120}', export1 + coldcard)))
+    assert len(pool) >= 6, 'the fixtures no longer offer six distinct cosigner keys'
+
+    def six(bad_last: str | None = None) -> str:
+        """Six cosigners, the last line replaceable. Derivation walks every key in the file, because the
+        script lists all of them, so the sixth is the last one in keys[]."""
+        lines = ['Name: Six', 'Policy: 6 of 6', 'Format: P2WSH', '', "Derivation: m/48'/0'/0'/2'", '']
+        for i, key in enumerate(pool[:5] + [bad_last or pool[5]]):
+            lines.append(f'{0x0F056943 + i:08X}: {key}')
+        return '\n'.join(lines) + '\n'
+
     rows += [
         # Refusals, each one a file another tool might hand over.
         multisig_case('no Policy line (Coldcard would default M=N)', nopolicy, err='ERR_DATA'),
@@ -8927,6 +8956,21 @@ def multisig_vectors() -> str:
                       err='ERR_DATA'),
         multisig_case('an unknown label, which becomes a key line',
                       single(name='One', policy='Wallet: 1 of 1'), err='ERR_DATA'),
+        # The key field is where a hostile or merely truncated QR reaches the derivation, and the base58
+        # check and the 78 byte length let both of these through. A 0x04 prefix is the one that reads
+        # memory: ec_uncompress_key answers it with a pointer into a 33 byte field that _derive_key_pub
+        # then reads ECC256_POINT_SIZE bytes of.
+        multisig_case('an uncompressed cosigner key',
+                      single(xpub=xpub_rekey('xpub' + xpub,
+                                             b'\x04' + b58_decode('xpub' + xpub)[46:78])),
+                      err='ERR_DATA'),
+        multisig_case('a cosigner key with no point above its x',
+                      single(xpub=xpub_rekey('xpub' + xpub, xpub_without_point())), err='ERR_DATA'),
+        multisig_case('six cosigners, all keys points', six(), name='Six', m=6, n=6, fmt=2,
+                      keys=cc_keys(six())),
+        multisig_case('six cosigners, the last key uncompressed',
+                      six(bad_last=xpub_rekey(pool[5], b'\x04' + b58_decode(pool[5])[46:78])),
+                      err='ERR_DATA'),
         multisig_case('a label with no colon at all', single().replace('Format: P2WSH', 'P2WSH'),
                       err='ERR_DATA'),
         multisig_case('a lowercase label', single().replace('Name:', 'name:'), name='One', m=1,

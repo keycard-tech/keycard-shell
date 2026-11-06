@@ -12,6 +12,7 @@
 #include "crypto/secp256k1.h"
 #include "crypto/sha2.h"
 #include "crypto/util.h"
+#include "hal.h"
 
 #define MULTISIG_OP_CHECKMULTISIG 0xae
 
@@ -115,6 +116,24 @@ static bool _parse_format(const char* s, multisig_format_t* fmt) {
   return false;
 }
 
+/* BIP32 spells the key field of an extended public key compressed. An 0x04 there is not merely a foreign
+   encoding: ec_uncompress_key answers it with &pub_key[1], and the caller reads a 64 byte point out of a
+   33 byte field. */
+static bool _xpub_key_is_compressed(const uint8_t xpub[MULTISIG_XPUB_LEN]) {
+  return (xpub[MULTISIG_XPUB_KEY] == 0x02) || (xpub[MULTISIG_XPUB_KEY] == 0x03);
+}
+
+/* SEC1 v2.0 2.3.4: an x selects a point only if x^3 + a*x + b has a square root, which ec_uncompress_point
+   does not ask -- it returns whatever its exponentiation gave. A descriptor is validated here, at the two
+   places a multisig_t is built, so derivation is arithmetic on keys already known to be points. */
+static bool _xpub_key_is_point(const uint8_t xpub[MULTISIG_XPUB_LEN]) {
+  uint8_t point[ECC256_POINT_SIZE];
+
+  if (!_xpub_key_is_compressed(xpub)) return false;
+  const uint8_t* p = ec_uncompress_key(&secp256k1, &xpub[MULTISIG_XPUB_KEY], point);
+  return (p != NULL) && (hal_ec_point_check(&secp256k1, p) == HAL_SUCCESS);
+}
+
 app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
   memset(out, 0, sizeof(*out));
 
@@ -175,6 +194,9 @@ app_err_t multisig_parse_text(const char* text, size_t len, multisig_t* out) {
         return ERR_DATA;
       }
       if (base58_decode_check(value, k->xpub, MULTISIG_XPUB_LEN) != MULTISIG_XPUB_LEN) {
+        return ERR_DATA;
+      }
+      if (!_xpub_key_is_point(k->xpub)) {
         return ERR_DATA;
       }
 
@@ -278,6 +300,7 @@ app_err_t multisig_deserialize(const uint8_t* data, size_t len, multisig_t* out)
     if (len < off + MULTISIG_XPUB_LEN) return ERR_DATA;
     memcpy(k->xpub, &data[off], MULTISIG_XPUB_LEN);
     off += MULTISIG_XPUB_LEN;
+    if (!_xpub_key_is_point(k->xpub)) return ERR_DATA;
   }
 
   return ERR_OK;
@@ -341,12 +364,17 @@ static int _derive_key_pub(const multisig_key_t* key, uint32_t change, uint32_t 
   uint8_t point[ECC256_POINT_SIZE];
   int err = ERR_CRYPTO;
 
-  const uint8_t* p = ec_uncompress_key(&secp256k1, &key->xpub[45], point);
+  if (!_xpub_key_is_compressed(key->xpub)) {
+    err = ERR_DATA;
+    goto done;
+  }
+
+  const uint8_t* p = ec_uncompress_key(&secp256k1, &key->xpub[MULTISIG_XPUB_KEY], point);
   if (p == NULL) goto done;
 
   memcpy(&pub65[1], p, ECC256_POINT_SIZE);
   pub65[0] = 0x04;
-  memcpy(chain, &key->xpub[13], BIP32_CHAINCODE_LEN);
+  memcpy(chain, &key->xpub[MULTISIG_XPUB_CHAIN], BIP32_CHAINCODE_LEN);
 
   if (bip32_ckd_pub(pub65, chain, change, pub65, chain) != 0) goto done;
   if (bip32_ckd_pub(pub65, chain, index, pub65, NULL) != 0) goto done;
@@ -372,7 +400,8 @@ app_err_t multisig_derive_address(const multisig_t* d, uint32_t change, uint32_t
   memset(script, 0, sizeof(script));
 
   for (uint8_t i = 0; i < d->key_count; i++) {
-    if (_derive_key_pub(&d->keys[i], change, index, pubs[i]) != ERR_OK) goto done;
+    err = _derive_key_pub(&d->keys[i], change, index, pubs[i]);
+    if (err != ERR_OK) goto done;
   }
 
   /* BIP67: sort the compressed public keys lexicographically so the redeem script matches the reference wallet's address. */
@@ -420,6 +449,7 @@ app_err_t multisig_derive_address(const multisig_t* d, uint32_t change, uint32_t
     break;
   }
   default:
+    err = ERR_CRYPTO;
     goto done;
   }
 
