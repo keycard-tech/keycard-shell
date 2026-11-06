@@ -69,6 +69,7 @@ core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable);
 core_evt_t ui_read_duress_pin(uint8_t* out);
 core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable);
 core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t* len);
+// out must hold *len characters plus 1 (the terminator).
 core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint8_t* len, ui_read_string_opt_t opts);
 core_evt_t ui_read_number(const char* title, uint32_t min, uint32_t max, uint32_t* num, bool show_max);
 core_evt_t ui_read_number_direct(const char* title, uint32_t* num);

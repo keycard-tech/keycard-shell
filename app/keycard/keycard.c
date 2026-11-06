@@ -352,9 +352,9 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
 
   uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
   uint32_t len;
-  char passphrase[KEYCARD_BIP39_PASS_MAX_LEN];
+  char passphrase[KEYCARD_BIP39_PASS_MAX_LEN + 1];
 
-  memset(passphrase, 0x00, KEYCARD_BIP39_PASS_MAX_LEN);
+  memset(passphrase, 0x00, sizeof(passphrase));
   mnemonic_indexes_reset(indexes, BIP39_MAX_MNEMONIC_LEN);
 
   bool has_pass;
@@ -390,7 +390,7 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
 
   if (err == ERR_OK) {
     if (has_pass) {
-      uint8_t pass_len = KEYCARD_BIP39_PASS_MAX_LEN;;
+      uint8_t pass_len = KEYCARD_BIP39_PASS_MAX_LEN;
       ui_read_string(LSTR(MNEMO_PASSPHRASE_TITLE), "", passphrase, &pass_len, UI_READ_STRING_UNDISMISSABLE);
     }
 
@@ -409,7 +409,7 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
 
   memzero(indexes, sizeof(indexes));
   memzero(shards, sizeof(shards));
-  memzero(passphrase, KEYCARD_BIP39_PASS_MAX_LEN);
+  memzero(passphrase, sizeof(passphrase));
   return err;
 }
 

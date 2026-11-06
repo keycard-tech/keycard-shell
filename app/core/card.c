@@ -72,7 +72,7 @@ void card_change_pairing() {
     return;
   }
 
-  SC_BUF(password, KEYCARD_PAIRING_PASS_MAX_LEN);
+  SC_BUF(password, KEYCARD_PAIRING_PASS_MAX_LEN + 1);
   uint8_t len = KEYCARD_PAIRING_PASS_MAX_LEN;
 
   if (ui_read_string(LSTR(PAIRING_CREATE_TITLE), LSTR(PROMPT_NEW_PAIRING), (char *) password, &len, 0) != CORE_EVT_UI_OK) {
@@ -82,7 +82,7 @@ void card_change_pairing() {
   uint8_t pairing[32];
 
   keycard_pairing_password_hash(password, len, pairing);
-  memzero(password, len);
+  memzero(password, sizeof(password));
 
   app_err_t err = keycard_cmd_change_credential(&g_core.keycard, KEYCARD_PAIRING, pairing, 32);
 
@@ -154,10 +154,10 @@ void card_verify_mnemonic() {
   uint32_t len;
 
   uint8_t pass_len = KEYCARD_BIP39_PASS_MAX_LEN;
-  char passphrase[KEYCARD_BIP39_PASS_MAX_LEN];
+  char passphrase[KEYCARD_BIP39_PASS_MAX_LEN + 1];
   uint8_t seed[64];
   
-  memset(passphrase, 0x00, KEYCARD_BIP39_PASS_MAX_LEN);
+  memset(passphrase, 0x00, sizeof(passphrase));
   mnemonic_indexes_reset(indexes, BIP39_MAX_MNEMONIC_LEN);
   
   core_evt_t err;
@@ -192,7 +192,7 @@ void card_verify_mnemonic() {
 
   memzero(seed, sizeof(seed));
   memzero(indexes, sizeof(indexes));
-  memzero(passphrase, KEYCARD_BIP39_PASS_MAX_LEN);
+  memzero(passphrase, sizeof(passphrase));
   memzero(shards, sizeof(shards));
   memzero(slip39_ems, sizeof(slip39_ems));
 }
