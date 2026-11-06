@@ -19,7 +19,7 @@ hal_err_t hal_flash_begin_program() {
 }
 
 hal_err_t hal_flash_wait_program() {
-  HAL_WAIT(hal_flash_busy());
+  HAL_WAIT_FOR(hal_flash_busy(), FLASH_TIMEOUT);
   return HAL_SUCCESS;
 }
 

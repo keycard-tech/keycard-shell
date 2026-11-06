@@ -12,6 +12,7 @@
 
 #define HAL_TIMEOUT 300
 #define PKA_TIMEOUT 500
+#define FLASH_TIMEOUT 1000
 #define SC_RESET_DELAY 10
 #define CLOCK_STABLE_DELAY 5
 #define SMARTCARD_STOPBITS_1 0x00000000U
@@ -20,15 +21,17 @@
 
 #define FLASH_BANK_SWAPPED() (FLASH->OPTSR_CUR & FLASH_OPTSR_SWAP_BANK)
 
-#define HAL_WAIT(__PREDICATE__) { \
+#define HAL_WAIT_FOR(__PREDICATE__, __TIMEOUT__) { \
   uint32_t base = HAL_GetTick(); \
 \
   while (__PREDICATE__) {\
-    if ((HAL_GetTick() - base) > HAL_TIMEOUT) {\
+    if ((HAL_GetTick() - base) > (__TIMEOUT__)) {\
       return HAL_FAIL;\
     }\
   }\
 }
+
+#define HAL_WAIT(__PREDICATE__) HAL_WAIT_FOR(__PREDICATE__, HAL_TIMEOUT)
 
 #define __PKA_RAM_PARAM_END(TAB,INDEX) { TAB[INDEX] = 0UL; TAB[INDEX + 1U] = 0UL;}
 

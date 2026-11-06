@@ -132,6 +132,7 @@ static enum fs_iterator_action _fs_write_entries(void* ctx, fs_entry_t* entry, s
 
     if (hal_flash_program((uint8_t*) write_ctx->next_entry, (uint8_t*) entry, total_entry_len) != HAL_SUCCESS) {
       write_ctx->err = ERR_HW;
+      return FS_ITER_END;
     }
 
     write_ctx->last_write = ((uint8_t*) entry) + total_entry_len;
@@ -283,7 +284,7 @@ app_err_t fs_write(fs_entry_t* first_entry, size_t total_length) {
 
   hal_flash_end_program();
 
-  return write_ctx.total_length ? ERR_FULL : write_ctx.err;
+  return write_ctx.err != ERR_OK ? write_ctx.err : (write_ctx.total_length ? ERR_FULL : ERR_OK);
 }
 
 app_err_t fs_erase(fs_entry_t* entry) {

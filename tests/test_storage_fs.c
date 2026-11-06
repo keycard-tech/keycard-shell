@@ -434,12 +434,11 @@ static void test_writes_inside_a_block_are_off_the_program_width(void) {
   ASSERT_CLEAN_FLASH();
 }
 
-/* What an interrupted write leaves behind is worse than a lost entry. The writer notes the hardware
- * failure and keeps walking, so an entry written after the failure lands past a hole, and a scan stops
- * at the hole: the entry is in the store and no read will find it. Filling the hole later, which is
- * what the next save does, makes the orphan visible again -- a pairing record, a multisig descriptor or
- * a whitelisted key that came back after it was supposed to have never been written. */
-static void test_a_write_that_fails_midway_orphans_what_came_after(void) {
+/* What an interrupted write leaves behind is a clean prefix. The writer stops at the failure, so the
+ * entries before it are the log, everything after it stays erased, and the next save appends to what is
+ * readable instead of landing on bytes no read can see. The writer used to continue: the entry written
+ * past the hole then came back as a record nobody had written, or was written over. */
+static void test_a_write_that_fails_midway_leaves_a_clean_prefix(void) {
   size_t total = 0;
   total += blob_append(blob + total, MAGIC_A, 0x01, 64);
   total += blob_append(blob + total, MAGIC_A, 0x02, 64);
@@ -447,6 +446,8 @@ static void test_a_write_that_fails_midway_orphans_what_came_after(void) {
 
   hal_host_flash_interrupt_after(1, -1);
 
+  /* The hardware failure is the answer, rather than the "log is full" that a stopped walk reported
+   * whenever the failure was not on the last entry. */
   TEST_ASSERT_EQUAL_INT(ERR_HW, fs_write((fs_entry_t*)blob, total));
 
   struct collect seen = {.magic = MAGIC_A};
@@ -454,25 +455,21 @@ static void test_a_write_that_fails_midway_orphans_what_came_after(void) {
   TEST_ASSERT_EQUAL_size_t(1, seen.count);
 
   uint8_t* page = hal_host_flash_block(first_data_block());
-  TEST_ASSERT_EQUAL_UINT8(0xff, page[68]);
-  TEST_ASSERT_EQUAL_UINT8(0x03, page[136 + sizeof(fs_entry_t)]);
+  for (size_t i = 68; i < 5 * 68; i++) {
+    TEST_ASSERT_EQUAL_UINT8(0xff, page[i]);
+  }
 
-  /* The next save finds the hole and uses it. What closes that write is a pad, and it lands on the
-   * orphan's header: the scan then walks the orphan's remaining bytes as entries of their own. Five,
-   * where two were written. These numbers are the shape of the damage rather than a property to keep --
-   * fixing the walk to stop at a failed program changes them, and that is the point of pinning them. */
+  /* The next save takes the space the failure left, which is erased: the log grows from what was
+   * readable, and no cell is programmed twice. */
   total = blob_append(blob, MAGIC_B, 0x09, 64);
   TEST_ASSERT_EQUAL_INT(ERR_OK, fs_write((fs_entry_t*)blob, total));
 
   seen = (struct collect){.magic = 0};
   fs_iterate(collect, &seen);
-  TEST_ASSERT_EQUAL_size_t(5, seen.count);
+  TEST_ASSERT_EQUAL_size_t(2, seen.count);
   TEST_ASSERT_EQUAL_UINT8(0x01, seen.head[0]);
   TEST_ASSERT_EQUAL_UINT8(0x09, seen.head[1]);
-
-  /* Writing over the orphan is itself the thing flash cannot do, and the store does not know: the
-   * driver reports no error for programming a cell that is not erased. */
-  TEST_ASSERT_TRUE_MESSAGE(hal_host_flash_violations() > 0, hal_host_flash_last_violation());
+  ASSERT_CLEAN_FLASH();
 }
 
 /* An erase is the destructive one: the block is copied, erased and written back, so a failure is worth
@@ -605,7 +602,7 @@ int main(void) {
   RUN_TEST(test_an_entry_larger_than_a_block_is_refused);
   RUN_TEST(test_writes_inside_a_block_are_off_the_program_width);
   RUN_TEST(test_the_other_bank_orientation_reads_the_same_store);
-  RUN_TEST(test_a_write_that_fails_midway_orphans_what_came_after);
+  RUN_TEST(test_a_write_that_fails_midway_leaves_a_clean_prefix);
   RUN_TEST(test_an_erase_that_fails_leaves_the_entry);
   RUN_TEST(test_a_pad_that_fails_is_reported);
   RUN_TEST(test_an_erase_whose_copy_back_fails_takes_the_neighbours);
