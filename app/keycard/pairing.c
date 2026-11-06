@@ -13,12 +13,13 @@ struct pairing_match_ctx {
 };
 
 fs_action_t _pairing_match_uid(void* ctx, fs_entry_t* entry) {
+  struct pairing_match_ctx* match_ctx = (struct pairing_match_ctx*) ctx;
+
   if (entry->magic != FS_PAIRING_MAGIC) {
-    return FS_REJECT;
+    return match_ctx->mismatch_action;
   }
 
   pairing_t* pairing = (pairing_t*) entry;
-  struct pairing_match_ctx* match_ctx = (struct pairing_match_ctx*) ctx;
 
   return memcmp(pairing->instance_uid, match_ctx->instance_uid, APP_INFO_INSTANCE_UID_LEN) ? match_ctx->mismatch_action : match_ctx->match_action;
 }

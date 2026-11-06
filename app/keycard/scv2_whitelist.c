@@ -16,12 +16,13 @@ struct scv2_whitelist_match_ctx {
 };
 
 static fs_action_t _scv2_whitelist_match_pubkey(void* ctx, fs_entry_t* entry) {
+  struct scv2_whitelist_match_ctx* match_ctx = (struct scv2_whitelist_match_ctx*) ctx;
+
   if (entry->magic != FS_SCV2_WHITELIST_MAGIC) {
-    return FS_REJECT;
+    return match_ctx->mismatch_action;
   }
 
   scv2_whitelist_entry_t* wh_entry = (scv2_whitelist_entry_t*) entry;
-  struct scv2_whitelist_match_ctx* match_ctx = (struct scv2_whitelist_match_ctx*) ctx;
 
   return memcmp(wh_entry->pubkey, match_ctx->pubkey, SCV2_WHITELIST_PUBKEY_LEN)
          ? match_ctx->mismatch_action

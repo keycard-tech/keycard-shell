@@ -144,6 +144,7 @@ target_compile_options(app_ethereum PRIVATE ${SHELLOS_COMMON_FLAGS})
 add_library(app_keycard STATIC
     ${SHELLOS_ROOT}/app/keycard/application_info.c
     ${SHELLOS_ROOT}/app/keycard/signature.c
+    ${SHELLOS_ROOT}/app/keycard/scv2_whitelist.c
 )
 target_include_directories(app_keycard PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_keycard PRIVATE ${SHELLOS_COMMON_FLAGS})
@@ -292,6 +293,7 @@ shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 shellos_test(shamir LIBS app_crypto)
 shellos_test(storage_fs LIBS app_storage)
 shellos_test(eth_db LIBS app_ethereum app_storage)
+shellos_test(scv2_whitelist LIBS app_keycard app_storage)
 shellos_test(hal_pka LIBS app_crypto)
 shellos_test(bip32 LIBS app_crypto)
 shellos_test(taproot LIBS app_bitcoin app_crypto)
