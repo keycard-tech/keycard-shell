@@ -242,6 +242,10 @@ uint32_t slip39_last_word_mask(const uint16_t *indexes, uint32_t len, uint8_t *m
 }
 
 int slip39_encode_mnemonic(const slip39_shard_t *shard, uint16_t *destination, uint32_t destination_length) {
+  if (destination_length < slip39_mnemonic_length(shard->value_length)) {
+    return ERROR_INSUFFICIENT_SPACE;
+  }
+
   uint16_t gt = (shard->group_threshold -1) & 15;
   uint16_t gc = (shard->group_count -1) & 15;
   uint16_t mi = (shard->member_index) & 15;
