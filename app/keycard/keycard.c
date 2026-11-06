@@ -306,32 +306,36 @@ static app_err_t keycard_generate_slip39(const uint8_t* seed, const size_t seed_
   uint32_t shard_count = 1;
   uint32_t threshold = 2;
 
-  core_evt_t err;
+  app_err_t err = ERR_CANCEL;
+  core_evt_t ui_err;
 
   do {
     if (ui_read_number(LSTR(MNEMO_SLIP39_COUNT_TITLE), 1, 16, &shard_count, false) != CORE_EVT_UI_OK) {
-      return ERR_CANCEL;
+      goto done;
     }
 
     if (shard_count == 1) {
-      err = CORE_EVT_UI_OK;
+      ui_err = CORE_EVT_UI_OK;
       threshold = 1;
     } else {
-      err = ui_read_number(LSTR(MNEMO_SLIP39_THRESHOLD_TITLE), 2, shard_count, &threshold, true);
+      ui_err = ui_read_number(LSTR(MNEMO_SLIP39_THRESHOLD_TITLE), 2, shard_count, &threshold, true);
     }
-  } while(err != CORE_EVT_UI_OK);
+  } while(ui_err != CORE_EVT_UI_OK);
 
   slip39_generate(threshold, slip39_tmp, SLIP39_SEED_STRENGTH, ems, shards, shard_count);
 
   for (int i = 0; i < shard_count; i++) {
     slip39_encode_mnemonic(&shards[i], indexes, SLIP39_MNEMO_LEN);
     if (ui_backup_mnemonic(indexes, SLIP39_MNEMO_LEN, SLIP39_WORDLIST, SLIP39_WORDS_COUNT, false) != CORE_EVT_UI_OK) {
-      return ERR_CANCEL;
+      goto done;
     }
   }
 
-  memzero(slip39_tmp, SHA256_DIGEST_LENGTH);
-  return ERR_OK;
+  err = ERR_OK;
+
+done:
+  memzero(slip39_tmp, sizeof(slip39_tmp));
+  return err;
 }
 
 static app_err_t keycard_generate_bip39(const uint8_t* raw_mnemo, uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len) {
@@ -347,7 +351,7 @@ static app_err_t keycard_generate_bip39(const uint8_t* raw_mnemo, uint16_t index
 }
 
 static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* seed_len) {
-  uint8_t* slip39_ems = &seed[16];
+  uint8_t slip39_ems[SLIP39_SEED_STRENGTH];
   slip39_shard_t shards[16];
 
   uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
@@ -409,6 +413,7 @@ static app_err_t keycard_get_seed(keycard_t* kc, uint8_t seed[64], uint32_t* see
 
   memzero(indexes, sizeof(indexes));
   memzero(shards, sizeof(shards));
+  memzero(slip39_ems, sizeof(slip39_ems));
   memzero(passphrase, sizeof(passphrase));
   return err;
 }

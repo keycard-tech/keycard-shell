@@ -271,5 +271,5 @@ void mnemonic_indexes_to_seed(const uint16_t* indexes, uint32_t len, const char*
   char mnemonic[BIP39_MAX_MNEMONIC_LEN * 10];
   mnemonic_from_indexes(mnemonic, indexes, len);
   mnemonic_to_seed(mnemonic, passphrase, seed);
-  memset(mnemonic, 0, sizeof(mnemonic));  
+  memzero(mnemonic, sizeof(mnemonic));
 }

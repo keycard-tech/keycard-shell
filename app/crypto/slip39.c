@@ -110,6 +110,8 @@ static void round_function(uint8_t i, const char *passphrase, uint8_t exp, const
   memcpy(saltr + salt_length, r, r_length);
 
   pbkdf2_hmac_sha256(pass, pass_length, saltr, salt_length + r_length, iterations, dest, dest_length);
+  memzero(pass, sizeof(pass));
+  memzero(saltr, sizeof(saltr));
 }
 
 static void feistel(uint8_t forward, const uint8_t *input, uint32_t input_length, const char *passphrase, uint8_t ext, uint8_t iteration_exponent, uint16_t identifier, uint8_t *output) {
