@@ -32,6 +32,7 @@ static psbt_result_t parse_txin(uint8_t **cursor, uint8_t *data, uint32_t data_s
 
   p += size_len;
 
+  ASSERT_SPACE(script_len);
   txin->script_len = script_len;
   txin->script = script_len ? p : NULL;
 
@@ -96,6 +97,7 @@ static psbt_result_t parse_witness_item(uint8_t **cursor, uint8_t *data, uint32_
 
   p += size_len;
 
+  ASSERT_SPACE(item_len);
   witness_item->item = p;
   witness_item->item_len = item_len;
 
@@ -128,14 +130,13 @@ psbt_result_t psbt_btc_tx_parse(uint8_t *data, uint32_t data_size, void *user_da
   memcpy(&tx.version, p, sizeof(uint32_t));
   p += 4;
 
-  ASSERT_SPACE(1);
-
   ASSERT_SPACE(2);
   if ((p[0] == 0) && (p[1] == SEGREGATED_WITNESS_FLAG)) {
     flag = p[1];
     p += 2;
   }
 
+  ASSERT_SPACE(1);
   size_len = compactsize_peek_length(*p);
 
   ASSERT_SPACE(size_len);
