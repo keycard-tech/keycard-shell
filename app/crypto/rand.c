@@ -46,7 +46,7 @@ void random_unique_in_range(uint8_t max, uint8_t count, uint8_t* out) {
 
   uint32_t selected = 0;
   while(__builtin_popcount(selected) < count) {
-    selected |= (1 << random_uniform(max));
+    selected |= (1u << random_uniform(max));
   }
 
   uint8_t out_count = 0;

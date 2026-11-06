@@ -304,6 +304,7 @@ enable_testing()
 
 shellos_test(hash LIBS app_crypto)
 shellos_test(hmac LIBS app_crypto)
+shellos_test(rand LIBS app_crypto)
 shellos_test(hkdf LIBS app_crypto)
 shellos_test(bip39 LIBS app_crypto)
 shellos_test(slip39 LIBS app_crypto)
