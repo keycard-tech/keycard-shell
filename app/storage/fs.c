@@ -138,8 +138,10 @@ static enum fs_iterator_action _fs_write_entries(void* ctx, fs_entry_t* entry, s
     write_ctx->total_length -= total_entry_len;
 
     if (write_ctx->total_length == 0) {
-      if (_fs_pad(write_ctx->last_write) != HAL_SUCCESS) {
-        write_ctx->err = ERR_HW;
+      if (((uint32_t) write_ctx->last_write) & (HAL_FLASH_BLOCK_SIZE - 1)) {
+        if (_fs_pad(write_ctx->last_write) != HAL_SUCCESS) {
+          write_ctx->err = ERR_HW;
+        }
       }
 
       return FS_ITER_END;

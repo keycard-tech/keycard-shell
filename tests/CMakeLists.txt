@@ -49,6 +49,7 @@ target_include_directories(unity PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/unity)
 
 add_library(test_framework STATIC
     framework/test_util.c
+    host/hal_flash_host.c
     host/hal_host.c
     host/hal_pka_host.c
     host/host_data.c
@@ -179,6 +180,19 @@ target_include_directories(app_ur PUBLIC
 target_compile_options(app_ur PRIVATE ${SHELLOS_COMMON_FLAGS})
 target_link_libraries(app_ur PUBLIC app_crypto zcbor)
 
+# The store. fs.c is the log every persisted thing in the device sits on -- settings, pairing, the
+# multisig entries, the token database -- and its six entry points are the whole API, so it is
+# compiled here against the flash model in host/hal_flash_host.c. g_flash_swap, the block buffer it
+# stages a rewrite in, comes from host_data.c.
+add_library(app_storage STATIC
+    ${SHELLOS_ROOT}/app/storage/fs.c
+)
+target_include_directories(app_storage PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+# fs.c turns flash addresses into uint32_t and back, which is what they are on the target. The model
+# maps its array at the device's own base address so those casts round-trip here, and the warning
+# about the narrowing cast goes with the difference in word size.
+target_compile_options(app_storage PRIVATE ${SHELLOS_COMMON_FLAGS} -Wno-pointer-to-int-cast)
+
 # The OpenPGP card mode's packet and request parsers, which are every byte of this device that
 # reads an OpenPGP stream. They need no hardware and no UI: the one function that touches the
 # curve, openpgp_v4_verify_uid_self_cert, calls ecdsa_verify_raw_pub, which is real code here and
@@ -273,6 +287,7 @@ shellos_test(keycard_signature LIBS app_crypto app_keycard)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)
+shellos_test(storage_fs LIBS app_storage)
 shellos_test(hal_pka LIBS app_crypto)
 shellos_test(bip32 LIBS app_crypto)
 shellos_test(taproot LIBS app_bitcoin app_crypto)

@@ -185,7 +185,7 @@ hal_err_t hal_delay_us(uint32_t usec);
 void hal_tick();
 
 // Flash
-#define HAL_FLASH_BLOCK_ADDR(__BLOCK__) (HAL_FLASH_ADDR + (HAL_FLASH_BLOCK_SIZE * __BLOCK__))
+#define HAL_FLASH_BLOCK_ADDR(__BLOCK__) (HAL_FLASH_ADDR + (HAL_FLASH_BLOCK_SIZE * (__BLOCK__)))
 #define HAL_FLASH_ADDR_TO_BLOCK(__ADDR__) ((__ADDR__ - HAL_FLASH_ADDR) / HAL_FLASH_BLOCK_SIZE)
 
 typedef struct {
