@@ -30,6 +30,7 @@ import string
 import sys
 import unicodedata
 import urllib.request
+import zipfile
 import zlib
 from pathlib import Path
 
@@ -88,6 +89,7 @@ SOURCES = {
     "bc_output_desc.md": "https://raw.githubusercontent.com/BlockchainCommons/Research/master/papers/bcr-2020-010-output-desc.md",
     "bc_account.md": "https://raw.githubusercontent.com/BlockchainCommons/Research/master/papers/bcr-2020-015-account.md",
     "bc_bytewords.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/src/bc-bytewords.c",
+    "shell_db_20260915.zip": "https://shell.keycard.tech/uploads/20260915/20260915.zip",
     "bc_bytewords_test.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/test/test.c",
 }
 
@@ -10367,6 +10369,198 @@ def multisig_derive_vectors() -> str:
         ",\n".join(rows))
 
 
+# ----------------------------------------------------------------- shell token db
+#
+# The published Shell database is the only corpus with the shape eth_db.c really parses: one chain of
+# ~1650 mixed entries handed to a single fs_write(), crossing thirteen flash blocks. Each release zip
+# also carries the upstream lists it was generated from (docs/shell-db.md), and every row below is
+# confirmed against chain.json / erc20.json there, so a lookup is pinned to what chainid.network and
+# tokens.uniswap.org say rather than to what the C parser read back.
+
+SHELL_DB = "shell_db_20260915.zip"
+SHELL_DB_VERSION = 20260915
+DB_SIG_LEN = 64
+DB_NET_LEN = 24
+DB_MAGICS = {0x4532: "version", 0x4348: "chain", 0x3020: "erc20", 0x4142: "abi"}
+
+
+def db_read_zip(name: str) -> dict[str, bytes]:
+    path = CACHE / name
+    if not path.exists():
+        CACHE.mkdir(parents=True, exist_ok=True)
+        print(f"fetch {SOURCES[name]}")
+        path.write_bytes(urllib.request.urlopen(SOURCES[name]).read())
+    with zipfile.ZipFile(path) as z:
+        return {n: z.read(n) for n in z.namelist()}
+
+
+def db_addr(text: str) -> bytes | None:
+    """Addresses in the upstream list are hex with an 0x prefix; some releases carry other shapes."""
+    body = text[2:] if text[:2].lower() == "0x" else text
+    if len(body) != 40 or any(c not in "0123456789abcdefABCDEF" for c in body):
+        return None
+    return bytes.fromhex(body)
+
+
+def db_parse(blob: bytes):
+    """Walk the published blob as the tight entry chain the updater receives, signature excluded."""
+    body = blob[: len(blob) - DB_SIG_LEN]
+    off, version, chains, tokens, abis = 0, None, [], [], []
+    while off < len(body):
+        magic, ln = struct.unpack_from("<HH", body, off)
+        kind = DB_MAGICS.get(magic)
+        if kind is None:
+            raise ValueError(f"unknown magic 0x{magic:04x} at {off}")
+        end = off + 4 + ln
+        if end > len(body):
+            raise ValueError(f"{kind} entry at {off} runs past the blob")
+        if kind == "version":
+            version = struct.unpack_from("<I", body, off + 4)[0]
+        elif kind == "chain":
+            chain_id = struct.unpack_from("<I", body, off + 4)[0]
+            fields = body[off + 8 : end].split(b"\0")
+            if len(fields) != 4 or fields[3]:
+                raise ValueError(f"chain {chain_id} is not ticker/name/short_name/NUL")
+            chains.append({"id": chain_id, "ticker": fields[0].decode(), "name": fields[1].decode(),
+                           "short": fields[2].decode()})
+        elif kind == "erc20":
+            count = body[off + 4]
+            nets = [struct.unpack_from("<I20s", body, off + 5 + i * DB_NET_LEN) for i in range(count)]
+            rest = body[off + 5 + count * DB_NET_LEN : end]
+            decimals, ticker = rest[0], rest[1:].split(b"\0")[0].decode()
+            if len(rest) != 1 + len(ticker) + 1:
+                raise ValueError(f"token {ticker} tail is not decimals/ticker/NUL")
+            tokens.append({"nets": [(c, a) for c, a in nets], "decimals": decimals, "ticker": ticker})
+        else:
+            abis.append(struct.unpack_from("<Q", body, off + 4)[0])
+        off = end
+    if off != len(body):
+        raise AssertionError("the walk did not end on the signature")
+    return version, chains, tokens, abis, len(body)
+
+
+def db_row(row: dict, chain_id: int, addr: bytes) -> str:
+    return (f'{{ 0x{chain_id:08x}, {{ {", ".join(f"0x{b:02x}" for b in addr)} }}, '
+            f'{row["decimals"]}, "{row["ticker"]}" }}')
+
+
+def eth_db_vectors() -> str:
+    files = db_read_zip(SHELL_DB)
+    blob = files["db.bin"]
+    chain_json = json.loads(files["chain.json"])
+    erc20_json = json.loads(files["erc20.json"])
+
+    version, chains, tokens, abis, body_len = db_parse(blob)
+    assert version == SHELL_DB_VERSION, f"blob version {version} is not the release {SHELL_DB_VERSION}"
+
+    for chain in chains:
+        upstream = [c for c in chain_json if c.get("chainId") == chain["id"]]
+        if not [c for c in upstream
+                if c["name"] == chain["name"] and c["shortName"] == chain["short"]
+                and c["nativeCurrency"]["symbol"] == chain["ticker"]]:
+            raise AssertionError(f"chain {chain['id']} is not what chainlist says")
+
+    for token in tokens:
+        addr = token["nets"][0][1]
+        upstream = [t for t in erc20_json["tokens"] if db_addr(t["address"]) == addr]
+        if not [t for t in upstream if t["decimals"] == token["decimals"] and t["symbol"] == token["ticker"]]:
+            raise AssertionError(f"token {token['ticker']} {addr.hex()} is not what the token list says")
+
+    present_addrs = {a for t in tokens for _, a in t["nets"]}
+    present_ids = {c["id"] for c in chains}
+
+    # chains and tokens the upstream lists carry and this release does not: real negatives, chosen
+    # where the upstream source still confirms them
+    missing_chains = [c["chainId"] for c in chain_json if c["chainId"] not in present_ids][:3]
+    missing_tokens = []
+    for t in erc20_json["tokens"]:
+        addr = db_addr(t["address"])
+        if addr is None or addr in present_addrs or t["decimals"] > 255 or not t["symbol"].isascii():
+            continue
+        missing_tokens.append({"decimals": t["decimals"], "ticker": t["symbol"],
+                               "nets": [(t["chainId"], addr)]})
+        if len(missing_tokens) == 3:
+            break
+
+    multi = [t for t in tokens if len(t["nets"]) > 1]
+    sample = {0, len(tokens) - 1, *(range(0, len(tokens), max(1, len(tokens) // 40)))}
+    token_rows = [tokens[i] for i in sorted(sample)] + multi[:3]
+
+    prologue = f"""#ifndef VECTORS_ETH_DB_H
+#define VECTORS_ETH_DB_H
+
+/* What app/ethereum/eth_db.c and the storage log have to do with the database the Shell actually
+ * ships, taken from the published release {SHELL_DB} and from the upstream lists it was generated
+ * from.
+ *
+ * The blob is the artifact itself with its signature stripped, which is the shape updater.c hands
+ * over. No expectation here is read back through the C parser: each chain row is confirmed against
+ * chainlist (name, shortName, nativeCurrency.symbol) and each token row against the Uniswap list
+ * (decimals, symbol), both carried in the same zip, and generate.py refuses to emit a row those
+ * sources do not confirm. The missing rows are chains and tokens the upstream lists carry and this
+ * release does not.
+ *
+ * Left out, and why:
+ *   - the signature. updater.c checks it against the pinned DB key, which is not in this repository,
+ *     and eth_db.c never sees the bytes.
+ *   - ABI entries one by one. To eth_db.c they are selector blobs classified by magic when erasing;
+ *     what the store has to carry is their count.
+ *   - delta updates. No release on https://shell.keycard.tech/update/db-version-history is one, and
+ *     eth_db_update() answers ERR_UNSUPPORTED to anything that is not a full database.
+ */
+
+#include <stdint.h>
+
+#define ETH_DB_BODY {body_len} /* the release blob without its {DB_SIG_LEN}-byte signature */
+#define ETH_DB_VERSION {version}u
+#define ETH_DB_ENTRIES {1 + len(chains) + len(tokens) + len(abis)} /* version, {len(chains)} chains, {len(tokens)} tokens, {len(abis)} abis */
+
+static const uint8_t ETH_DB[] = {{
+{c_array(blob[:body_len])}
+}};
+
+typedef struct {{
+  uint32_t chain_id;
+  const char *ticker, *name, *short_name;
+}} eth_db_chain_t;
+
+/* Every chain of the release, as chainlist describes it. */
+static const eth_db_chain_t ETH_DB_CHAINS[] = {{
+{',\n'.join(f'{{ 0x{c["id"]:08x}, "{c["ticker"]}", "{c["name"]}", "{c["short"]}" }}' for c in chains)}
+}};
+
+typedef struct {{
+  uint32_t chain_id;
+  uint8_t addr[20];
+  uint8_t decimals;
+  const char *ticker;
+}} eth_db_token_t;
+
+/* A sample in blob order across the token range, plus the first multi-net entries. */
+static const eth_db_token_t ETH_DB_TOKENS[] = {{
+{',\n'.join(db_row(t, *t["nets"][0]) for t in token_rows)}
+}};
+
+/* One entry lists every (chain, address) pair it is good on, so an address has to answer under a
+ * net other than the first as well. */
+static const eth_db_token_t ETH_DB_OTHER_NETS[] = {{
+{',\n'.join(db_row(t, chain_id, addr) for t in multi[:3] for chain_id, addr in t["nets"])}
+}};
+
+static const uint32_t ETH_DB_MISSING_CHAINS[] = {{
+{',\n'.join(f"0x{c:08x}" for c in missing_chains)}
+}};
+
+static const eth_db_token_t ETH_DB_MISSING_TOKENS[] = {{
+{',\n'.join(db_row(t, *t["nets"][0]) for t in missing_tokens)}
+}};
+
+#endif\t/* VECTORS_ETH_DB_H */
+"""
+
+    return prologue
+
+
 
 def main() -> None:
     written = {
@@ -10395,6 +10589,7 @@ def main() -> None:
         "vectors_ecdsa_curve.h": ecdsa_curve_vectors(),
         "vectors_multisig_derive.h": multisig_derive_vectors(),
         "vectors_ethereum.h": ethereum_vectors(),
+        "vectors_eth_db.h": eth_db_vectors(),
         "vectors_shamir.h": shamir_vectors(),
         "vectors_tlv.h": tlv_vectors(),
         "vectors_ecdsa_der.h": ecdsa_der_vectors(),

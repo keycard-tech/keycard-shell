@@ -132,6 +132,9 @@ add_library(app_ethereum STATIC
     # compiled here unmodified, jsmn and all.
     ${SHELLOS_ROOT}/app/ethereum/eip712.c
     ${SHELLOS_ROOT}/app/json/jsmn.c
+    # The token database reader, which is the store's heaviest consumer: one blob of ~1650 entries
+    # installed by a single fs_write().
+    ${SHELLOS_ROOT}/app/ethereum/eth_db.c
 )
 target_include_directories(app_ethereum PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_ethereum PRIVATE ${SHELLOS_COMMON_FLAGS})
@@ -288,6 +291,7 @@ shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)
 shellos_test(storage_fs LIBS app_storage)
+shellos_test(eth_db LIBS app_ethereum app_storage)
 shellos_test(hal_pka LIBS app_crypto)
 shellos_test(bip32 LIBS app_crypto)
 shellos_test(taproot LIBS app_bitcoin app_crypto)
