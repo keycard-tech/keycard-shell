@@ -24,6 +24,21 @@ size_t hal_host_rng_count(void);
  * Aborts if the region runs out. It is mmap'd, so ASan has no redzones around what it returns. */
 void* hal_host_low_mem(size_t size);
 
+/* AES, modelled at the hal_aes256_* and hal_aes128_ccm_* boundary in host/hal_aes_host.c, from FIPS-197
+ * and SP 800-38C rather than from how app/crypto/aes*.c drives them. A call the model cannot honour (a B0
+ * announcing associated data, a tag longer than CCM_TAG_SIZE, a payload that does not match the length B0
+ * declared) returns HAL_FAIL and is counted. Reset in setUp(). */
+void hal_host_aes_reset(void);
+size_t hal_host_aes_rejections(void);
+size_t hal_host_aes_cbc_blocks(void);
+size_t hal_host_aes_ccm_bytes(void);
+
+/* Associated data for the next CCM message, folded into the MAC after B0 and before the payload. Call it
+ * between hal_aes128_ccm_init() and the first payload byte. Reachable only through a B0 with the Adata
+ * bit set, which app/crypto/aes_ccm.c never builds: this exists so the published SP 800-38C vectors, all
+ * of which carry associated data, exercise the model. */
+void hal_host_aes_ccm_aad(const uint8_t* data, size_t len);
+
 /* Flash, modelled at the hal_flash_* boundary in host/hal_flash_host.c: NOR semantics, the device's
  * geometry, and its data-segment map in both bank orientations. */
 

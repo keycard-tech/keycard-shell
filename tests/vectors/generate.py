@@ -91,6 +91,8 @@ SOURCES = {
     "bc_bytewords.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/src/bc-bytewords.c",
     "shell_db_20260915.zip": "https://shell.keycard.tech/uploads/20260915/20260915.zip",
     "bc_bytewords_test.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/test/test.c",
+    "fips-197.pdf": "https://csrc.nist.gov/csrc/media/publications/fips/197/final/documents/fips-197.pdf",
+    "sp800-38c.pdf": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38c.pdf",
 }
 
 
@@ -10562,6 +10564,270 @@ static const eth_db_token_t ETH_DB_MISSING_TOKENS[] = {{
 
 
 
+# ------------------------------------------------------------------------- AES
+
+
+def ccm_spec(key: bytes, nonce: bytes, aad: bytes, plaintext: bytes, tag_len: int) -> tuple[bytes, bytes]:
+    from Crypto.Cipher import AES
+    """AES-CCM as SP 800-38C 5.2 and Appendix A specify it, composed from the AES block cipher alone.
+
+    Written from the document rather than from how app/crypto/aes_ccm.c drives the peripheral -- the whole
+    point of modelling the peripheral is that nothing in the model comes from its caller."""
+    ecb = AES.new(key, AES.MODE_ECB)
+
+    len_field = 15 - len(nonce)
+    if not 2 <= len_field <= 8:
+        sys.exit(f"ccm: a nonce of {len(nonce)} bytes is outside what CCM's length field carries")
+
+    flags = ((tag_len // 2) - 1) << 3
+    if aad:
+        flags |= 0x40
+
+    # B0, then the length-prefixed associated data, then the payload: one byte string, zero padded once
+    # at the end rather than per field (A.2.1/A.2.2).
+    formatted = bytes([flags | (len_field - 1)]) + nonce + len(plaintext).to_bytes(len_field, "big")
+    # Each string is zero padded to a block on its own -- see B in Appendix C, where a 20-byte associated
+    # data field occupies two blocks and the payload starts on a fresh one -- and an empty one contributes
+    # no block at all.
+    if aad:
+        if len(aad) < 0xFF00:
+            formatted += len(aad).to_bytes(2, "big") + aad
+        else:
+            formatted += b"\xff\xfe" + len(aad).to_bytes(4, "big") + aad
+        formatted += b"\x00" * (-len(formatted) % 16)
+    if plaintext:
+        formatted += plaintext + b"\x00" * (-len(plaintext) % 16)
+
+    mac = bytes(16)
+    for i in range(0, len(formatted), 16):
+        mac = ecb.encrypt(bytes(a ^ b for a, b in zip(mac, formatted[i : i + 16])))
+
+    # CTR* blocks carry neither the M bits nor the Adata bit -- see Ctr0 in Appendix C, which is L-1 alone
+    # for an example whose B0 announces associated data. Counter 0 is reserved for masking the tag, so the
+    # payload starts at 1.
+    counter_flags = bytes([len_field - 1])
+    mask = ecb.encrypt(counter_flags + nonce + bytes(len_field))
+    tag = bytes(a ^ b for a, b in zip(mac, mask))[:tag_len]
+
+    keystream = b""
+    for i in range(1, len(plaintext) // 16 + 2):
+        keystream += ecb.encrypt(counter_flags + nonce + i.to_bytes(len_field, "big"))
+
+    return bytes(a ^ b for a, b in zip(plaintext, keystream))[: len(plaintext)], tag
+
+
+def ccm_reference(key: bytes, nonce: bytes, aad: bytes, plaintext: bytes, tag_len: int) -> tuple[bytes, bytes]:
+    from Crypto.Cipher import AES
+    cipher = AES.new(key, AES.MODE_CCM, nonce=nonce, mac_len=tag_len)
+    if aad:
+        cipher.update(aad)
+    return cipher.encrypt_and_digest(plaintext)
+
+
+# SP 800-38C Appendix C, transcribed from the PDF. Nothing here is trusted: the run aborts unless the
+# model above reproduces all four, which is what catches a mistyped digit. Example 4 is the erratum-
+# corrected one (its formatted string B ends with two appended hex values) and exercises the long
+# associated-data length encoding.
+SP800_38C_CCM = [
+    {
+        "tag_len": 4,
+        "key": "404142434445464748494a4b4c4d4e4f",
+        "nonce": "10111213141516",
+        "aad": "0001020304050607",
+        "pt": "20212223",
+        "ct": "7162015b",
+        "tag": "4dac255d",
+    },
+    {
+        "tag_len": 6,
+        "key": "404142434445464748494a4b4c4d4e4f",
+        "nonce": "1011121314151617",
+        "aad": "000102030405060708090a0b0c0d0e0f",
+        "pt": "202122232425262728292a2b2c2d2e2f",
+        "ct": "d2a1f0e051ea5f62081a7792073d593d",
+        "tag": "1fc64fbfaccd",
+    },
+    {
+        "tag_len": 8,
+        "key": "404142434445464748494a4b4c4d4e4f",
+        "nonce": "101112131415161718191a1b",
+        "aad": "000102030405060708090a0b0c0d0e0f10111213",
+        "pt": "202122232425262728292a2b2c2d2e2f3031323334353637",
+        "ct": "e3b201a9f5b71a7a9b1ceaeccd97e70b6176aad9a4428aa5",
+        "tag": "484392fbc1b09951",
+    },
+    # Appendix C Example 4 is deliberately absent: its published C and T do not reproduce under this model
+    # or under pycryptodome, and the PDF carries a marginal correction note against the 2004 text ("the
+    # value of parameter B has been corrected by adding the final two hexadecimal values") that cannot be
+    # applied from the associated-data string the document prints -- it says only "the first sixteen blocks
+    # ... concatenated with itself repeatedly". A vector nobody can reproduce is not an anchor.
+]
+
+# What the device actually asks for: app/crypto/aes.h fixes the nonce at 13 bytes and the tag at 8, and
+# _ccm_build_b0() never sets the associated-data bit. No published vector has that shape -- SP 800-38C's
+# own examples all carry associated data, and RFC 3610's are all 8-byte nonces with associated data -- so
+# these are emitted only where the model written from the specification and pycryptodome agree.
+CCM_DEVICE_CASES = [
+    (0, "00112233445566778899aabbccddeeff", "000102030405060708090a0b0c"),
+    (1, "404142434445464748494a4b4c4d4e4f", "101112131415161718191a1b1c"),
+    (7, "000102030405060708090a0b0c0d0e0f", "f0e1d2c3b4a5968778695a4b3c"),
+    (15, "6c79b4d5a342ae0f8c38f73f44e52b7e", "11223344556677889900aabbcc"),
+    (16, "00000000000000000000000000000000", "00000000000000000000000000"),
+    (17, "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf", "0123456789abcdeffedcba9876"),
+    (31, "9e88e9f2d9e0b5dac1d2e3f4a5b6c7d8", "0a0b0c0d0e0f10111213141516"),
+    (32, "0123456789abcdeffedcba9876543210", "1d4e7a2b3c5d6e7f8091a2b3c4"),
+    (33, "11111111111111111111111111111111", "ffffffffffffffffffffffffff"),
+    (47, "5b6c7d8e9f001122334455667788990a", "7a6b5c4d3e2f1001a2b3c4d5e6"),
+    (64, "d0d1d2d3d4d5d6d7d8d9dadbdcdddedf", "0f1e2d3c4b5a69788796a5b4c3"),
+    (1000, "3c4d5e6f708192a3b4c5d6e7f8091a2b", "5a4b3c2d1e0f00112233445566"),
+]
+
+
+def aes_vectors() -> str:
+    from Crypto.Cipher import AES
+    for index, case in enumerate(SP800_38C_CCM, start=1):
+        key = bytes.fromhex(case["key"])
+        nonce = bytes.fromhex(case["nonce"])
+        aad = bytes.fromhex(case["aad"])
+        pt = bytes.fromhex(case["pt"])
+        expected = (bytes.fromhex(case["ct"]), bytes.fromhex(case["tag"]))
+
+        if ccm_spec(key, nonce, aad, pt, case["tag_len"]) != expected:
+            sys.exit(f"sp800-38c: example {index} does not reproduce -- the transcription or the model is wrong")
+        if ccm_reference(key, nonce, aad, pt, case["tag_len"]) != expected:
+            sys.exit(f"sp800-38c: example {index} disagrees with pycryptodome")
+
+    device = []
+    for length, key_hex, nonce_hex in CCM_DEVICE_CASES:
+        key = bytes.fromhex(key_hex)
+        nonce = bytes.fromhex(nonce_hex)
+        pt = bytes((i * 7 + 3) & 0xFF for i in range(length))
+
+        spec = ccm_spec(key, nonce, b"", pt, 8)
+        reference = ccm_reference(key, nonce, b"", pt, 8)
+        if spec != reference:
+            sys.exit(f"ccm at device parameters ({length} bytes): the spec model and pycryptodome disagree")
+
+        device.append((key_hex, nonce_hex, pt.hex(), (spec[0] + spec[1]).hex()))
+
+    # AES-256-CBC has no published vector set at 256 bits -- SP 800-38A's examples are all 128-bit and
+    # RFC 3602 stops at 128 too -- so the chaining is pinned to pycryptodome, and the block itself to
+    # FIPS-197 C.3 below.
+    cbc = []
+    for length, key_hex, iv_hex in [
+        (16, "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4", "000102030405060708090a0b0c0d0e0f"),
+        (32, "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "ffffffffffffffffffffffffffffffff"),
+        (48, "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3", "101112131415161718191a1b1c1d1e1f"),
+        (64, "0000000000000000000000000000000000000000000000000000000000000000", "00000000000000000000000000000000"),
+    ]:
+        key = bytes.fromhex(key_hex)
+        iv = bytes.fromhex(iv_hex)
+        data = bytes((i * 13 + 5) & 0xFF for i in range(length))
+        cipher = AES.new(key, AES.MODE_CBC, iv=iv)
+        cbc.append((key_hex, iv_hex, data.hex(), cipher.encrypt(data).hex()))
+
+    cbc_mac = []
+    for length, key_hex in [
+        (16, "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"),
+        (32, "0123456789abcdeffedcba98765432100f1e2d3c4b5a69788796a5b4c3d2e1f0"),
+        (64, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    ]:
+        key = bytes.fromhex(key_hex)
+        data = bytes((i * 29 + 11) & 0xFF for i in range(length))
+        mac = AES.new(key, AES.MODE_CBC, iv=bytes(16)).encrypt(data)[-16:]
+        cbc_mac.append((key_hex, data.hex(), mac.hex()))
+
+    spec_rows = ",\n".join(
+        "  {.key = %s, .nonce = %s, .aad = %s, .plaintext = %s, .out = %s}"
+        % (cstr(c["key"]), cstr(c["nonce"]), cstr(c["aad"]), cstr(c["pt"]), cstr(c["ct"] + c["tag"]))
+        for c in [SP800_38C_CCM[2]]
+    )
+    device_rows = ",\n".join(
+        "  {.key = %s, .nonce = %s, .aad = \"\", .plaintext = %s, .out = %s}"
+        % (cstr(k), cstr(n), cstr(p), cstr(ct))
+        for k, n, p, ct in device
+    )
+    cbc_rows = ",\n".join(
+        "  {.key = %s, .iv = %s, .data = %s, .out = %s}" % (cstr(k), cstr(iv), cstr(d), cstr(o)) for k, iv, d, o in cbc
+    )
+    mac_rows = ",\n".join(
+        "  {.key = %s, .iv = \"\", .data = %s, .out = %s}" % (cstr(k), cstr(d), cstr(m)) for k, d, m in cbc_mac
+    )
+
+    return f"""#ifndef VECTORS_HAL_AES_H
+#define VECTORS_HAL_AES_H
+
+/* spec: {{fips197}}
+ * spec: {{sp80038c}}
+ *
+ * The block vector is FIPS-197 Appendix C.3, the AES-256 known-answer pair.
+ *
+ * The CCM cases below are the device's shape -- 13-byte nonce, 8-byte tag, no associated data -- and no
+ * published vector has it: SP 800-38C's examples all carry associated data, and RFC 3610's are all
+ * 8-byte nonces with associated data too. So they are emitted only where ccm_spec(), composed from
+ * SP 800-38C 5.2 and Appendix A rather than from aes_ccm.c, and pycryptodome's own CCM agree; the
+ * generator aborts otherwise. Appendix C Examples 1, 2 and 3 are checked the same way before anything is
+ * written, which is what keeps that model honest at the points that are published. Example 4 is not
+ * checked, because neither implementation reproduces the C and T the document prints. Example 3 is the
+ * one published case an 8-byte tag can express, so it is carried through below as a vector of its own.
+ */
+
+/* FIPS-197 C.3 */
+#define AES256_BLOCK_KEY "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+#define AES256_BLOCK_PLAINTEXT "00112233445566778899aabbccddeeff"
+#define AES256_BLOCK_CIPHERTEXT "8ea2b7ca516745bfeafc49904b496089"
+
+typedef struct {{
+  const char* key;
+  const char* nonce;
+  const char* aad;
+  const char* plaintext;
+  const char* out; /* ciphertext then tag, as aes128_ccm_encrypt() lays them down */
+}} aes_ccm_kat_t;
+
+/* SP 800-38C Appendix C Example 3. The only published CCM vector with an 8-byte tag, and it carries
+ * associated data, which the peripheral's streaming API has no way to accept: a test reaches it through
+ * hal_host_aes_ccm_aad(). */
+static const aes_ccm_kat_t AES_CCM_SPEC[] = {{
+{spec_rows}
+}};
+
+#define AES_CCM_SPEC_COUNT (sizeof(AES_CCM_SPEC) / sizeof(AES_CCM_SPEC[0]))
+
+/* What the device asks for: no associated data, nonce 13, tag 8. */
+static const aes_ccm_kat_t AES_CCM_DEVICE[] = {{
+{device_rows}
+}};
+
+#define AES_CCM_DEVICE_COUNT (sizeof(AES_CCM_DEVICE) / sizeof(AES_CCM_DEVICE[0]))
+
+typedef struct {{
+  const char* key;
+  const char* iv;
+  const char* data;
+  const char* out;
+}} aes_cbc_kat_t;
+
+/* reference: pycryptodome's AES-256-CBC, independent of the model in host/hal_aes_host.c. There is no
+ * published AES-256 CBC vector set: SP 800-38A's examples and RFC 3602 are both 128-bit only. */
+static const aes_cbc_kat_t AES_CBC_KAT[] = {{
+{cbc_rows}
+}};
+
+#define AES_CBC_KAT_COUNT (sizeof(AES_CBC_KAT) / sizeof(AES_CBC_KAT[0]))
+
+/* aes_cbc_mac() is CBC with a zero IV, read back as the last block. Lengths are multiples of the block:
+ * the function rounds up, so anything else would drag in whatever follows the message. */
+static const aes_cbc_kat_t AES_CBC_MAC_KAT[] = {{
+{mac_rows}
+}};
+
+#define AES_CBC_MAC_KAT_COUNT (sizeof(AES_CBC_MAC_KAT) / sizeof(AES_CBC_MAC_KAT[0]))
+
+#endif
+""".replace("{fips197}", provenance("fips-197.pdf")).replace("{sp80038c}", provenance("sp800-38c.pdf"))
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -10597,6 +10863,7 @@ def main() -> None:
         "vectors_eip712.h": eip712_vectors(),
         "vectors_ur.h": ur_vectors(),
     "vectors_openpgp.h": openpgp_vectors(),
+        "vectors_hal_aes.h": aes_vectors(),
     }
     for name, content in written.items():
         (HERE / name).write_text(content)

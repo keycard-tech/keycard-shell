@@ -49,6 +49,7 @@ target_include_directories(unity PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/unity)
 
 add_library(test_framework STATIC
     framework/test_util.c
+    host/hal_aes_host.c
     host/hal_flash_host.c
     host/hal_host.c
     host/hal_pka_host.c
@@ -188,6 +189,16 @@ target_link_libraries(app_ur PUBLIC app_crypto zcbor)
 # multisig entries, the token database -- and its six entry points are the whole API, so it is
 # compiled here against the flash model in host/hal_flash_host.c. g_flash_swap, the block buffer it
 # stages a rewrite in, comes from host_data.c.
+# AES. Not in app_crypto: the firmware's branches of these two files are the point, and their only
+# dependencies are memzero and the seam in host/hal_aes_host.c.
+add_library(app_aes STATIC
+    ${SHELLOS_ROOT}/app/crypto/aes.c
+    ${SHELLOS_ROOT}/app/crypto/aes_ccm.c
+    ${SHELLOS_ROOT}/app/crypto/memzero.c
+)
+target_include_directories(app_aes PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_aes PRIVATE ${SHELLOS_COMMON_FLAGS})
+
 add_library(app_storage STATIC
     ${SHELLOS_ROOT}/app/storage/fs.c
 )
@@ -310,6 +321,8 @@ shellos_test(storage_fs LIBS app_storage)
 shellos_test(eth_db LIBS app_ethereum app_storage)
 shellos_test(scv2_whitelist LIBS app_keycard app_storage)
 shellos_test(settings LIBS app_settings settings_seam app_storage)
+shellos_test(aes LIBS app_aes)
+shellos_test(hal_aes)
 shellos_test(hal_pka LIBS app_crypto)
 shellos_test(bip32 LIBS app_crypto)
 shellos_test(taproot LIBS app_bitcoin app_crypto)
