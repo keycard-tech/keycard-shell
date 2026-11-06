@@ -50,6 +50,8 @@ SOURCES = {
     "bip86.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0086.mediawiki",
     "base58.cpp": "https://raw.githubusercontent.com/bitcoin/bitcoin/master/src/base58.cpp",
     "bip173.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0173.mediawiki",
+    "bip67.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0067.mediawiki",
+    "bip49.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0049.mediawiki",
     "bip350.mediawiki": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0350.mediawiki",
     "eip-155.md": "https://raw.githubusercontent.com/ethereum/EIPs/master/EIPS/eip-155.md",
     "erc-55.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-55.md",
@@ -8919,6 +8921,10 @@ def multisig_vectors() -> str:
         multisig_case('a lowercase format, as the format page spells it',
                       single(format='Format: p2wsh'), name='One', m=1, n=1, fmt=2,
                       keys=cc_keys(single(format='Format: p2wsh'))),
+        # Electrum writes P2SH-P2WPKH for a single-address segwit wallet. The multisig module has
+        # no such format, and the line is what a wrong file looks like rather than a typo.
+        multisig_case('a format the module does not have', single(format='Format: P2SH-P2WPKH'),
+                      err='ERR_DATA'),
         multisig_case('an unknown label, which becomes a key line',
                       single(name='One', policy='Wallet: 1 of 1'), err='ERR_DATA'),
         multisig_case('a label with no colon at all', single().replace('Format: P2WSH', 'P2WSH'),
@@ -9346,6 +9352,7 @@ def bip32_public_levels() -> list[dict]:
                 "index": child,
                 "chain": raw[13:45],
                 "pub": raw[45:78],
+                "raw": raw,
             }
         )
     assert len(levels) >= 12, len(levels)
@@ -10013,6 +10020,310 @@ typedef struct {{
 #endif
 """
 
+# --------------------------------------------- multisig public derivation
+
+# A wallet is cosigner xpubs plus (change, index). Both halves of the answer are anchored outside
+# this file: the xpubs and the transitions between published levels come from BIP-32's test vector
+# 1, and the redeem script and its P2SH address come from BIP-67's test vectors. Each is proven
+# below before a single row is emitted, so what reaches a test is a composition of two documents.
+
+BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+
+def ms_bech32(hrp: str, witver: int, program: bytes) -> str:
+    """BIP-173's encoding of a witness program. ms_check_bech32() proves it against the addresses
+    BIP-173 publishes; secp256k1 and the script rules are somebody else's problem elsewhere."""
+    gen = [0x3B6A57B2, 0x26508E6D, 0x1EA119FA, 0x3D4233DD, 0x2A1462B3]
+
+    def polymod(values):
+        chk = 1
+        for value in values:
+            top = chk >> 25
+            chk = (chk & 0x1FFFFFF) << 5 ^ value
+            for i in range(5):
+                if (top >> i) & 1:
+                    chk ^= gen[i]
+        return chk
+
+    data = [witver]
+    acc = bits = 0
+    for byte in program:
+        acc = (acc << 8) | byte
+        bits += 8
+        while bits >= 5:
+            bits -= 5
+            data.append((acc >> bits) & 31)
+    if bits:
+        data.append((acc << (5 - bits)) & 31)
+
+    chk = polymod([ord(c) >> 5 for c in hrp] + [0] + [ord(c) & 31 for c in hrp] + data + [0] * 6) ^ 1
+    return hrp + "1" + "".join(
+        BECH32_CHARSET[d] for d in data + [(chk >> (5 * (5 - i))) & 31 for i in range(6)])
+
+
+def ms_check_bech32() -> int:
+    """Every version 0 address BIP-173 publishes, re-encoded from the witness program beside it."""
+    rows, _ = parse_segwit_vectors("bip173.mediawiki")
+    proven = 0
+    for row in rows:
+        if row["witver"] != 0:
+            continue
+        got = ms_bech32(row["hrp"], 0, bytes.fromhex(row["program"]))
+        if got != row["address"].lower():
+            sys.exit(f"bech32: {row['program']} encodes to {got}, BIP-173 says {row['address']}")
+        proven += 1
+    if proven < 3:
+        sys.exit(f"BIP-173 published {proven} version 0 addresses, expected at least 3")
+    return proven
+
+
+def ms_script(m: int, n: int, keys: list[bytes]) -> bytes:
+    """BIP-67: the compressed keys sorted as bytes, inside OP_M ... OP_N OP_CHECKMULTISIG."""
+    out = bytes([0x50 + m])
+    for key in sorted(keys):
+        out += bytes([33]) + key
+    return out + bytes([0x50 + n, 0xAE])
+
+
+def ms_p2sh_of(redeem: bytes, prefix: int = 5) -> str:
+    """The BIP-16 address of a redeem script. ms_check_nesting_against_bip49 proves it against the
+    chain BIP-49 publishes -- key hash, wrap, HASH160 of the wrap, base58check -- before use."""
+    return b58check_encode(bytes([prefix]) + hashlib.new("ripemd160", hashlib.sha256(redeem).digest()).digest())
+
+
+def ms_p2sh_address(script: bytes) -> str:
+    return ms_p2sh_of(script)
+
+
+def ms_p2wsh_address(script: bytes) -> str:
+    return ms_bech32("bc", 0, hashlib.sha256(script).digest())
+
+
+def ms_p2sh_p2wsh_address(script: bytes) -> str:
+    """BIP-141: the redeem script of a P2WSH nested in P2SH is OP_0 followed by the 32-byte
+    sha256 of the witness script, and it is that wrap -- 34 bytes -- which BIP-16 hashes. Not the
+    hash on its own."""
+    return ms_p2sh_of(bytes([0x00, 0x20]) + hashlib.sha256(script).digest())
+
+
+def ms_check_nesting_against_bip49() -> None:
+    """BIP-49's test vector states the nesting chain end to end. The wrap it publishes is for
+    P2WPKH (OP_0 <20-byte key hash>); BIP-141 says the same with a 32-byte script hash, which is
+    what ms_p2sh_p2wsh_address above produces."""
+    text = fetch("bip49.mediawiki")
+    keyhash = bytes.fromhex(re.search(r"keyhash = HASH160\(account0recvPublicKeyHex\) = 0x([0-9a-f]{40})", text).group(1))
+    wrap = bytes.fromhex(re.search(r"scriptSig = <0 <keyhash>> = (0x0014[0-9a-f]{40})", text).group(1)[2:])
+    inner = bytes.fromhex(re.search(r"addressBytes = HASH160\(scriptSig\) = 0x([0-9a-f]{40})", text).group(1))
+    address = re.search(r"address = base58check\(prefix \| addressBytes\) = ([mn2][a-km-zA-HJ-NP-Z1-9]{25,34})", text).group(1)
+
+    assert wrap == bytes([0x00, 0x14]) + keyhash, "BIP-49's wrap is not OP_0 <keyhash>"
+    if hashlib.new("ripemd160", hashlib.sha256(wrap).digest()).digest() != inner:
+        sys.exit("BIP-49: HASH160 of the published wrap is not the published addressBytes")
+    # The vector is testnet, and BIP-49 addresses carry the 0xC4 prefix that SLIP-0132 registers
+    # for them; 0x6F, the ordinary testnet P2KH byte, produces a different string.
+    if ms_p2sh_of(wrap, prefix=0xC4) != address:
+        sys.exit(f"BIP-49: the published wrap pays to {ms_p2sh_of(wrap, prefix=0xC4)}, not {address}")
+
+
+def ms_bip67_vectors() -> list[dict]:
+    """BIP-67's test vectors: the list as given, the same list sorted, the redeem script and the
+    P2SH address. The document states that two signatures are required in each of them."""
+    text = fetch("bip67.mediawiki")
+    assert "Two signatures are required in each of these test vectors." in text
+    section = text.split("==Test vectors==", 1)[1]
+
+    vectors, current, field = [], None, None
+    for line in section.splitlines():
+        line = line.strip()
+        if line.startswith("Vector"):
+            current = {"list": [], "sorted": [], "script": "", "address": ""}
+            vectors.append(current)
+            field = None
+            continue
+        if current is None:
+            continue
+        named = re.match(r"\*\*?\s*(List|Sorted|Script|Address)", line)
+        if named:
+            field = named.group(1).lower()
+            inline = line[named.end():].strip(" :")
+            if field in ("list", "sorted") and re.fullmatch(r"[0-9a-fA-F]{66}", inline):
+                current[field].append(inline)
+            continue
+        if not line.startswith("**") or field is None:
+            continue
+        value = line[2:].strip()
+        if field in ("list", "sorted"):
+            current[field].append(value)
+        elif field == "script":
+            current[field] = value.lower()
+        else:
+            current[field] = value
+
+    vectors = [v for v in vectors if v["list"] and v["sorted"] and v["script"] and v["address"]]
+    if len(vectors) < 3:
+        sys.exit(f"BIP-67 published {len(vectors)} test vectors, expected at least 3")
+    return vectors
+
+
+def ms_check_script_against_bip67() -> int:
+    """The sorting, the script layout and the P2SH address, against what BIP-67 says they are."""
+    proven = 0
+    for vector in ms_bip67_vectors():
+        keys = [bytes.fromhex(k) for k in vector["list"]]
+        if sorted(keys) != [bytes.fromhex(k) for k in vector["sorted"]]:
+            sys.exit("BIP-67: the document's own sort is not a byte sort")
+        script = ms_script(2, len(keys), keys)
+        if hexs(script) != vector["script"]:
+            sys.exit(f"BIP-67: script {hexs(script)} is not the published {vector['script']}")
+        if ms_p2sh_address(script) != vector["address"]:
+            sys.exit(f"BIP-67: {hexs(script)} pays to {ms_p2sh_address(script)}, not {vector['address']}")
+        proven += 1
+    return proven
+
+
+def ms_ckd_pub(code: bytes, key: bytes, index: int) -> tuple[bytes, bytes]:
+    """BIP-32 public derivation: I = HMAC-SHA512(chain code, serP(K) || ser32(i)), the child point
+    is point(I_L) + K and the child chain code is I_R. The parent is expanded by coincurve and the
+    arithmetic is CPython's; ms_ckd_pub_matches_published proves both against BIP-32's own
+    published children before this file writes anything."""
+    i = hmac.new(code, key + index.to_bytes(4, "big"), hashlib.sha512).digest()
+    il = int.from_bytes(i[:32], "big")
+    assert 0 < il < PKA_CURVE["n"], "I_L is not a valid scalar"
+    base = (PKA_CURVE["gx"], PKA_CURVE["gy"])
+    parent = pka_decompress(key)
+    child = pka_ec_add(pka_ec_mul(il, base, PKA_CURVE["p"], PKA_CURVE["a"]), parent,
+                       PKA_CURVE["p"], PKA_CURVE["a"])
+    assert child is not None, "the child is the point at infinity"
+    x, y = child
+    return bytes([0x02 | (y & 1)]) + x.to_bytes(32, "big"), i[32:]
+
+
+def ms_ckd_pub_matches_published() -> int:
+    """Every plain one-level step BIP-32 publishes from one xpub to the next, checked on both the
+    child key and the child chain code. The published xpubs are the same list the bip32 vectors
+    are built from."""
+    proven = 0
+    levels = bip32_public_levels()
+    for parent, child in zip(levels, levels[1:]):
+        if child["depth"] != parent["depth"] + 1 or child["index"] & 0x80000000:
+            continue
+        got_key, got_code = ms_ckd_pub(parent["chain"], parent["pub"], child["index"])
+        if (got_key, got_code) != (child["pub"], child["chain"]):
+            sys.exit(f"CKDpub {child['path']}: {hexs(got_key)}/{hexs(got_code)} is not "
+                     f"{hexs(child['pub'])}/{hexs(child['chain'])}")
+        proven += 1
+    if proven < 4:
+        sys.exit(f"BIP-32 published {proven} plain public steps, expected at least 4")
+    return proven
+
+
+def ms_derive(levels: list[dict], picks: list[int], change: int, index: int) -> list[bytes]:
+    keys = []
+    for pick in picks:
+        level = levels[pick]
+        key, code = ms_ckd_pub(level["chain"], level["pub"], change)
+        key, _ = ms_ckd_pub(code, key, index)
+        keys.append(key)
+    return keys
+
+
+def ms_address(fmt: int, keys: list[bytes], m: int, n: int) -> str:
+    script = ms_script(m, n, keys)
+    return {0: ms_p2sh_address, 1: ms_p2sh_p2wsh_address, 2: ms_p2wsh_address}[fmt](script)
+
+
+MULTISIG_DERIVE_HEADER = """/* Generated by tests/vectors/generate.py -- do not edit by hand.
+ *
+ * Addresses of multisig descriptors, for bitcoin/multisig.c's multisig_derive_address.
+ *
+ * A row is a wallet (m of n, the format, the cosigner xpubs in the order the setup file lists
+ * them) and one (change, index) step, with the address that step is supposed to produce.
+ *
+ * Each cosigner xpub is an extended public key one of BIP-32's test vectors publishes, so the
+ * input of every row is somebody else's number. The address is composed by generate.py out of three documents:
+ * the plain public derivation of BIP-32, the sorted redeem script and its P2SH address of BIP-67,
+ * and the bech32 encoding of BIP-173. Before writing this file generate.py proves each of those
+ * against the published data it names -- the derivation against BIP-32's own published children
+ * (both key and chain code), the script and the P2SH address against every BIP-67 vector, the
+ * encoding against every version 0 address BIP-173 publishes -- and exits rather than emit if any
+ * of them disagrees. Nothing in between the published xpub and the published address is believed
+ * because it is convenient.
+ *
+ * The order of the xpubs is part of the input on purpose: BIP-67 sorts the derived keys, so a
+ * wallet listed in another order must give the same address.
+ *
+ * %s
+ * %s
+ */
+
+#ifndef VECTORS_MULTISIG_DERIVE_H
+#define VECTORS_MULTISIG_DERIVE_H
+
+#include <stdint.h>
+
+typedef struct {
+  const char* label;
+  uint8_t m;
+  uint8_t n;
+  int format;    /* multisig_format_t: 0 P2SH, 1 P2WSH-P2SH, 2 P2WSH */
+  uint32_t change;
+  uint32_t index;
+  const char* xpubs[6]; /* the cosigners' serialized xpubs, 156 hex chars each, no checksum, in
+                           the order the setup file lists them */
+  const char* addr;
+} multisig_derive_t;
+
+static const multisig_derive_t MULTISIG_DERIVE[] = {
+%s
+};
+
+#define MULTISIG_DERIVE_COUNT (sizeof(MULTISIG_DERIVE) / sizeof(MULTISIG_DERIVE[0]))
+
+#endif
+"""
+
+
+def multisig_derive_vectors() -> str:
+    steps = ms_ckd_pub_matches_published()
+    bip67 = ms_check_script_against_bip67()
+    bech32 = ms_check_bech32()
+    ms_check_nesting_against_bip49()
+    levels = bip32_public_levels()
+
+    # Three master xpubs from three different published chains, so no cosigner is a descendant of
+    # another. The deeper positions add cosigners for the larger wallets; two of them are in a
+    # chain with one of the masters, which is of no consequence because each cosigner is derived
+    # from on its own.
+    trio, five, six = [0, 6, 14], [0, 6, 12, 14, 4], [0, 2, 6, 9, 12, 15]
+
+    rows = []
+
+    def row(label, picks, m, fmt, change, index):
+        keys = ms_derive(levels, picks, change, index)
+        rows.append(
+            "  {%s, %d, %d, %d, %du, %du, {%s}, %s}"
+            % (cstr(label), m, len(picks), fmt, change, index,
+               ", ".join(cstr(hexs(levels[p]["raw"])) for p in picks),
+               cstr(ms_address(fmt, keys, m, len(picks))))
+        )
+
+    for fmt, format_name in ((2, "P2WSH"), (1, "P2WSH-P2SH"), (0, "P2SH")):
+        row(f"2 of 3 {format_name}, first receive address", trio, 2, fmt, 0, 0)
+        row(f"2 of 3 {format_name}, first change address", trio, 2, fmt, 1, 0)
+        row(f"2 of 3 {format_name}, seventh change address", trio, 2, fmt, 1, 7)
+    row("3 of 5 P2WSH, first receive address", five, 3, 2, 0, 0)
+    row("3 of 5 P2WSH, seventh change address", five, 3, 2, 1, 7)
+    row("6 of 6 P2WSH, third receive address", six, 6, 2, 0, 2)
+    row("2 of 6 P2WSH, third receive address", six, 2, 2, 0, 2)
+
+    print(f"multisig: {steps} published public steps, {bip67} BIP-67 vectors, {bech32} BIP-173 addresses")
+    return MULTISIG_DERIVE_HEADER % (
+        provenance("bip32.mediawiki"),
+        provenance("bip67.mediawiki") + "\n * " + provenance("bip49.mediawiki"),
+        ",\n".join(rows))
+
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -10038,6 +10349,7 @@ def main() -> None:
         "vectors_bip32.h": bip32_vectors(),
         "vectors_taproot.h": taproot_vectors(),
         "vectors_ecdsa_curve.h": ecdsa_curve_vectors(),
+        "vectors_multisig_derive.h": multisig_derive_vectors(),
         "vectors_ethereum.h": ethereum_vectors(),
         "vectors_shamir.h": shamir_vectors(),
         "vectors_tlv.h": tlv_vectors(),

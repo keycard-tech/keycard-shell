@@ -410,10 +410,12 @@ app_err_t multisig_derive_address(const multisig_t* d, uint32_t change, uint32_t
     break;
   }
   case MULTISIG_FORMAT_P2WSH_P2SH: {
-    uint8_t s[SHA256_DIGEST_LENGTH];
+    uint8_t redeem[2 + SHA256_DIGEST_LENGTH];
     uint8_t h[RIPEMD160_DIGEST_LENGTH];
-    sha256_Raw(script, off, s);
-    hash160(s, sizeof(s), h);
+    redeem[0] = 0x00;
+    redeem[1] = SHA256_DIGEST_LENGTH;
+    sha256_Raw(script, off, &redeem[2]);
+    hash160(redeem, sizeof(redeem), h);
     bitcoin_legacy_address(h, BTC_P2SH_ADDR_PREFIX, addr);
     break;
   }

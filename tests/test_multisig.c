@@ -1,10 +1,7 @@
-/* Multisig setup files: what arrives from a QR scan, what goes to the store, and what goes back out
- * as a QR. The accepted files are the one printed on COLDCARD's format page and the exports
- * Sparrow keeps as its own parser's fixtures, so the meaning of each is somebody else's answer.
- *
- * multisig_derive_address is not here. It is the only function of the module that reaches silicon
- * (bip32_ckd_pub -> hal_ec_double_ladder), so every path through it ends in an aborting stub on a
- * host, including the paths that would merely fail. It belongs to the device-differential work. */
+/* Multisig setup files: what arrives from a QR scan, what goes to the store, what goes back out as
+ * a QR, and the address a descriptor produces. The accepted files are the one printed on
+ * COLDCARD's format page and the exports Sparrow keeps as its own parser's fixtures, so the meaning
+ * of each is somebody else's answer. */
 #include <stdlib.h>
 #include <string.h>
 
@@ -12,6 +9,7 @@
 #include "framework/test_util.h"
 #include "unity.h"
 #include "vectors/vectors_multisig.h"
+#include "vectors/vectors_multisig_derive.h"
 
 /* Lowercase hex, the way the vectors spell fingerprints and xpubs. */
 static void to_hex(const uint8_t* data, size_t len, char* out, size_t cap) {
@@ -22,6 +20,20 @@ static void to_hex(const uint8_t* data, size_t len, char* out, size_t cap) {
     out[off++] = digits[data[i] & 0x0f];
   }
   out[off] = '\0';
+}
+
+/* The wallet a derivation row describes; `backwards` takes the cosigners back to front, which
+ * BIP-67 says must not change the address. */
+static void wallet_from_row(const multisig_derive_t* row, bool backwards, multisig_t* d) {
+  memset(d, 0, sizeof(*d));
+  d->m = row->m;
+  d->n = row->n;
+  d->format = (multisig_format_t)row->format;
+  d->key_count = row->n;
+  for (uint8_t i = 0; i < row->n; i++) {
+    uint8_t slot = backwards ? (uint8_t)(row->n - 1 - i) : i;
+    TEST_GIVEN(row->xpubs[i], d->keys[slot].xpub, MULTISIG_XPUB_LEN);
+  }
 }
 
 static multisig_t parsed;
@@ -239,6 +251,78 @@ static void test_has_fingerprint(void) {
   }
 }
 
+/* The address a descriptor produces, in each format and on both chains. The vector header pins
+ * where the inputs and the answer come from; what is exercised here is the module's own path --
+ * the serialized key, the two public steps, the compression prefix, the BIP-67 sort and the script
+ * the format turns into an address. */
+static void test_derive_address(void) {
+  for (size_t i = 0; i < MULTISIG_DERIVE_COUNT; i++) {
+    const multisig_derive_t* row = &MULTISIG_DERIVE[i];
+    multisig_t d;
+    wallet_from_row(row, false, &d);
+
+    char addr[MAX_ADDR_LEN];
+    memset(addr, 0xA5, sizeof(addr));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ERR_OK, multisig_derive_address(&d, row->change, row->index, addr),
+                                  row->label);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(row->addr, addr, row->label);
+  }
+}
+
+/* BIP-67 exists so that a wallet is one address whatever order the setup file listed its cosigners
+ * in. Both wallets below are the same row, so an answer that depends on the order fails here even
+ * if nothing pinned the address. */
+static void test_derive_address_ignores_the_order_of_the_cosigners(void) {
+  for (size_t i = 0; i < MULTISIG_DERIVE_COUNT; i++) {
+    const multisig_derive_t* row = &MULTISIG_DERIVE[i];
+    multisig_t forwards, backwards;
+    wallet_from_row(row, false, &forwards);
+    wallet_from_row(row, true, &backwards);
+
+    char a[MAX_ADDR_LEN], b[MAX_ADDR_LEN];
+    TEST_ASSERT_EQUAL_INT(ERR_OK, multisig_derive_address(&forwards, row->change, row->index, a));
+    TEST_ASSERT_EQUAL_INT(ERR_OK, multisig_derive_address(&backwards, row->change, row->index, b));
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(a, b, row->label);
+  }
+}
+
+/* BIP-32: an extended public key cannot make a hardened child. Both steps are asked for one,
+ * because the module takes them as two separate arguments. */
+static void test_derive_refuses_a_hardened_step(void) {
+  const multisig_derive_t* row = &MULTISIG_DERIVE[0];
+  multisig_t d;
+  wallet_from_row(row, false, &d);
+
+  char addr[MAX_ADDR_LEN];
+  memset(addr, 0xA5, sizeof(addr));
+  TEST_ASSERT_EQUAL_INT(ERR_CRYPTO,
+                        multisig_derive_address(&d, row->change, row->index | 0x80000000u, addr));
+  TEST_ASSERT_EQUAL_UINT8(0xA5, addr[0]);
+
+  memset(addr, 0xA5, sizeof(addr));
+  TEST_ASSERT_EQUAL_INT(ERR_CRYPTO,
+                        multisig_derive_address(&d, row->change | 0x80000000u, row->index, addr));
+  TEST_ASSERT_EQUAL_UINT8(0xA5, addr[0]);
+}
+
+/* The format comes out of storage, where a descriptor could hold anything that passed the shape
+ * checks; only the three the header names produce an address. */
+static void test_derive_refuses_a_format_it_does_not_have(void) {
+  const multisig_derive_t* row = &MULTISIG_DERIVE[0];
+  multisig_t d;
+  wallet_from_row(row, false, &d);
+
+  char addr[MAX_ADDR_LEN];
+  for (int format = 3; format < 6; format++) {
+    d.format = (multisig_format_t)format;
+    memset(addr, 0xA5, sizeof(addr));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ERR_CRYPTO,
+                                  multisig_derive_address(&d, row->change, row->index, addr),
+                                  "a format the header does not name");
+    TEST_ASSERT_EQUAL_UINT8(0xA5, addr[0]);
+  }
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_parse);
@@ -246,5 +330,9 @@ int main(void) {
   RUN_TEST(test_deserialize_refuses_impossible_shapes);
   RUN_TEST(test_reexport);
   RUN_TEST(test_has_fingerprint);
+  RUN_TEST(test_derive_address);
+  RUN_TEST(test_derive_address_ignores_the_order_of_the_cosigners);
+  RUN_TEST(test_derive_refuses_a_hardened_step);
+  RUN_TEST(test_derive_refuses_a_format_it_does_not_have);
   return UNITY_END();
 }
