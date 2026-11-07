@@ -9,7 +9,7 @@
 static const char domain[] =
     "kohaku-key/v3-r3/privacy-pools-v1/deriveAt";
 
-static bool valid_path(const char *path, size_t len) {
+bool privacy_pools_v1_valid_path(const char *path, size_t len) {
   static const char prefix[] = "m/28784'/1'";
   size_t i = sizeof(prefix) - 1;
 
@@ -57,7 +57,7 @@ app_err_t privacy_pools_v1_derive_at(
   }
 
   if (root == NULL || path_len > UINT32_MAX ||
-      !valid_path(path, path_len)) {
+      !privacy_pools_v1_valid_path(path, path_len)) {
     memzero(out, 32);
     return ERR_DATA;
   }

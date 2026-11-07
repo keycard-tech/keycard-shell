@@ -29,6 +29,7 @@ app_err_t keycard_cmd_init(keycard_t* kc, uint8_t* sc_data, uint8_t* pin, uint8_
 app_err_t keycard_cmd_generate_mnemonic(keycard_t* kc, uint8_t len);
 app_err_t keycard_cmd_load_seed(keycard_t* kc, uint8_t* seed);
 app_err_t keycard_cmd_load_key(keycard_t* kc, uint8_t* key_template, uint8_t len);
+app_err_t keycard_cmd_export_bip85_root(keycard_t* kc);
 app_err_t keycard_cmd_export_key(keycard_t* kc, uint8_t export_type, uint8_t* path, uint8_t len);
 app_err_t keycard_cmd_sign(keycard_t* kc, keycard_sign_algo_t algo, uint8_t* path, uint8_t path_len, uint8_t* hash);
 app_err_t keycard_cmd_factory_reset(keycard_t* kc);

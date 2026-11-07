@@ -195,6 +195,7 @@ set(APP_SOURCES
     app/core/core.c
     app/core/core_openpgp.c
     app/core/core_multisig.c
+    app/core/core_privacy_pools_v1.c
     app/core/core_btc.c
     app/core/core_btc_sig.c
     app/core/core_eth.c
