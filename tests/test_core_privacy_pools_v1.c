@@ -66,10 +66,10 @@ static void test_success(void) {
 
 static void test_bad_response_lengths(void) {
   const char* path = "m/28784'/1'/0'";
-  const uint16_t lengths[] = {0, 1, 2, 33, 35, 65535};
+  const uint16_t INVALID_RESPONSE_LENGTHS[] = {0, 1, 2, 33, 35, 65535};
 
-  for (size_t i = 0; i < sizeof(lengths) / sizeof(lengths[0]); i++) {
-    response_length = lengths[i];
+  for (size_t i = 0; i < sizeof(INVALID_RESPONSE_LENGTHS) / sizeof(INVALID_RESPONSE_LENGTHS[0]); i++) {
+    response_length = INVALID_RESPONSE_LENGTHS[i];
     memset(output, 0xa5, sizeof(output));
 
     TEST_ASSERT_EQUAL_INT(

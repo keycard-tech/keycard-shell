@@ -11,7 +11,7 @@
 
 app_err_t core_kohaku_key_run_privacy_pools_v1(
     keycard_t* kc, bool ready) {
-  static const char path[] = "m/28784'/1'/0'";
+  static const char CREDENTIAL_PATH[] = "m/28784'/1'/0'";
 
   if (kc == NULL || !ready || kc->sc.state != SC_READY ||
       kc->app_version < 0x0400 ||
@@ -37,7 +37,7 @@ app_err_t core_kohaku_key_run_privacy_pools_v1(
 
   uint8_t credential[32] = {0};
   app_err_t err = core_privacy_pools_v1_derive_at(
-      kc, path, sizeof(path) - 1, credential);
+      kc, CREDENTIAL_PATH, sizeof(CREDENTIAL_PATH) - 1, credential);
 
   if (err != ERR_OK) {
     memzero(credential, sizeof(credential));
@@ -47,15 +47,15 @@ app_err_t core_kohaku_key_run_privacy_pools_v1(
     return err;
   }
 
-  static const uint8_t domain[] =
+  static const uint8_t RECEIPT_DOMAIN[] =
       "kohaku-key/v4-a7/privacy-pools-v1/receipt";
-  const uint8_t separator = 0;
+  const uint8_t SEPARATOR = 0;
   uint8_t tag[32] = {0};
   HMAC_SHA256_CTX hmac;
 
   hmac_sha256_Init(&hmac, credential, sizeof(credential));
-  hmac_sha256_Update(&hmac, domain, sizeof(domain) - 1);
-  hmac_sha256_Update(&hmac, &separator, 1);
+  hmac_sha256_Update(&hmac, RECEIPT_DOMAIN, sizeof(RECEIPT_DOMAIN) - 1);
+  hmac_sha256_Update(&hmac, &SEPARATOR, 1);
   hmac_sha256_Update(&hmac, challenge, sizeof(challenge));
   hmac_sha256_Final(&hmac, tag);
 
@@ -63,16 +63,16 @@ app_err_t core_kohaku_key_run_privacy_pools_v1(
 
   char receipt[128] = {0};
   char* cursor = receipt;
-  static const char challenge_label[] = "Challenge:\n";
-  static const char tag_label[] = "\nTag:\n";
+  static const char CHALLENGE_LABEL[] = "Challenge:\n";
+  static const char TAG_LABEL[] = "\nTag:\n";
 
-  memcpy(cursor, challenge_label, sizeof(challenge_label) - 1);
-  cursor += sizeof(challenge_label) - 1;
+  memcpy(cursor, CHALLENGE_LABEL, sizeof(CHALLENGE_LABEL) - 1);
+  cursor += sizeof(CHALLENGE_LABEL) - 1;
   base16_encode(challenge, cursor, sizeof(challenge));
   cursor += sizeof(challenge) * 2;
 
-  memcpy(cursor, tag_label, sizeof(tag_label) - 1);
-  cursor += sizeof(tag_label) - 1;
+  memcpy(cursor, TAG_LABEL, sizeof(TAG_LABEL) - 1);
+  cursor += sizeof(TAG_LABEL) - 1;
   base16_encode(tag, cursor, sizeof(tag));
   cursor += sizeof(tag) * 2;
 

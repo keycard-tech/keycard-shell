@@ -42,7 +42,7 @@ void setUp(void) {
 void tearDown(void) {}
 
 static void test_bip85_command_encoding(void) {
-  const uint8_t expected_path[16] = {
+  const uint8_t EXPECTED_PATH[16] = {
     0x84, 0xfd, 0x1d, 0x48,
     0x80, 0x01, 0xf4, 0xa9,
     0x80, 0x00, 0x00, 0x20,
@@ -55,7 +55,7 @@ static void test_bip85_command_encoding(void) {
   TEST_ASSERT_EQUAL_INT(1, send_calls);
   TEST_ASSERT_EQUAL_UINT32(16, payload_len);
   TEST_ASSERT_EQUAL_HEX8_ARRAY(
-      expected_path, payload, sizeof(payload));
+      EXPECTED_PATH, payload, sizeof(payload));
 
   TEST_ASSERT_EQUAL_HEX8(0x80, APDU_CLA(&card.apdu));
   TEST_ASSERT_EQUAL_HEX8(0xc4, APDU_INS(&card.apdu));

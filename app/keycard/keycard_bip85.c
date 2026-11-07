@@ -14,7 +14,7 @@ app_err_t keycard_cmd_export_bip85_root(keycard_t* kc) {
   }
 
   /* m/83696968'/128169'/32'/0', hardened, big-endian. */
-  static const uint8_t bip85_path[16] = {
+  static const uint8_t BIP85_PATH[16] = {
     0x84, 0xfd, 0x1d, 0x48,
     0x80, 0x01, 0xf4, 0xa9,
     0x80, 0x00, 0x00, 0x20,
@@ -22,8 +22,8 @@ app_err_t keycard_cmd_export_bip85_root(keycard_t* kc) {
   };
 
   /* The secure-channel transport clears its input buffer. */
-  SC_BUF(path, sizeof(bip85_path));
-  memcpy(path, bip85_path, sizeof(bip85_path));
+  SC_BUF(path, sizeof(BIP85_PATH));
+  memcpy(path, BIP85_PATH, sizeof(BIP85_PATH));
 
   APDU_RESET(&kc->apdu);
   APDU_CLA(&kc->apdu) = 0x80;
@@ -33,7 +33,7 @@ app_err_t keycard_cmd_export_bip85_root(keycard_t* kc) {
 
   app_err_t err = securechannel_send_apdu(
       &kc->sc, &kc->ch, &kc->apdu,
-      path, sizeof(bip85_path));
+      path, sizeof(BIP85_PATH));
 
   memzero(path, sizeof(path));
   return err;

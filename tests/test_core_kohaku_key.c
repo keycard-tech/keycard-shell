@@ -40,15 +40,15 @@ static void observe_result(void) {
 static void observe_receipt(const char* text, uint32_t len) {
   observe_result();
 
-  static const char expected[] =
+  static const char EXPECTED_RECEIPT[] =
       "Challenge:\n"
       "febf141233694cc2bf70c0c458bf29e7"
       "\nTag:\n"
       "57d386010f1489ba952a77134989f1b0"
       "6b852129a8e9109d476dd2725e8f5efa";
 
-  TEST_ASSERT_EQUAL_UINT(sizeof(expected) - 1, len);
-  TEST_ASSERT_EQUAL_MEMORY(expected, text, len);
+  TEST_ASSERT_EQUAL_UINT(sizeof(EXPECTED_RECEIPT) - 1, len);
+  TEST_ASSERT_EQUAL_MEMORY(EXPECTED_RECEIPT, text, len);
 }
 
 void setUp(void) {

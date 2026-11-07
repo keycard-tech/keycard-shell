@@ -6,15 +6,15 @@
 #include "crypto/hmac.h"
 #include "crypto/memzero.h"
 
-static const char domain[] =
+static const char DERIVATION_DOMAIN[] =
     "kohaku-key/v3-r3/privacy-pools-v1/deriveAt";
 
 bool privacy_pools_v1_valid_path(const char *path, size_t len) {
-  static const char prefix[] = "m/28784'/1'";
-  size_t i = sizeof(prefix) - 1;
+  static const char PATH_PREFIX[] = "m/28784'/1'";
+  size_t i = sizeof(PATH_PREFIX) - 1;
 
   if (path == NULL || len <= i ||
-      memcmp(path, prefix, i) != 0) {
+      memcmp(path, PATH_PREFIX, i) != 0) {
     return false;
   }
 
@@ -63,12 +63,12 @@ app_err_t privacy_pools_v1_derive_at(
   }
 
   HMAC_SHA256_CTX ctx;
-  const uint8_t separator = 0;
+  const uint8_t SEPARATOR = 0;
 
   hmac_sha256_Init(&ctx, root, 32);
-  hmac_sha256_Update(&ctx, (const uint8_t *)domain,
-                     sizeof(domain) - 1);
-  hmac_sha256_Update(&ctx, &separator, 1);
+  hmac_sha256_Update(&ctx, (const uint8_t *)DERIVATION_DOMAIN,
+                     sizeof(DERIVATION_DOMAIN) - 1);
+  hmac_sha256_Update(&ctx, &SEPARATOR, 1);
   hmac_sha256_Update(&ctx, (const uint8_t *)path,
                      (uint32_t)path_len);
   hmac_sha256_Final(&ctx, out);
