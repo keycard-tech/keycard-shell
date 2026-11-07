@@ -1,0 +1,125 @@
+#include <string.h>
+
+#include "core/core.h"
+#include "core/core_kohaku_key.h"
+#include "ui/i18n.h"
+#include "ui_host.h"
+#include "unity.h"
+
+core_ctx_t g_core;
+
+static app_err_t derive_result;
+static unsigned derive_calls;
+static uint8_t* derived_output;
+static bool cleanup_verified;
+
+app_err_t core_privacy_pools_v1_derive_at(
+    keycard_t* kc, const char* path,
+    size_t path_len, uint8_t out[32]) {
+  TEST_ASSERT_EQUAL_PTR(&g_core.keycard, kc);
+  TEST_ASSERT_EQUAL_STRING("m/28784'/1'/0'", path);
+  TEST_ASSERT_EQUAL_size_t(strlen(path), path_len);
+
+  derive_calls++;
+  derived_output = out;
+  memset(out, 0xa5, 32);
+  return derive_result;
+}
+
+static void observe_result(void) {
+  if (derived_output == NULL) return;
+
+  for (size_t i = 0; i < 32; i++) {
+    TEST_ASSERT_EQUAL_HEX8(0, derived_output[i]);
+  }
+
+  cleanup_verified = true;
+  derived_output = NULL;
+}
+
+void setUp(void) {
+  memset(&g_core, 0, sizeof(g_core));
+  host_ui_reset();
+  i18n_set_strings(i18n_english_strings);
+
+  g_core.ready = true;
+  g_core.keycard.sc.state = SC_READY;
+  g_core.keycard.app_version = 0x0400;
+  g_core.keycard.ch.version = SC_V2;
+  g_core.keycard.ch.open = 1;
+
+  derive_result = ERR_OK;
+  derive_calls = 0;
+  derived_output = NULL;
+  cleanup_verified = false;
+
+  host_ui_set_info_observer(observe_result);
+}
+
+void tearDown(void) {}
+
+static void test_cancel_never_derives(void) {
+  TEST_ASSERT_EQUAL_INT(
+      ERR_CANCEL, core_kohaku_key_run_privacy_pools_v1());
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_prompt_calls());
+  TEST_ASSERT_EQUAL_UINT(0, derive_calls);
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_info_calls());
+}
+
+static void test_legacy_keycard_rejected(void) {
+  g_core.keycard.app_version = 0x0301;
+  host_ui_answer_prompt(CORE_EVT_UI_OK);
+
+  TEST_ASSERT_EQUAL_INT(
+      ERR_CRYPTO, core_kohaku_key_run_privacy_pools_v1());
+
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_prompt_calls());
+  TEST_ASSERT_EQUAL_UINT(0, derive_calls);
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_info_calls());
+}
+
+static void test_closed_channel_rejected(void) {
+  g_core.keycard.ch.open = 0;
+  host_ui_answer_prompt(CORE_EVT_UI_OK);
+
+  TEST_ASSERT_EQUAL_INT(
+      ERR_CRYPTO, core_kohaku_key_run_privacy_pools_v1());
+
+  TEST_ASSERT_EQUAL_UINT(0, derive_calls);
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_prompt_calls());
+}
+
+static void test_success_clears_before_display(void) {
+  host_ui_answer_prompt(CORE_EVT_UI_OK);
+
+  TEST_ASSERT_EQUAL_INT(
+      ERR_OK, core_kohaku_key_run_privacy_pools_v1());
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_prompt_calls());
+  TEST_ASSERT_EQUAL_UINT(1, derive_calls);
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_info_calls());
+  TEST_ASSERT_TRUE(cleanup_verified);
+}
+
+static void test_failure_clears_before_display(void) {
+  host_ui_answer_prompt(CORE_EVT_UI_OK);
+  derive_result = ERR_TXRX;
+
+  TEST_ASSERT_EQUAL_INT(
+      ERR_TXRX, core_kohaku_key_run_privacy_pools_v1());
+
+  TEST_ASSERT_EQUAL_UINT(1, derive_calls);
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_info_calls());
+  TEST_ASSERT_TRUE(cleanup_verified);
+}
+
+int main(void) {
+  UNITY_BEGIN();
+  RUN_TEST(test_cancel_never_derives);
+  RUN_TEST(test_legacy_keycard_rejected);
+  RUN_TEST(test_closed_channel_rejected);
+  RUN_TEST(test_success_clears_before_display);
+  RUN_TEST(test_failure_clears_before_display);
+  return UNITY_END();
+}

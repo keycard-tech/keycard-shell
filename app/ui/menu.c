@@ -98,9 +98,21 @@ const menu_t menu_settings = {
   }
 };
 
+const menu_t menu_kohaku_key = {
+  1, {
+    {MENU_PRIVACY_POOLS_V1, NULL},
+  }
+};
+
 const menu_t menu_extras = {
+#ifndef BITCOIN_ONLY
+  2, {
+    {MENU_OPENPGP, NULL},
+    {MENU_KOHAKU_KEY, &menu_kohaku_key},
+#else
   1, {
     {MENU_OPENPGP, NULL},
+#endif
   }
 };
 

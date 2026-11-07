@@ -22,9 +22,16 @@ static struct {
   uint32_t timeout;
 } seen;
 
+static void (*info_observer)(void);
+
+void host_ui_set_info_observer(void (*observer)(void)) {
+  info_observer = observer;
+}
+
 void host_ui_reset(void) {
   memset(&answer, 0, sizeof(answer));
   memset(&seen, 0, sizeof(seen));
+  info_observer = NULL;
 
   answer.menu_answer = CORE_EVT_UI_CANCELLED;
   answer.prompt_answer = CORE_EVT_UI_CANCELLED;
@@ -75,6 +82,7 @@ core_evt_t ui_info(info_icon_t icon, const char* msg, const char* subtext, ui_in
   (void)subtext;
   (void)opts;
 
+  if (info_observer != NULL) info_observer();
   seen.info++;
 
   return answer.prompt_answer;

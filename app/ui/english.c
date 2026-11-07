@@ -355,4 +355,13 @@ const char *const i18n_english_strings[] = {
     "Signature time",
     "Sign OpenPGP message",
     "GapPGP",
+    "Kohaku Key",
+    "Privacy Pools V1",
+    "Run a credential derivation test? No credentials will be exported.",
+    "Derivation complete",
+    "Credential output cleared",
+    "Derivation failed",
+    "Privacy Pools test could not complete",
+    "Keycard 4.0 required",
+    "An authenticated Keycard 4.0 session is required",
 };
