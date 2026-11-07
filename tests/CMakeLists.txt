@@ -344,6 +344,9 @@ shellos_test(tlv LIBS app_keycard)
 shellos_test(ecdsa_der LIBS app_crypto app_keycard)
 shellos_test(ecdsa_curve LIBS app_crypto)
 shellos_test(keycard_signature LIBS app_crypto app_keycard)
+shellos_test(keycard_bip85 LIBS app_crypto)
+target_sources(test_keycard_bip85 PRIVATE
+    ${SHELLOS_ROOT}/app/keycard/keycard_bip85.c)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)

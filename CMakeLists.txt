@@ -134,6 +134,7 @@ set(APP_SOURCES
     app/keycard/command.c
     app/keycard/keycard.c
     app/keycard/keycard_cmdset.c
+    app/keycard/keycard_bip85.c
     app/keycard/pairing.c
     app/keycard/scv2_whitelist.c
     app/keycard/signature.c
