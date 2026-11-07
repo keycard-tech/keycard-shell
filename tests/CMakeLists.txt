@@ -88,6 +88,7 @@ add_library(app_crypto STATIC
     ${SHELLOS_ROOT}/app/crypto/rfc6979.c
     ${SHELLOS_ROOT}/app/crypto/hkdf.c
     ${SHELLOS_ROOT}/app/crypto/hmac.c
+    ${SHELLOS_ROOT}/app/crypto/privacy_pools_v1.c
     ${SHELLOS_ROOT}/app/crypto/memzero.c
     ${SHELLOS_ROOT}/app/crypto/pbkdf2.c
     ${SHELLOS_ROOT}/app/crypto/rand.c
@@ -304,6 +305,7 @@ enable_testing()
 
 shellos_test(hash LIBS app_crypto)
 shellos_test(hmac LIBS app_crypto)
+shellos_test(privacy_pools_v1 LIBS app_crypto)
 shellos_test(rand LIBS app_crypto)
 shellos_test(pbkdf2 LIBS app_crypto)
 shellos_test(hkdf LIBS app_crypto)

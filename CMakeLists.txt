@@ -172,6 +172,7 @@ set(APP_SOURCES
     app/crypto/ecdsa.c
     app/crypto/ecdsa_soft.c
     app/crypto/hmac.c
+    app/crypto/privacy_pools_v1.c
     app/crypto/hkdf.c
     app/crypto/memzero.c
     app/crypto/nist256p1.c
