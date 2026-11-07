@@ -21,7 +21,7 @@ static inline void core_action_run(i18n_str_id_t menu) {
     break;
 #ifndef BITCOIN_ONLY
   case MENU_PRIVACY_POOLS_V1:
-    core_kohaku_key_run_privacy_pools_v1();
+    core_kohaku_key_run_privacy_pools_v1(&g_core.keycard, g_core.ready);
     break;
 #endif
   case MENU_CONNECT:

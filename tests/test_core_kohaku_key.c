@@ -1,12 +1,11 @@
 #include <string.h>
 
-#include "core/core.h"
 #include "core/core_kohaku_key.h"
 #include "ui/i18n.h"
 #include "ui_host.h"
 #include "unity.h"
 
-core_ctx_t g_core;
+static keycard_t card;
 
 static app_err_t derive_result;
 static unsigned derive_calls;
@@ -16,7 +15,7 @@ static bool cleanup_verified;
 app_err_t core_privacy_pools_v1_derive_at(
     keycard_t* kc, const char* path,
     size_t path_len, uint8_t out[32]) {
-  TEST_ASSERT_EQUAL_PTR(&g_core.keycard, kc);
+  TEST_ASSERT_EQUAL_PTR(&card, kc);
   TEST_ASSERT_EQUAL_STRING("m/28784'/1'/0'", path);
   TEST_ASSERT_EQUAL_size_t(strlen(path), path_len);
 
@@ -38,15 +37,14 @@ static void observe_result(void) {
 }
 
 void setUp(void) {
-  memset(&g_core, 0, sizeof(g_core));
+  memset(&card, 0, sizeof(card));
   host_ui_reset();
   i18n_set_strings(i18n_english_strings);
 
-  g_core.ready = true;
-  g_core.keycard.sc.state = SC_READY;
-  g_core.keycard.app_version = 0x0400;
-  g_core.keycard.ch.version = SC_V2;
-  g_core.keycard.ch.open = 1;
+  card.sc.state = SC_READY;
+  card.app_version = 0x0400;
+  card.ch.version = SC_V2;
+  card.ch.open = 1;
 
   derive_result = ERR_OK;
   derive_calls = 0;
@@ -60,7 +58,7 @@ void tearDown(void) {}
 
 static void test_cancel_never_derives(void) {
   TEST_ASSERT_EQUAL_INT(
-      ERR_CANCEL, core_kohaku_key_run_privacy_pools_v1());
+      ERR_CANCEL, core_kohaku_key_run_privacy_pools_v1(&card, true));
 
   TEST_ASSERT_EQUAL_UINT(1, host_ui_prompt_calls());
   TEST_ASSERT_EQUAL_UINT(0, derive_calls);
@@ -68,11 +66,11 @@ static void test_cancel_never_derives(void) {
 }
 
 static void test_legacy_keycard_rejected(void) {
-  g_core.keycard.app_version = 0x0301;
+  card.app_version = 0x0301;
   host_ui_answer_prompt(CORE_EVT_UI_OK);
 
   TEST_ASSERT_EQUAL_INT(
-      ERR_CRYPTO, core_kohaku_key_run_privacy_pools_v1());
+      ERR_CRYPTO, core_kohaku_key_run_privacy_pools_v1(&card, true));
 
   TEST_ASSERT_EQUAL_UINT(0, host_ui_prompt_calls());
   TEST_ASSERT_EQUAL_UINT(0, derive_calls);
@@ -80,11 +78,11 @@ static void test_legacy_keycard_rejected(void) {
 }
 
 static void test_closed_channel_rejected(void) {
-  g_core.keycard.ch.open = 0;
+  card.ch.open = 0;
   host_ui_answer_prompt(CORE_EVT_UI_OK);
 
   TEST_ASSERT_EQUAL_INT(
-      ERR_CRYPTO, core_kohaku_key_run_privacy_pools_v1());
+      ERR_CRYPTO, core_kohaku_key_run_privacy_pools_v1(&card, true));
 
   TEST_ASSERT_EQUAL_UINT(0, derive_calls);
   TEST_ASSERT_EQUAL_UINT(0, host_ui_prompt_calls());
@@ -94,7 +92,7 @@ static void test_success_clears_before_display(void) {
   host_ui_answer_prompt(CORE_EVT_UI_OK);
 
   TEST_ASSERT_EQUAL_INT(
-      ERR_OK, core_kohaku_key_run_privacy_pools_v1());
+      ERR_OK, core_kohaku_key_run_privacy_pools_v1(&card, true));
 
   TEST_ASSERT_EQUAL_UINT(1, host_ui_prompt_calls());
   TEST_ASSERT_EQUAL_UINT(1, derive_calls);
@@ -107,7 +105,7 @@ static void test_failure_clears_before_display(void) {
   derive_result = ERR_TXRX;
 
   TEST_ASSERT_EQUAL_INT(
-      ERR_TXRX, core_kohaku_key_run_privacy_pools_v1());
+      ERR_TXRX, core_kohaku_key_run_privacy_pools_v1(&card, true));
 
   TEST_ASSERT_EQUAL_UINT(1, derive_calls);
   TEST_ASSERT_EQUAL_UINT(1, host_ui_info_calls());

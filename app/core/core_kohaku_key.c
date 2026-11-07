@@ -1,16 +1,15 @@
 #include "core_kohaku_key.h"
 
-#include "core.h"
 #include "core_privacy_pools_v1.h"
 #include "crypto/memzero.h"
 #include "ui/i18n.h"
 #include "ui/ui.h"
 
-app_err_t core_kohaku_key_run_privacy_pools_v1(void) {
-  keycard_t* kc = &g_core.keycard;
+app_err_t core_kohaku_key_run_privacy_pools_v1(
+    keycard_t* kc, bool ready) {
   static const char path[] = "m/28784'/1'/0'";
 
-  if (!g_core.ready || kc->sc.state != SC_READY ||
+  if (kc == NULL || !ready || kc->sc.state != SC_READY ||
       kc->app_version < 0x0400 ||
       kc->ch.version != SC_V2 || !kc->ch.open) {
     ui_info(ICON_INFO_ERROR, LSTR(KOHAKU_PP_V1_UNAVAILABLE),
