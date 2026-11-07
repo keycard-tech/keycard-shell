@@ -134,6 +134,7 @@ set(APP_SOURCES
     app/keycard/command.c
     app/keycard/keycard.c
     app/keycard/keycard_cmdset.c
+    app/keycard/keycard_bip85.c
     app/keycard/pairing.c
     app/keycard/scv2_whitelist.c
     app/keycard/signature.c
@@ -172,6 +173,7 @@ set(APP_SOURCES
     app/crypto/ecdsa.c
     app/crypto/ecdsa_soft.c
     app/crypto/hmac.c
+    app/crypto/privacy_pools_v1.c
     app/crypto/hkdf.c
     app/crypto/memzero.c
     app/crypto/nist256p1.c
@@ -194,6 +196,8 @@ set(APP_SOURCES
     app/core/core.c
     app/core/core_openpgp.c
     app/core/core_multisig.c
+    app/core/core_privacy_pools_v1.c
+    app/core/core_kohaku_key.c
     app/core/core_btc.c
     app/core/core_btc_sig.c
     app/core/core_eth.c

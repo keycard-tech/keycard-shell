@@ -88,6 +88,7 @@ add_library(app_crypto STATIC
     ${SHELLOS_ROOT}/app/crypto/rfc6979.c
     ${SHELLOS_ROOT}/app/crypto/hkdf.c
     ${SHELLOS_ROOT}/app/crypto/hmac.c
+    ${SHELLOS_ROOT}/app/crypto/privacy_pools_v1.c
     ${SHELLOS_ROOT}/app/crypto/memzero.c
     ${SHELLOS_ROOT}/app/crypto/pbkdf2.c
     ${SHELLOS_ROOT}/app/crypto/rand.c
@@ -304,6 +305,13 @@ enable_testing()
 
 shellos_test(hash LIBS app_crypto)
 shellos_test(hmac LIBS app_crypto)
+shellos_test(privacy_pools_v1 LIBS app_crypto)
+shellos_test(core_privacy_pools_v1 LIBS app_crypto)
+shellos_test(core_kohaku_key LIBS app_settings settings_seam app_crypto)
+target_sources(test_core_kohaku_key PRIVATE
+    ${SHELLOS_ROOT}/app/core/core_kohaku_key.c)
+target_sources(test_core_privacy_pools_v1 PRIVATE
+    ${SHELLOS_ROOT}/app/core/core_privacy_pools_v1.c)
 shellos_test(rand LIBS app_crypto)
 shellos_test(pbkdf2 LIBS app_crypto)
 shellos_test(hkdf LIBS app_crypto)
@@ -339,6 +347,9 @@ shellos_test(tlv LIBS app_keycard)
 shellos_test(ecdsa_der LIBS app_crypto app_keycard)
 shellos_test(ecdsa_curve LIBS app_crypto)
 shellos_test(keycard_signature LIBS app_crypto app_keycard)
+shellos_test(keycard_bip85 LIBS app_crypto)
+target_sources(test_keycard_bip85 PRIVATE
+    ${SHELLOS_ROOT}/app/keycard/keycard_bip85.c)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)

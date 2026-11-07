@@ -16,15 +16,30 @@ static struct {
 } answer;
 
 static struct {
-  unsigned menu, info, prompt, brightness, pwm, inactivity, plugged, unplugged, reboot;
+  unsigned menu, info, prompt, paged_text, brightness, pwm, inactivity, plugged, unplugged, reboot;
   i18n_str_id_t marked;
   uint8_t dutycycle;
   uint32_t timeout;
 } seen;
 
+static void (*info_observer)(void);
+static void (*paged_text_observer)(const char*, uint32_t);
+
+void host_ui_set_paged_text_observer(
+    void (*observer)(const char*, uint32_t)) {
+  paged_text_observer = observer;
+}
+
+
+void host_ui_set_info_observer(void (*observer)(void)) {
+  info_observer = observer;
+}
+
 void host_ui_reset(void) {
   memset(&answer, 0, sizeof(answer));
   memset(&seen, 0, sizeof(seen));
+  info_observer = NULL;
+  paged_text_observer = NULL;
 
   answer.menu_answer = CORE_EVT_UI_CANCELLED;
   answer.prompt_answer = CORE_EVT_UI_CANCELLED;
@@ -75,6 +90,7 @@ core_evt_t ui_info(info_icon_t icon, const char* msg, const char* subtext, ui_in
   (void)subtext;
   (void)opts;
 
+  if (info_observer != NULL) info_observer();
   seen.info++;
 
   return answer.prompt_answer;
@@ -87,6 +103,16 @@ core_evt_t ui_prompt(const char* title, const char* msg, ui_info_opt_t opts) {
 
   seen.prompt++;
 
+  return answer.prompt_answer;
+}
+
+core_evt_t ui_display_paged_text(
+    const char* title, const char* text, uint32_t len) {
+  (void)title;
+  if (paged_text_observer != NULL) {
+    paged_text_observer(text, len);
+  }
+  seen.paged_text++;
   return answer.prompt_answer;
 }
 
@@ -134,6 +160,9 @@ void hal_reboot(void) {
 
 unsigned host_ui_menu_calls(void) { return seen.menu; }
 unsigned host_ui_info_calls(void) { return seen.info; }
+unsigned host_ui_paged_text_calls(void) {
+  return seen.paged_text;
+}
 unsigned host_ui_prompt_calls(void) { return seen.prompt; }
 unsigned host_ui_brightness_calls(void) { return seen.brightness; }
 unsigned host_ui_pwm_calls(void) { return seen.pwm; }

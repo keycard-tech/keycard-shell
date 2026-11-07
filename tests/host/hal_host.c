@@ -16,10 +16,16 @@
 
 static uint64_t rng_state;
 static size_t rng_drawn;
+static bool rng_refuse_next;
 
 void hal_host_rng_seed(uint64_t seed) {
   rng_state = seed;
   rng_drawn = 0;
+  rng_refuse_next = false;
+}
+
+void hal_host_rng_refuse_next(void) {
+  rng_refuse_next = true;
 }
 
 size_t hal_host_rng_count(void) {
@@ -35,6 +41,10 @@ static uint64_t splitmix64(void) {
 }
 
 hal_err_t hal_rng_next(uint8_t* buf, size_t len) {
+  if (rng_refuse_next) {
+    rng_refuse_next = false;
+    return HAL_FAIL;
+  }
   for (size_t i = 0; i < len; i++) {
     buf[i] = (uint8_t)(splitmix64() >> 24);
   }

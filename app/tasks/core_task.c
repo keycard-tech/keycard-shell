@@ -2,6 +2,7 @@
 #include "core/core.h"
 #include "core/core_multisig.h"
 #include "core/core_openpgp.h"
+#include "core/core_kohaku_key.h"
 #include "core/card.h"
 #include "core/settings.h"
 #include "keycard/keycard.h"
@@ -18,6 +19,11 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_OPENPGP:
     core_openpgp_run();
     break;
+#ifndef BITCOIN_ONLY
+  case MENU_PRIVACY_POOLS_V1:
+    core_kohaku_key_run_privacy_pools_v1(&g_core.keycard, g_core.ready);
+    break;
+#endif
   case MENU_CONNECT:
     core_connect_wallet();
     break;

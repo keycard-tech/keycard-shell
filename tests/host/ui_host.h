@@ -21,6 +21,10 @@ void host_ui_reset(void);
 
 void host_ui_answer_menu(core_evt_t answer, i18n_str_id_t chosen);
 void host_ui_answer_prompt(core_evt_t answer);
+void host_ui_set_info_observer(void (*observer)(void));
+void host_ui_set_paged_text_observer(
+    void (*observer)(const char*, uint32_t));
+unsigned host_ui_paged_text_calls(void);
 void host_ui_answer_brightness(core_evt_t answer, uint8_t value);
 void host_ui_vusb_connected(bool connected);
 
