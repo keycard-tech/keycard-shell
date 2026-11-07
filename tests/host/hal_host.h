@@ -14,6 +14,7 @@
 /* Seed for the deterministic byte source behind hal_rng_next(). Set before the code under
  * test draws random bytes; two runs with the same seed must take the same path. */
 void hal_host_rng_seed(uint64_t seed);
+void hal_host_rng_refuse_next(void);
 
 /* Bytes drawn so far, so a test can assert that a code path consumed randomness at all. */
 size_t hal_host_rng_count(void);

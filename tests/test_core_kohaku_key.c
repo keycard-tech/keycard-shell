@@ -3,6 +3,7 @@
 #include "core/core_kohaku_key.h"
 #include "ui/i18n.h"
 #include "ui_host.h"
+#include "hal_host.h"
 #include "unity.h"
 
 static keycard_t card;
@@ -36,9 +37,24 @@ static void observe_result(void) {
   derived_output = NULL;
 }
 
+static void observe_receipt(const char* text, uint32_t len) {
+  observe_result();
+
+  static const char expected[] =
+      "Challenge:\n"
+      "febf141233694cc2bf70c0c458bf29e7"
+      "\nTag:\n"
+      "57d386010f1489ba952a77134989f1b0"
+      "6b852129a8e9109d476dd2725e8f5efa";
+
+  TEST_ASSERT_EQUAL_UINT(sizeof(expected) - 1, len);
+  TEST_ASSERT_EQUAL_MEMORY(expected, text, len);
+}
+
 void setUp(void) {
   memset(&card, 0, sizeof(card));
   host_ui_reset();
+  hal_host_rng_seed(0x1122334455667788ULL);
   i18n_set_strings(i18n_english_strings);
 
   card.sc.state = SC_READY;
@@ -52,6 +68,7 @@ void setUp(void) {
   cleanup_verified = false;
 
   host_ui_set_info_observer(observe_result);
+  host_ui_set_paged_text_observer(observe_receipt);
 }
 
 void tearDown(void) {}
@@ -62,6 +79,7 @@ static void test_cancel_never_derives(void) {
 
   TEST_ASSERT_EQUAL_UINT(1, host_ui_prompt_calls());
   TEST_ASSERT_EQUAL_UINT(0, derive_calls);
+  TEST_ASSERT_EQUAL_UINT(0, hal_host_rng_count());
   TEST_ASSERT_EQUAL_UINT(0, host_ui_info_calls());
 }
 
@@ -96,8 +114,24 @@ static void test_success_clears_before_display(void) {
 
   TEST_ASSERT_EQUAL_UINT(1, host_ui_prompt_calls());
   TEST_ASSERT_EQUAL_UINT(1, derive_calls);
-  TEST_ASSERT_EQUAL_UINT(1, host_ui_info_calls());
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_info_calls());
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_paged_text_calls());
+  TEST_ASSERT_EQUAL_UINT(16, hal_host_rng_count());
   TEST_ASSERT_TRUE(cleanup_verified);
+}
+
+static void test_rng_failure_never_derives(void) {
+  host_ui_answer_prompt(CORE_EVT_UI_OK);
+  hal_host_rng_refuse_next();
+
+  TEST_ASSERT_EQUAL_INT(
+      ERR_CRYPTO, core_kohaku_key_run_privacy_pools_v1(&card, true));
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_prompt_calls());
+  TEST_ASSERT_EQUAL_UINT(0, derive_calls);
+  TEST_ASSERT_EQUAL_UINT(0, hal_host_rng_count());
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_info_calls());
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_paged_text_calls());
 }
 
 static void test_failure_clears_before_display(void) {
@@ -118,6 +152,7 @@ int main(void) {
   RUN_TEST(test_legacy_keycard_rejected);
   RUN_TEST(test_closed_channel_rejected);
   RUN_TEST(test_success_clears_before_display);
+  RUN_TEST(test_rng_failure_never_derives);
   RUN_TEST(test_failure_clears_before_display);
   return UNITY_END();
 }

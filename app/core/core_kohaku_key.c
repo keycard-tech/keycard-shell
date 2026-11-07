@@ -2,6 +2,10 @@
 
 #include "core_privacy_pools_v1.h"
 #include "crypto/memzero.h"
+#include "crypto/hmac.h"
+#include "crypto/rand.h"
+#include "crypto/util.h"
+#include <string.h>
 #include "ui/i18n.h"
 #include "ui/ui.h"
 
@@ -23,19 +27,60 @@ app_err_t core_kohaku_key_run_privacy_pools_v1(
     return ERR_CANCEL;
   }
 
+  uint8_t challenge[16] = {0};
+  if (hal_rng_next(challenge, sizeof(challenge)) != HAL_SUCCESS) {
+    memzero(challenge, sizeof(challenge));
+    ui_info(ICON_INFO_ERROR, LSTR(KOHAKU_PP_V1_ERROR),
+            LSTR(KOHAKU_PP_V1_ERROR_SUB), 0);
+    return ERR_CRYPTO;
+  }
+
   uint8_t credential[32] = {0};
   app_err_t err = core_privacy_pools_v1_derive_at(
       kc, path, sizeof(path) - 1, credential);
 
-  memzero(credential, sizeof(credential));
-
   if (err != ERR_OK) {
+    memzero(credential, sizeof(credential));
+    memzero(challenge, sizeof(challenge));
     ui_info(ICON_INFO_ERROR, LSTR(KOHAKU_PP_V1_ERROR),
             LSTR(KOHAKU_PP_V1_ERROR_SUB), 0);
     return err;
   }
 
-  ui_info(ICON_INFO_SUCCESS, LSTR(KOHAKU_PP_V1_OK),
-          LSTR(KOHAKU_PP_V1_OK_SUB), 0);
+  static const uint8_t domain[] =
+      "kohaku-key/v4-a7/privacy-pools-v1/receipt";
+  const uint8_t separator = 0;
+  uint8_t tag[32] = {0};
+  HMAC_SHA256_CTX hmac;
+
+  hmac_sha256_Init(&hmac, credential, sizeof(credential));
+  hmac_sha256_Update(&hmac, domain, sizeof(domain) - 1);
+  hmac_sha256_Update(&hmac, &separator, 1);
+  hmac_sha256_Update(&hmac, challenge, sizeof(challenge));
+  hmac_sha256_Final(&hmac, tag);
+
+  memzero(credential, sizeof(credential));
+
+  char receipt[128] = {0};
+  char* cursor = receipt;
+  static const char challenge_label[] = "Challenge:\n";
+  static const char tag_label[] = "\nTag:\n";
+
+  memcpy(cursor, challenge_label, sizeof(challenge_label) - 1);
+  cursor += sizeof(challenge_label) - 1;
+  base16_encode(challenge, cursor, sizeof(challenge));
+  cursor += sizeof(challenge) * 2;
+
+  memcpy(cursor, tag_label, sizeof(tag_label) - 1);
+  cursor += sizeof(tag_label) - 1;
+  base16_encode(tag, cursor, sizeof(tag));
+  cursor += sizeof(tag) * 2;
+
+  ui_display_paged_text(LSTR(KOHAKU_PP_V1_OK),
+                        receipt, (uint32_t)(cursor - receipt));
+
+  memzero(receipt, sizeof(receipt));
+  memzero(tag, sizeof(tag));
+  memzero(challenge, sizeof(challenge));
   return ERR_OK;
 }
