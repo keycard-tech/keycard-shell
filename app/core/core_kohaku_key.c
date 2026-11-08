@@ -1,4 +1,5 @@
 #include "core_kohaku_key.h"
+#include "core_kohaku_key_batch.h"
 
 #include "core_privacy_pools_v1.h"
 #include "crypto/memzero.h"
@@ -30,6 +31,12 @@ app_err_t core_kohaku_key_run_privacy_pools_v1(
 
   if (ui_qrscan(BYTES, &qr_request) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
+  }
+
+  if (qr_request.value != NULL && qr_request.len >= 4 &&
+      memcmp(qr_request.value, "KKQ3", 4) == 0) {
+    return core_kohaku_key_run_batch(
+        kc, qr_request.value, qr_request.len);
   }
 
   if (qr_request.value == NULL || qr_request.len != 21 ||

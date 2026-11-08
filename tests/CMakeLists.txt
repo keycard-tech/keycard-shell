@@ -307,11 +307,16 @@ shellos_test(hash LIBS app_crypto)
 shellos_test(hmac LIBS app_crypto)
 shellos_test(privacy_pools_v1 LIBS app_crypto)
 shellos_test(core_privacy_pools_v1 LIBS app_crypto)
-shellos_test(core_kohaku_key LIBS app_settings settings_seam app_crypto app_ur)
+shellos_test(core_kohaku_key LIBS app_settings settings_seam app_crypto app_ur app_aes)
 target_sources(test_core_kohaku_key PRIVATE
-    ${SHELLOS_ROOT}/app/core/core_kohaku_key.c)
+    ${SHELLOS_ROOT}/app/core/core_kohaku_key.c
+    ${SHELLOS_ROOT}/app/core/core_kohaku_key_batch.c)
 target_sources(test_core_privacy_pools_v1 PRIVATE
     ${SHELLOS_ROOT}/app/core/core_privacy_pools_v1.c)
+shellos_test(core_kohaku_key_batch LIBS app_settings settings_seam app_aes app_crypto app_ur)
+target_sources(test_core_kohaku_key_batch PRIVATE
+    ${SHELLOS_ROOT}/app/core/core_kohaku_key_batch.c)
+
 shellos_test(rand LIBS app_crypto)
 shellos_test(pbkdf2 LIBS app_crypto)
 shellos_test(hkdf LIBS app_crypto)
