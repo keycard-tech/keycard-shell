@@ -8,10 +8,15 @@
 #include <string.h>
 #include "ui/i18n.h"
 #include "ui/ui.h"
+#include "ur/ur.h"
+#include "ur/ur_encode.h"
 
 app_err_t core_kohaku_key_run_privacy_pools_v1(
     keycard_t* kc, bool ready) {
   static const char CREDENTIAL_PATH[] = "m/28784'/1'/0'";
+  static const uint8_t RECEIPT_DOMAIN[] =
+      "kohaku-key/v4-a7/privacy-pools-v1/receipt";
+  static const uint8_t REQUEST_MAGIC[] = {'K', 'K', 'Q', '1'};
 
   if (kc == NULL || !ready || kc->sc.state != SC_READY ||
       kc->app_version < 0x0400 ||
@@ -21,18 +26,28 @@ app_err_t core_kohaku_key_run_privacy_pools_v1(
     return ERR_CRYPTO;
   }
 
-  if (ui_prompt(LSTR(MENU_PRIVACY_POOLS_V1),
-                LSTR(KOHAKU_PP_V1_CONFIRM),
-                UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+  struct zcbor_string qr_request = {0};
+
+  if (ui_qrscan(BYTES, &qr_request) != CORE_EVT_UI_OK) {
     return ERR_CANCEL;
   }
 
-  uint8_t challenge[16] = {0};
-  if (hal_rng_next(challenge, sizeof(challenge)) != HAL_SUCCESS) {
-    memzero(challenge, sizeof(challenge));
+  if (qr_request.value == NULL || qr_request.len != 21 ||
+      memcmp(qr_request.value, REQUEST_MAGIC, 4) != 0 ||
+      qr_request.value[4] != 1) {
     ui_info(ICON_INFO_ERROR, LSTR(KOHAKU_PP_V1_ERROR),
             LSTR(KOHAKU_PP_V1_ERROR_SUB), 0);
-    return ERR_CRYPTO;
+    return ERR_DATA;
+  }
+
+  uint8_t challenge[16] = {0};
+  memcpy(challenge, qr_request.value + 5, sizeof(challenge));
+
+  if (ui_prompt(LSTR(MENU_PRIVACY_POOLS_V1),
+                LSTR(KOHAKU_PP_V1_CONFIRM),
+                UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+    memzero(challenge, sizeof(challenge));
+    return ERR_CANCEL;
   }
 
   uint8_t credential[32] = {0};
@@ -47,40 +62,44 @@ app_err_t core_kohaku_key_run_privacy_pools_v1(
     return err;
   }
 
-  static const uint8_t RECEIPT_DOMAIN[] =
-      "kohaku-key/v4-a7/privacy-pools-v1/receipt";
-  const uint8_t SEPARATOR = 0;
-  uint8_t tag[32] = {0};
+  uint8_t response[53] = {'K', 'K', 'R', '1', 1};
+  memcpy(response + 5, challenge, sizeof(challenge));
+
+  const uint8_t separator = 0;
   HMAC_SHA256_CTX hmac;
 
   hmac_sha256_Init(&hmac, credential, sizeof(credential));
-  hmac_sha256_Update(&hmac, RECEIPT_DOMAIN, sizeof(RECEIPT_DOMAIN) - 1);
-  hmac_sha256_Update(&hmac, &SEPARATOR, 1);
+  hmac_sha256_Update(&hmac, RECEIPT_DOMAIN,
+                     sizeof(RECEIPT_DOMAIN) - 1);
+  hmac_sha256_Update(&hmac, &separator, 1);
   hmac_sha256_Update(&hmac, challenge, sizeof(challenge));
-  hmac_sha256_Final(&hmac, tag);
+  hmac_sha256_Final(&hmac, response + 21);
 
+  memzero(&hmac, sizeof(hmac));
   memzero(credential, sizeof(credential));
 
-  char receipt[128] = {0};
-  char* cursor = receipt;
-  static const char CHALLENGE_LABEL[] = "Challenge:\n";
-  static const char TAG_LABEL[] = "\nTag:\n";
+  struct zcbor_string qr_response = {
+      .value = response,
+      .len = sizeof(response),
+  };
 
-  memcpy(cursor, CHALLENGE_LABEL, sizeof(CHALLENGE_LABEL) - 1);
-  cursor += sizeof(CHALLENGE_LABEL) - 1;
-  base16_encode(challenge, cursor, sizeof(challenge));
-  cursor += sizeof(challenge) * 2;
+  uint8_t encoded[64] = {0};
+  size_t encoded_len = 0;
 
-  memcpy(cursor, TAG_LABEL, sizeof(TAG_LABEL) - 1);
-  cursor += sizeof(TAG_LABEL) - 1;
-  base16_encode(tag, cursor, sizeof(tag));
-  cursor += sizeof(tag) * 2;
+  if (cbor_encode_psbt(encoded, sizeof(encoded),
+                       &qr_response, &encoded_len) != ZCBOR_SUCCESS) {
+    memzero(response, sizeof(response));
+    memzero(encoded, sizeof(encoded));
+    memzero(challenge, sizeof(challenge));
+    return ERR_DATA;
+  }
 
-  ui_display_paged_text(LSTR(KOHAKU_PP_V1_OK),
-                        receipt, (uint32_t)(cursor - receipt));
+  core_evt_t result = ui_display_ur_qr(
+      NULL, encoded, (uint32_t)encoded_len, BYTES);
 
-  memzero(receipt, sizeof(receipt));
-  memzero(tag, sizeof(tag));
+  memzero(response, sizeof(response));
+  memzero(encoded, sizeof(encoded));
   memzero(challenge, sizeof(challenge));
-  return ERR_OK;
+
+  return result == CORE_EVT_UI_OK ? ERR_OK : ERR_CANCEL;
 }

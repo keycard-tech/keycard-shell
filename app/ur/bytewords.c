@@ -159,7 +159,7 @@ size_t bytewords_encode(const uint8_t* in, size_t in_len, uint8_t* out, size_t m
 
   uint32_t checksum;
   crc32_finish(&crc32, &checksum);
-  checksum = rev32(checksum);
+  checksum = __builtin_bswap32(checksum);
 
   in_len = 4;
   while(in_len--) {

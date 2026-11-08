@@ -289,7 +289,7 @@ function(shellos_test name)
   # code calls back into it -- which a single left-to-right scan of static archives cannot
   # resolve, hence the group.
   target_link_libraries(test_${name} PRIVATE
-      -Wl,--start-group ${TEST_LIBS} test_framework -Wl,--end-group)
+      $<$<NOT:$<PLATFORM_ID:Darwin>>:-Wl,--start-group> ${TEST_LIBS} test_framework $<$<NOT:$<PLATFORM_ID:Darwin>>:-Wl,--end-group>)
   add_test(NAME ${name} COMMAND test_${name})
   # The exit code is the verdict, but a test whose main() forgets to return UNITY_END() exits 0
   # whatever it found, so the summary line is checked as well.
@@ -307,7 +307,7 @@ shellos_test(hash LIBS app_crypto)
 shellos_test(hmac LIBS app_crypto)
 shellos_test(privacy_pools_v1 LIBS app_crypto)
 shellos_test(core_privacy_pools_v1 LIBS app_crypto)
-shellos_test(core_kohaku_key LIBS app_settings settings_seam app_crypto)
+shellos_test(core_kohaku_key LIBS app_settings settings_seam app_crypto app_ur)
 target_sources(test_core_kohaku_key PRIVATE
     ${SHELLOS_ROOT}/app/core/core_kohaku_key.c)
 target_sources(test_core_privacy_pools_v1 PRIVATE

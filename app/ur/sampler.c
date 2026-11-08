@@ -79,8 +79,8 @@ int random_sampler_next(xoshiro_ctx_t* rng_ctx, int len, double* probs, int* ali
 
 void fountain_part_indexes(uint32_t seq, uint32_t crc, int len, double* probs, int* aliases, ur_desc_t* out) {
   uint32_t tmp[2];
-  tmp[0] = rev32(seq);
-  tmp[1] = rev32(crc);
+  tmp[0] = __builtin_bswap32(seq);
+  tmp[1] = __builtin_bswap32(crc);
 
   uint8_t seed[XOSHIRO256_SEED_LEN];
   sha256_Raw((uint8_t*) tmp, sizeof(tmp), seed);

@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,7 @@
 #include "ur/ur_encode.h"
 #include "unity.h"
 #include "vectors/vectors_ur.h"
+#include "vectors/vectors_kohaku_a8.h"
 
 /* The receiver keeps one scratch buffer, MEM_HEAP_SIZE on the device, and lays the part being
  * decoded, the reassembly slots and the finished message inside it. Every buffer here is exactly
@@ -857,6 +859,65 @@ static void test_published_ur_texts_decode_to_their_published_cbor(void) {
   }
 }
 
+
+static void test_kohaku_a8_cli_interoperability(void) {
+  static const struct {
+    const char* text;
+    const uint8_t* payload;
+    size_t len;
+  } fixtures[] = {
+    {
+      KOHAKU_A8_REQUEST_UR,
+      KOHAKU_A8_REQUEST,
+      sizeof(KOHAKU_A8_REQUEST),
+    },
+    {
+      KOHAKU_A8_RESPONSE_UR,
+      KOHAKU_A8_RESPONSE,
+      sizeof(KOHAKU_A8_RESPONSE),
+    },
+  };
+
+  for (size_t i = 0; i < 2; i++) {
+    setUp();
+
+    TEST_ASSERT_EQUAL_INT(
+        ERR_OK,
+        ur_process_part(
+            &ur,
+            (const uint8_t*)fixtures[i].text,
+            strlen(fixtures[i].text)));
+
+    TEST_ASSERT_EQUAL_INT(BYTES, ur.type);
+
+    struct zcbor_string decoded = {0};
+    TEST_ASSERT_EQUAL_INT(
+        ZCBOR_SUCCESS,
+        cbor_decode_psbt(
+            ur.data, ur.data_len, &decoded, NULL));
+
+    TEST_ASSERT_EQUAL_UINT(fixtures[i].len, decoded.len);
+    TEST_ASSERT_EQUAL_MEMORY(
+        fixtures[i].payload, decoded.value, decoded.len);
+
+    ur_out_t encoder;
+    ur_out_init(&encoder, BYTES, ur.data, ur.data_len, 200);
+
+    char encoded[512] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        ERR_OK, ur_encode(&encoder, encoded, sizeof(encoded)));
+
+    TEST_ASSERT_EQUAL_UINT(
+        strlen(fixtures[i].text), strlen(encoded));
+
+    for (size_t j = 0; j < strlen(encoded); j++) {
+      TEST_ASSERT_EQUAL_INT(
+          tolower((unsigned char)fixtures[i].text[j]),
+          tolower((unsigned char)encoded[j]));
+    }
+  }
+}
+
 int main(void) {
   /* a sanitizer abort must not cost the output of the assertions that ran before it */
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -885,5 +946,6 @@ int main(void) {
   RUN_TEST(test_part_disagreeing_with_the_sequence_is_refused);
   RUN_TEST(test_rateless_parts_mix_the_published_fragments);
   RUN_TEST(test_published_ur_texts_decode_to_their_published_cbor);
+  RUN_TEST(test_kohaku_a8_cli_interoperability);
   return UNITY_END();
 }
