@@ -84,6 +84,7 @@ static void run_row(const t1_kat_t* v) {
   TEST_ASSERT_EQUAL_UINT8_MESSAGE(v->bwt_factor, sc.t1_bwt_factor, v->name);
   TEST_ASSERT_EQUAL_UINT32_MESSAGE(v->unread, (uint32_t)hal_host_sc_unread(), v->name);
   TEST_ASSERT_EQUAL_UINT32_MESSAGE(v->delay_us, hal_host_sc_delayed_us(), v->name);
+  TEST_ASSERT_EQUAL_UINT32_MESSAGE(v->resp_len, apdu.lr, v->name);
 
   TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE(T1_TIMEOUTS_MAX, v->timeout_count, v->name);
   TEST_ASSERT_EQUAL_UINT_MESSAGE(v->timeout_count, hal_host_sc_timeout_count(), v->name);

@@ -26,6 +26,7 @@ typedef struct {
   uint8_t bwt_factor;
   uint32_t unread;         /* card bytes left unconsumed */
   uint32_t delay_us;       /* BGT delays, 11.2 */
+  uint32_t resp_len;       /* apdu->lr when the exchange ended */
   unsigned timeout_count;
   uint32_t timeouts[T1_TIMEOUTS_MAX];   /* BWT then CWT, per block awaited */
 } t1_kat_t;
@@ -40,7 +41,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "single response", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "000002900092", ERR_OK, "00000500A4040000A5",
-        1, 1, 32, 1, 0, 136,
+        1, 1, 32, 1, 0, 136, 2,
         2, {184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. figure 23: the command is longer than IFSC, so it is split
@@ -49,7 +50,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "chained command", "3B901881712045001D", "FF1118F6", "80C00000284142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768", 1, 0, 0, 0, 0,
         "00A000A0000002900092", ERR_OK, "00202080C00000284142434445464748494A4B4C4D4E4F505152535455565758595A5B2800400D5C5D5E5F60616263646566676825",
-        0, 1, 32, 1, 0, 272,
+        0, 1, 32, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. 11.6.2.2: a more-data I-block is answered by R(N(R)) with the
@@ -57,7 +58,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "chained response", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "002014000102030405060708090A0B0C0D0E0F10111213340040029000D2", ERR_OK, "00000500A4040000A500A000A0",
-        1, 0, 32, 1, 0, 272,
+        1, 0, 32, 1, 0, 272, 22,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. rule 3: the multiplier is applied to the waiting time of the
@@ -65,7 +66,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "wtx request", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00C30105C7000002900092", ERR_OK, "00000500A4040000A500E30105E7",
-        1, 1, 32, 1, 0, 272,
+        1, 1, 32, 1, 0, 272, 2,
         4, {184331, 43, 921655, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. rule 3 puts the multiplier in INF, so a block that promises
@@ -74,7 +75,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "wtx without inf", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00C300C3000002900092", ERR_OK, "00000500A4040000A500000500A4040000A5",
-        1, 1, 32, 1, 0, 272,
+        1, 1, 32, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. rule 4 puts the new IFSC in INF: a request carrying none is
@@ -82,7 +83,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "ifs request without inf", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00C100C1000002900092", ERR_OK, "00000500A4040000A500000500A4040000A5",
-        1, 1, 32, 1, 0, 272,
+        1, 1, 32, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. rule 4: the new IFSC is in force from the request, and the
@@ -90,7 +91,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "ifs request from card", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00C1014080000002900092", ERR_OK, "00000500A4040000A500E10140A0",
-        1, 1, 64, 1, 0, 272,
+        1, 1, 64, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. 11.4.2 reserves 00, so what is kept is unchanged while rule 4
@@ -98,7 +99,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "ifs request zero reserved", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00C10100C0000002900092", ERR_OK, "00000500A4040000A500E10100E0",
-        1, 1, 32, 1, 0, 272,
+        1, 1, 32, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. 11.4.2 reserves FF too; the largest IFSD is what is kept,
@@ -106,7 +107,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "ifs request ff reserved", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00C101FF3F000002900092", ERR_OK, "00000500A4040000A500E101FF1F",
-        1, 1, 254, 1, 0, 272,
+        1, 1, 254, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. rule 4 the other way round: the reader offers its IFSD and the
@@ -114,7 +115,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "ifs negotiate", "3B901881712045001D", "FF1118F6", "", 0, 0, 1, 0, 0,
         "00E101FE1E", ERR_OK, "00C101FE3E",
-        0, 0, 32, 1, 0, 272,
+        0, 0, 32, 1, 0, 272, 0,
         2, {184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. 11.3.4 with the LRC: a block whose epilogue does not check is
@@ -123,7 +124,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "edc error then good block", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00000290006D000002900092", ERR_OK, "00000500A4040000A500810081",
-        1, 1, 32, 1, 0, 272,
+        1, 1, 32, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. the reader asks a bounded number of times: rule 7.4.1 allows
@@ -132,7 +133,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "edc error exhausted", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00000290006D00000290006D00000290006D00000290006D", ERR_TXRX, "00000500A4040000A5008100810081008100810081",
-        0, 0, 32, 1, 0, 544,
+        0, 0, 32, 1, 0, 544, 0,
         8, {184331, 43, 184331, 43, 184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. the second block repeats the N(S) the reader has already
@@ -141,7 +142,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "card repeats a sequence", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00200A000000000000000000002A00200A000000000000000000002A0040029000D2", ERR_OK, "00000500A4040000A500A000A000A200A2",
-        1, 0, 32, 1, 0, 408,
+        1, 0, 32, 1, 0, 408, 22,
         6, {184331, 43, 184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. rule 5: N(R) of the R-block acknowledging a chunk is not the
@@ -150,7 +151,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "r block wrong n(r)", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00800080000002900092", ERR_OK, "00000500A4040000A500000500A4040000A5",
-        1, 1, 32, 1, 0, 272,
+        1, 1, 32, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. rule 9: a chain is aborted by S(ABORT request), answered by
@@ -158,7 +159,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "abort", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00C200C2000002900092", ERR_TXRX, "00000500A4040000A500E200E2",
-        0, 0, 32, 1, 6, 136,
+        0, 0, 32, 1, 6, 136, 0,
         2, {184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. the response is bounded by the buffer the reader holds, not by
@@ -166,7 +167,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "response over the buffer", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "002020000000000000000000000000000000000000000000000000000000000000000000006020000000000000000000000000000000000000000000000000000000000000000040002020000000000000000000000000000000000000000000000000000000000000000000006020000000000000000000000000000000000000000000000000000000000000000040002020000000000000000000000000000000000000000000000000000000000000000000006020000000000000000000000000000000000000000000000000000000000000000040002020000000000000000000000000000000000000000000000000000000000000000000006020000000000000000000000000000000000000000000000000000000000000000040002020000000000000000000000000000000000000000000000000000000000000000000", ERR_TXRX, "00000500A4040000A500A000A00080008000A000A00080008000A000A00080008000A000A000800080",
-        0, 0, 32, 1, 33, 1088,
+        0, 0, 32, 1, 33, 1088, 256,
         18, {184331, 43, 184331, 43, 184331, 43, 184331, 43, 184331, 43, 184331, 43, 184331, 43, 184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 01 1C. 11.4.4: bit 1 of the first TC for T=1 asks for a CRC epilogue,
@@ -175,7 +176,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "crc requested", "3B901881712045011C", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "000002900092", ERR_UNSUPPORTED, "",
-        0, 0, 32, 1, 6, 0,
+        0, 0, 32, 1, 6, 0, 0,
         0, {},
     },
     /* ATR 3B 90 18 81 71 20 45 01 1C. the IFSD negotiation is the first thing the protocol does
@@ -183,7 +184,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "crc requested, negotiation", "3B901881712045011C", "FF1118F6", "", 0, 0, 1, 0, 0,
         "", ERR_UNSUPPORTED, "",
-        0, 0, 32, 1, 0, 0,
+        0, 0, 32, 1, 0, 0, 0,
         0, {},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. a card that answers nothing within BWT leaves the reader with
@@ -191,7 +192,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "silent card", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "", ERR_TXRX, "00000500A4040000A5",
-        0, 0, 32, 1, 0, 0,
+        0, 0, 32, 1, 0, 0, 0,
         1, {184331},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. 11.3.1 makes the epilogue mandatory: a block that ends with
@@ -199,7 +200,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "block without epilogue", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "000002", ERR_TXRX, "00000500A4040000A5",
-        0, 0, 32, 1, 0, 0,
+        0, 0, 32, 1, 0, 0, 0,
         2, {184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. rule 6.2 acknowledged in the other direction: the answer to
@@ -208,7 +209,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "card asks to resynchronize", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00C000C0000002900092", ERR_OK, "00000500A4040000A500E000E0",
-        1, 1, 32, 1, 0, 272,
+        1, 1, 32, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. rule 7.3: an S(request) that does not get its response is
@@ -217,7 +218,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "ifs request answered by resynchronization", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 1, 1, 0,
         "0080008000E000E000E101FE1E", ERR_OK, "00C101FE3E00C000C000C101FE3E",
-        0, 0, 32, 1, 0, 680,
+        0, 0, 32, 1, 0, 680, 0,
         6, {184331, 43, 184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. Figure 20 leaves the coding 4 reserved and 11.6.3.1 calls an
@@ -226,7 +227,34 @@ static const t1_kat_t T1_KAT[] = {
     {
         "s block of an undefined type", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 0,
         "00C400C4000002900092", ERR_OK, "00000500A4040000A500000500A4040000A5",
-        1, 1, 32, 1, 0, 272,
+        1, 1, 32, 1, 0, 272, 2,
+        4, {184331, 43, 184331, 43},
+    },
+    /* ATR 3B 90 18 81 71 20 45 00 1D. rule 2.2: a chained I-block is acknowledged by R(N(R)), and
+     * the note to it allows chaining in one direction at a time. An I-block in that window is not an
+     * acknowledgment, and it would also be appended over command bytes that have not gone out,
+     * answer and command sharing apdu->data */
+    {
+        "answer in the middle of a chain", "3B901881712045001D", "FF1118F6", "80C00000284142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768", 1, 0, 0, 0, 0,
+        "000002900092", ERR_TXRX, "00202080C00000284142434445464748494A4B4C4D4E4F505152535455565758595A5B28",
+        0, 0, 32, 1, 3, 0, 0,
+        2, {184331, 43},
+    },
+    /* ATR 3B 90 18 81 71 20 45 00 1D. S(…request) carries no acknowledgment (11.6.2.1), so the
+     * refusal above is about I-blocks only: the extension is applied, the chain goes on, and the
+     * R-block is what acknowledges the piece */
+    {
+        "wtx request in the middle of a chain", "3B901881712045001D", "FF1118F6", "80C00000284142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768", 1, 0, 0, 0, 0,
+        "00C30105C700A000A0000002900092", ERR_OK, "00202080C00000284142434445464748494A4B4C4D4E4F505152535455565758595A5B2800E30105E700400D5C5D5E5F60616263646566676825",
+        0, 1, 32, 1, 0, 408, 2,
+        6, {184331, 43, 921655, 43, 184331, 43},
+    },
+    /* ATR 3B 90 18 81 71 FE 45 00 C3. APDU_LEN is 4 + 1 + 255 for a full data field, which is why
+     * the count of bytes left to send is not a byte: 254 in the first chunk, 6 in the second */
+    {
+        "command longer than a byte counts", "3B90188171FE4500C3", "FF1118F6", "80C00000FF4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455", 1, 0, 0, 0, 0,
+        "00A000A0000002900092", ERR_OK, "0020FE80C00000FF4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F505152535455565758595A4142434445464748494A4B4C4D4E4F3A00400650515253545547",
+        0, 1, 254, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
     /* ATR 3B 90 18 81 71 20 45 00 1D. a write the peripheral refuses is not a card error to retry:
@@ -234,7 +262,7 @@ static const t1_kat_t T1_KAT[] = {
     {
         "peripheral refuses the write", "3B901881712045001D", "FF1118F6", "00A4040000", 0, 1, 0, 0, 1,
         "000002900092", ERR_TXRX, "",
-        0, 0, 32, 1, 6, 0,
+        0, 0, 32, 1, 6, 0, 0,
         0, {},
     },
 };

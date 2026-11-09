@@ -134,7 +134,7 @@ static app_err_t t1_handle_r(smartcard_t* sc, uint8_t pcb) {
   return ERR_OK;
 }
 
-static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
+static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu, bool chain_open) {
   uint8_t lrc_retries = 0;
   uint16_t blocks = 0;
 
@@ -157,12 +157,14 @@ static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
     uint8_t s = 0;
 
     if (is_i_block) {
-      if ((apdu == NULL) || ((apdu->lr + blen) > APDU_BUF_LEN)) {
+      /* Rule 2.2: the answer to a chained I-block is R(N(R)), and the note to it allows chaining in
+       * one direction at a time. An I-block while our own chain is open would also be appended over
+       * command bytes that have not gone out, because the answer and the command share apdu->data. */
+      if ((apdu == NULL) || chain_open || ((apdu->lr + blen) > APDU_BUF_LEN)) {
         return ERR_TXRX;
       }
 
       data = &apdu->data[apdu->lr];
-      apdu->lr += blen;
     } else if ((header[1] & T1_S_BLOCK) == T1_S_BLOCK) {
       if (blen > 1) {
         return ERR_TXRX;
@@ -188,10 +190,6 @@ static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
     smartcard_delay(sc, T1_BGT);
 
     if (t1_lrc(header, data, blen) != lrc) {
-      if (is_i_block) {
-        apdu->lr -= blen;
-      }
-
       lrc_retries++;
       if (lrc_retries > T1_MAX_LRC_RETRIES) {
         return ERR_TXRX;
@@ -205,6 +203,9 @@ static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
     }
 
     lrc_retries = 0;
+    if (is_i_block) {
+      apdu->lr += blen;
+    }
 
     blocks++;
     if (blocks > T1_MAX_RESP_BLOCKS) {
@@ -238,7 +239,7 @@ app_err_t t1_transmit(smartcard_t* sc, apdu_t* apdu) {
   }
 
   uint8_t* data = apdu->data;
-  uint8_t to_send = APDU_LEN(apdu);
+  uint16_t to_send = APDU_LEN(apdu);
   uint8_t resend = 0;
 
   while(to_send > 0 && (resend < 2)) {
@@ -263,7 +264,7 @@ app_err_t t1_transmit(smartcard_t* sc, apdu_t* apdu) {
       return ERR_TXRX;
     }
 
-    uint8_t res = t1_handle_resp(sc, apdu);
+    uint8_t res = t1_handle_resp(sc, apdu, to_send > sc->atr.t1_ifsc);
 
     switch(res) {
       case ERR_OK:
@@ -294,7 +295,7 @@ app_err_t t1_negotiate_ifsd(smartcard_t* sc, int retry) {
     return ERR_TXRX;
   }
 
-  if (t1_handle_resp(sc, NULL) == ERR_OK) {
+  if (t1_handle_resp(sc, NULL, false) == ERR_OK) {
     return ERR_OK;
   }
 
@@ -302,7 +303,7 @@ app_err_t t1_negotiate_ifsd(smartcard_t* sc, int retry) {
     return ERR_TXRX;
   }
 
-  if (t1_handle_resp(sc, NULL) != ERR_OK) {
+  if (t1_handle_resp(sc, NULL, false) != ERR_OK) {
     return ERR_TXRX;
   }
 

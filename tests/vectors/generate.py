@@ -12085,7 +12085,7 @@ def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
         state["pos"] += n
         return out
 
-    def receive_one(accept_i: bool) -> str:
+    def receive_one(accept_i: bool, chain_open: bool = False) -> str:
         """One block from the card. 'again' keeps waiting for the next one, 'advance' ends the
         exchange or acknowledges a chunk, 'retry' retransmits it, 'fail' gives up."""
         timeouts.append(bwt * state["factor"])
@@ -12098,8 +12098,10 @@ def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
         timeouts.append(cwt)
         if is_i:
             # 11.4.2: nothing lands outside the response buffer, and an I-block has no business in an
-            # exchange that asked only to negotiate. The rest of the block stays unread.
-            if not accept_i or len(resp) + ln > T1_BUF:
+            # exchange that asked only to negotiate. Rule 2.2 adds that a card owing the
+            # acknowledgment of a chained I-block owes an R-block, so an I-block in that window is
+            # refused rather than written over command bytes still to go. The rest stays unread.
+            if not accept_i or chain_open or len(resp) + ln > T1_BUF:
                 return "fail"
         elif (pcb & 0xC0) == 0xC0 and ln > 1:
             return "fail"
@@ -12167,12 +12169,13 @@ def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
     if refuse_sends:                                 # the peripheral will not write at all
         return {"result": "ERR_TXRX", "wire": "", "send_seq": 0, "recv_seq": 0, "ifsc": ifsc,
                 "bwt_factor": 1, "unread": len(card), "delay_us": (etu * T1_BGT) // 100
-                if entry == T1_IFSD_ENTRY else 0, "timeouts": [], "pps_answer": answer}
+                if entry == T1_IFSD_ENTRY else 0, "resp_len": 0, "timeouts": [],
+                "pps_answer": answer}
 
     if a["t1_rc"]:                                   # 11.4.4 asked for a CRC: nothing goes out
         return {"result": "ERR_UNSUPPORTED", "wire": "", "send_seq": 0, "recv_seq": 0, "ifsc": ifsc,
-                "bwt_factor": 1, "unread": len(card), "delay_us": 0, "timeouts": [],
-                "pps_answer": answer}
+                "bwt_factor": 1, "unread": len(card), "delay_us": 0, "resp_len": 0,
+                "timeouts": [], "pps_answer": answer}
 
     if entry == T1_IFSD_ENTRY:
         result = "ERR_TXRX"
@@ -12198,8 +12201,8 @@ def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
     else:
         if ifsc == 0:
             return {"result": "ERR_TXRX", "wire": "", "send_seq": 0, "recv_seq": 0, "ifsc": 0,
-                    "bwt_factor": 1, "unread": len(card), "delay_us": 0, "timeouts": [],
-                    "pps_answer": answer}
+                    "bwt_factor": 1, "unread": len(card), "delay_us": 0, "resp_len": 0,
+                    "timeouts": [], "pps_answer": answer}
         to_send, off, resend = len(cmd), 0, 0
         while to_send > 0 and resend < 2:
             blen = min(to_send, state["ifsc"])
@@ -12207,7 +12210,7 @@ def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
             wire.extend(t1_i(state["ns"], cmd[off:off + blen], more=to_send > state["ifsc"]))
             outcome = "again"
             while outcome == "again":
-                outcome = receive_one(accept_i=True)
+                outcome = receive_one(accept_i=True, chain_open=to_send > state["ifsc"])
             if outcome == "fail":
                 break
             if outcome == "retry":
@@ -12221,7 +12224,8 @@ def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
 
     return {"result": result, "wire": wire.hex(), "send_seq": state["ns"], "recv_seq": state["nr"],
             "ifsc": state["ifsc"], "bwt_factor": state["factor"], "unread": len(card) - state["pos"],
-            "delay_us": state["delay"], "timeouts": timeouts, "pps_answer": answer}
+            "delay_us": state["delay"], "resp_len": len(resp), "timeouts": timeouts,
+            "pps_answer": answer}
 
 
 def t1_atr(ifsc: int = 0x20, tb: int = 0x45, tc: int = 0x00, ta1: int | None = 0x18) -> str:
@@ -12322,6 +12326,23 @@ T1_CASES = [
          card=t1_s(4) + t1_i(0, SW_OK),
          note="Figure 20 leaves the coding 4 reserved and 11.6.3.1 calls an unknown PCB an invalid "
               "block: it is not a request, so nothing is acknowledged and the command goes out again"),
+    dict(name="answer in the middle of a chain", atr=t1_atr(),
+         cmd=apdu_bytes(0x80, 0xC0, 0x00, 0x00, PAYLOAD), entry=T1_XMIT, card=t1_i(0, SW_OK),
+         note="rule 2.2: a chained I-block is acknowledged by R(N(R)), and the note to it allows "
+              "chaining in one direction at a time. An I-block in that window is not an "
+              "acknowledgment, and it would also be appended over command bytes that have not gone "
+              "out, answer and command sharing apdu->data"),
+    dict(name="wtx request in the middle of a chain", atr=t1_atr(),
+         cmd=apdu_bytes(0x80, 0xC0, 0x00, 0x00, PAYLOAD), entry=T1_XMIT,
+         card=t1_s(3, bytes([5])) + t1_r(1) + t1_i(0, SW_OK),
+         note="S(…request) carries no acknowledgment (11.6.2.1), so the refusal above is about "
+              "I-blocks only: the extension is applied, the chain goes on, and the R-block is what "
+              "acknowledges the piece"),
+    dict(name="command longer than a byte counts", atr=t1_atr(ifsc=0xFE),
+         cmd=apdu_bytes(0x80, 0xC0, 0x00, 0x00, bytes([0x41 + (i % 26) for i in range(255)])),
+         entry=T1_XMIT, card=t1_r(1) + t1_i(0, SW_OK),
+         note="APDU_LEN is 4 + 1 + 255 for a full data field, which is why the count of bytes left "
+              "to send is not a byte: 254 in the first chunk, 6 in the second"),
     dict(name="peripheral refuses the write", atr=t1_atr(), cmd=C5, entry=T1_XMIT,
          card=t1_i(0, SW_OK), refuse_sends=1,
          note="a write the peripheral refuses is not a card error to retry: the exchange is over, "
@@ -12353,7 +12374,7 @@ def t1_vectors() -> str:
         f'{has_lc}, {has_le}, {entry}, {retry}, {refuse},\n'
         f'        "{card.hex().upper()}", {e["result"]}, "{e["wire"].upper()}",\n'
         f'        {e["send_seq"]}, {e["recv_seq"]}, {e["ifsc"]}, {e["bwt_factor"]}, '
-        f'{e["unread"]}, {e["delay_us"]},\n'
+        f'{e["unread"]}, {e["delay_us"]}, {e["resp_len"]},\n'
         f'        {len(e["timeouts"])}, {{{", ".join(str(t) for t in e["timeouts"])}}},\n'
         f'    }},'
         for name, atr, cmd, entry, card, note, e, has_lc, has_le, retry, refuse in rows
@@ -12387,6 +12408,7 @@ typedef struct {{
   uint8_t bwt_factor;
   uint32_t unread;         /* card bytes left unconsumed */
   uint32_t delay_us;       /* BGT delays, 11.2 */
+  uint32_t resp_len;       /* apdu->lr when the exchange ended */
   unsigned timeout_count;
   uint32_t timeouts[T1_TIMEOUTS_MAX];   /* BWT then CWT, per block awaited */
 }} t1_kat_t;
