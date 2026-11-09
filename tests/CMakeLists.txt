@@ -55,6 +55,7 @@ add_library(test_framework STATIC
     host/hal_host.c
     host/hal_pka_host.c
     host/host_data.c
+    host/sc_host.c
 )
 target_include_directories(test_framework PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -185,6 +186,19 @@ target_include_directories(app_ur PUBLIC
 )
 target_compile_options(app_ur PRIVATE ${SHELLOS_COMMON_FLAGS})
 target_link_libraries(app_ur PUBLIC app_crypto zcbor)
+
+# ISO 7816. smartcard.c belongs here rather than being stubbed out: its *_sync wrappers decide between
+# ERR_OK, ERR_TXRX and ERR_HW from the peripheral notification, and sc_host.c scripts that notification
+# instead of faking the layer. tests/host/freertos stands in for the kernel headers for this library.
+add_library(app_iso7816 STATIC
+    ${SHELLOS_ROOT}/app/iso7816/atr.c
+    ${SHELLOS_ROOT}/app/iso7816/pps.c
+    ${SHELLOS_ROOT}/app/iso7816/t1.c
+    ${SHELLOS_ROOT}/app/iso7816/smartcard.c
+)
+target_include_directories(app_iso7816 PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host
+    ${CMAKE_CURRENT_SOURCE_DIR}/host/freertos)
+target_compile_options(app_iso7816 PRIVATE ${SHELLOS_COMMON_FLAGS})
 
 # The store. fs.c is the log every persisted thing in the device sits on -- settings, pairing, the
 # multisig entries, the token database -- and its six entry points are the whole API, so it is
@@ -357,3 +371,5 @@ shellos_test(multisig_store LIBS app_multisig app_aes app_storage app_crypto)
 shellos_test(hal_pka LIBS app_crypto)
 shellos_test(bip32 LIBS app_crypto)
 shellos_test(taproot LIBS app_bitcoin app_crypto)
+
+shellos_test(atr LIBS app_iso7816)

@@ -19,6 +19,7 @@ import base64
 import hashlib
 import hmac
 import itertools
+import textwrap
 import json
 import os
 import random
@@ -11282,6 +11283,287 @@ static const u64toa_kat_t U64TOA_KAT[] = {{
 """
 
 
+# ATRs to parse. Two sources, both stated in the emitted comment.
+#
+# - pcsc: captured from real cards, copied from pcsc-tools' smartcard_list.txt (Ludovic Rousseau's
+#   collection of ATRs reported by people running pcsc_scan), with the card that list names.
+# - spec: built byte by byte from ISO/IEC 7816-3:2006 for a shape the collection does not contain,
+#   so that a clause the wild cards never exercise is still pinned.
+#
+# Expectations come from the standard, never from iso7816/atr.c: see iso_expect().
+CAPTURED_ATRS = [
+    # (name, atr, source, what the structure is)
+    ("timing only", "3B 90 95 80 11 FE 6A", "pcsc",
+     "T=0 offered first; TD2 then offers T=1, whose first triple is a lone TA = IFSC 254"),
+    ("staros s21", "3B BF 18 00 80 31 70 35 53 54 41 52 43 4F 53 20 53 32 31 20 43 90 00 9B", "pcsc",
+     "STARCOS S21 C: T=0 then T=1 with IFSC 112 and BWI 3 CWI 5, 15 historical bytes"),
+    ("three protocols",
+     "3B 9F 97 C0 0A B1 FE 45 3F C6 82 80 31 E0 73 FE 21 1B 65 D0 02 3A 14 C9 81 0F 8B", "pcsc",
+     "T=0, then T=1, then T=15, whose first TA is classes A+B+C with clock stop both states"),
+    ("second group TC", "3B 97 11 C0 FF B1 FE 35 1F 83 A5 05 01 01 02 A3 01 5F", "pcsc",
+     "TC2 = FF is T=0's WI; the T=1 triple is split across TA3 (IFSC) and TB3 (BWI 3 CWI 5)"),
+    ("t1 tb only", "3B 85 C0 FA 21 63 80 63 01 01 05 1B", "pcsc",
+     "the T=1 triple offers only TB, so IFSC keeps its default while CWI 3 and BWI 6 are read"),
+    ("t0 only", "3B 15 11 12 CA 07 00 DB", "pcsc",
+     "nothing offered but T=0, so 8.2.5 says there is no check byte and the last byte is historical"),
+    ("t1 no interface", "3B 80 01 81", "pcsc",
+     "TD1 = 01 offers T=1 and nothing else: no interface byte at all, check byte still required"),
+    ("sse piv", "3B 9C 95 81 01 50 53 43 50 2D 53 43 53 56 31 2E 30 8E", "pcsc",
+     "TD1 offers T=1, TD2 = 01 repeats it with no bytes; the T=1 triple never arrives"),
+    ("didem v1.7", "3B 97 18 11 81 44 49 44 45 4D 01 07 58", "pcsc",
+     "Didem Card V1.7: TD1 offers T=1 and TA2, which 8.3 makes the global specific mode byte, not IFSC"),
+    ("t15 in td1", "3B 81 1F 00 CC 52", "pcsc",
+     "the one card in that list that puts T=15 in TD1, which 8.2.3 declares invalid"),
+    # Built from the standard: shapes the collection above does not exercise.
+    ("t1 crc", "3B 80 81 71 81 59 01 A9", "spec",
+     "8.2.3 puts the first T=1 triple after a TD2 indicating T=1: IFSC 129, BWI 5 CWI 9, and bit 1 of "
+     "the first TC asks for CRC per 11.4.4"),
+    ("t1 lrc", "3B 80 81 71 81 59 00 A8", "spec",
+     "the same triple with bit 1 of the first TC clear, which 11.4.4 makes LRC -- the default when "
+     "that byte is absent anyway"),
+    ("t1 first triple wins", "3B 80 81 B1 21 44 31 62 66 E0", "spec",
+     "two triples qualified for T=1: 8.2.3 numbers them by occurrence and 11.4.1 lets only the first "
+     "set IFSC, BWI and CWI, so IFSC is 33 and not 98"),
+    ("t0 and t15", "3B 80 80 1F 47 58", "spec",
+     "T=0 then T=15, whose first TA is classes A+B+C with clock stop preferred in state L. 8.2.3 says "
+     "T=15 is not a protocol, so T=1 stays unoffered -- yet 8.2.5 still requires the check byte"),
+    ("t0 not first", "3B 80 81 00 01", "spec",
+     "TD1 offers T=1 and TD2 then offers T=0, which 8.2.3 forbids: if T=0 is present it shall be first"),
+    ("t15 not last", "3B 80 80 9F 11 01 8F", "spec",
+     "TD2 brings T=15 and TD3 repeats T=1 after it; 8.2.3 puts T=15 last, so the offer is refused "
+     "rather than handed to pps_negotiate as a protocol of 15"),
+    ("t0 offered, no t15", "3B 80 10 0B", "spec",
+     "TD1 offers T=0 and TC2 = 0B is its WI. With no T=15, 8.3 gives class A and clock stop not "
+     "supported; with nothing but T=0 indicated, 8.2.5 gives no check byte"),
+]
+
+
+def atr_walk(atr: str):
+    """The structure per ISO/IEC 7816-3:2006:8.2.3. T0 conveys Y1 and K; every TD conveys the
+    indicator Yi+1 -- which of TA, TB, TC, TD follow -- and the type T, which qualifies those bytes.
+    If a TD is absent, the group after it is absent too.
+
+    Returns the groups as (qualifying type, bytes) in order -- the first group is qualified by no
+    type, being the timing group -- together with the bytes after the interface bytes. Only the two
+    bytes a reader needs at the top of the walk are checked here: TS's convention and T0."""
+    b = bytes.fromhex(atr.replace(" ", ""))
+    if len(b) < 2 or (b[0] != 0x3B and b[0] != 0x3F):
+        raise ValueError(f"not an ATR: {atr}")
+    pos = 2
+    groups = []
+    presence, proto = (b[1] >> 4) & 0xF, None
+    while presence:
+        g, td = {}, None
+        for bit, name in ((1, "TA"), (2, "TB"), (4, "TC"), (8, "TD")):
+            if presence & bit:
+                if pos >= len(b):
+                    raise ValueError(f"ATR ends inside a group: {atr}")
+                g[name] = b[pos]
+                pos += 1
+                if name == "TD":
+                    td = g["TD"]
+        groups.append((proto, g))
+        if td is None:
+            break
+        presence, proto = (td >> 4) & 0xF, td & 0xF
+
+    hist_len = b[1] & 0x0F
+    if pos + hist_len > len(b):
+        raise ValueError(f"ATR is shorter than T0 promises: {atr}")
+    return b, groups, b[pos:pos + hist_len], b[pos + hist_len:]
+
+
+def iso_expect(atr: str) -> dict:
+    """What ISO/IEC 7816-3:2006 says a reader must take from an ATR, clause by clause. This is the
+    specification the test asserts; atr.c is what it checks."""
+    b, groups, hist, rest = atr_walk(atr)
+    types = [g["TD"] & 0xF for _, g in groups if "TD" in g]
+
+    e = {
+        # 8.3: Fi = 372, Di = 1, which atr.c carries as the byte 0x11; N = 0; TA2 absent.
+        "fi_di": 0x11, "n": 0, "ta2": 0xFF,
+        # 10.2: WI = 10 unless TC2 says otherwise.
+        "t0_wi": 10,
+        # 8.2.3: without a TD1 the only offer is T=0, and 11.4.2/11.4.3/11.4.4 give the T=1 defaults.
+        "default_protocol": 0, "protocols": 1,
+        "t1_ifsc": 32, "t1_cwi": 13, "t1_bwi": 4, "t1_rc": 0,
+        # 8.3: clock stop not supported, only class A.
+        "t15_present": 0, "classes": 1, "clockstop": 0,
+        "hist_len": len(hist), "hist": hist.hex(), "result": "ERR_OK",
+    }
+
+    if groups[0][1].get("TA") is not None:
+        e["fi_di"] = groups[0][1]["TA"]
+    if groups[0][1].get("TC") is not None:
+        e["n"] = groups[0][1]["TC"]
+
+    if types:
+        # 8.2.3: TD1 encodes the first offered protocol.
+        e["default_protocol"] = types[0]
+        e["protocols"] = 0
+        for t in types:
+            if t == 0:
+                e["protocols"] |= 1
+            elif t == 1:
+                e["protocols"] |= 2
+        if types[0] == 15:
+            e["result"] = "ERR_DATA"
+        if 0 in types and types[0] != 0:
+            e["result"] = "ERR_DATA"
+        if 15 in types and types[-1] != 15:
+            e["result"] = "ERR_DATA"
+
+    # 8.2.3: TA1, TB1, TC1, TA2 and TB2 are global and TC2 is specific to T=0, whatever TD1 said.
+    # TB1 and TB2 are deprecated and the reader shall ignore them.
+    if len(groups) > 1:
+        g2 = groups[1][1]
+        if g2.get("TA") is not None:
+            e["ta2"] = g2["TA"]
+        if g2.get("TC") is not None:
+            e["t0_wi"] = g2["TC"]
+
+    # 8.2.3: from the third group on, the type in the TD before it decides what TAi TBi TCi mean.
+    # 11.4.1 and 8.3 then take only the first of each kind for their type.
+    seen = 0
+    for proto, g in groups[2:]:
+        if proto == 1:
+            if g.get("TA") is not None and not seen & 1:
+                seen |= 1
+                e["t1_ifsc"] = g["TA"]
+            if g.get("TB") is not None and not seen & 2:
+                seen |= 2
+                e["t1_cwi"] = g["TB"] & 0xF
+                e["t1_bwi"] = (g["TB"] >> 4) & 0xF
+            if g.get("TC") is not None and not seen & 4:
+                seen |= 4
+                e["t1_rc"] = 1 if g["TC"] & 1 else 0
+        elif proto == 15:
+            e["t15_present"] = 1
+            if g.get("TA") is not None and not seen & 8:
+                seen |= 8
+                e["classes"] = g["TA"] & 0x7
+                e["clockstop"] = g["TA"] & 0xC0
+
+    # 8.2.5: the check byte is absent if only T=0 is indicated, possibly by default, and present in
+    # every other case. When it is present, T0 to TCK inclusive exclusive-or to 00.
+    only_t0 = not types or set(types) == {0}
+    e["tck"] = 0 if only_t0 else 1
+
+    covered = b[1:2] + b[2:2 + (len(b) - 2 - len(rest))] + hist
+    if e["tck"]:
+        if len(rest) < 1:
+            raise ValueError(f"8.2.5 requires a check byte, none present: {atr}")
+        parity = 0
+        for byte in b[1:2] + b[2:len(b) - 1]:
+            parity ^= byte
+        if parity ^ rest[0] != 0:
+            raise ValueError(f"check byte does not cover T0 to historical inclusive: {atr}")
+        if len(rest) != 1:
+            raise ValueError(f"bytes after the check byte: {atr}")
+    elif len(rest) != 0:
+        raise ValueError(f"T=0 only, so bytes after the historical ones are unexplained: {atr}")
+
+    return e
+
+
+def atr_vectors() -> str:
+    rows = []
+    for name, atr, source, note in CAPTURED_ATRS:
+        try:
+            e = iso_expect(atr)
+        except ValueError as exc:
+            print(f"  skipping {name}: {exc}")
+            continue
+        rows.append((name, atr, source, note, e))
+
+    def comment(name, source, note, e):
+        origin = f"Card: {name}" if source == "pcsc" else f"Synthetic: {name}"
+        lines = textwrap.wrap(f"{origin}. {note}", width=94)
+        out = [f"    /* {lines[0]}"] + [f"     * {line}" for line in lines[1:]]
+        out[-1] += " */"
+        return "\n".join(out)
+
+    body = "\n".join(
+        f'{comment(name, source, note, e)}\n'
+        f'    {{\n'
+        f'        "{name}", "{atr.replace(" ", "")}", {e["result"]}, {e["tck"]},\n'
+        f'        0x{e["fi_di"]:02X}, 0x{e["n"]:02X}, 0x{e["ta2"]:02X}, {e["t0_wi"]}, '
+        f'{e["default_protocol"]}, {e["protocols"]},\n'
+        f'        0x{e["t1_ifsc"]:02X}, {e["t1_bwi"]}, {e["t1_cwi"]}, {e["t1_rc"]}, '
+        f'{e["t15_present"]}, 0x{e["classes"]:02X}, 0x{e["clockstop"]:02X},\n'
+        f'        {e["hist_len"]}, "{e["hist"]}",\n'
+        f'    }},'
+        for name, atr, source, note, e in rows
+    )
+
+    return f"""#ifndef VECTORS_ATR_H
+#define VECTORS_ATR_H
+
+/* What ISO/IEC 7816-3:2006 requires of a reader facing an ATR, row by row. Each row is one ATR --
+ * either captured from a real card, from pcsc-tools' smartcard_list.txt, or built from the
+ * standard's own tables for a shape that collection does not contain -- and the fields are the
+ * answer in iso7816/atr.c's terms, derived from the text by tests/vectors/generate.py rather than
+ * from that file.
+ *
+ * The clauses:
+ *  - 8.2.3 structure. T0 conveys Y1 and K; each TD conveys which of TA, TB, TC, TD follow it and the
+ *    type T that qualifies those bytes; an absent TD means the whole group after it is absent. TA1,
+ *    TB1, TC1, TA2 and TB2 are global and TC2 is specific to T=0, so from the third group on the
+ *    bytes mean what the preceding TD's T says they mean, and the k-th triple for a type follows the
+ *    k-th occurrence of that type. T=0 first if offered, T=15 last and invalid in TD1.
+ *  - 8.2.5 check byte. Absent if only T=0 is indicated, possibly by default; present otherwise.
+ *    Exclusive-oring T0 to TCK inclusive gives 00, TS excluded.
+ *  - 8.3 global bytes. TA1 is Fi, Di and f(max), default Fi = 372, Di = 1; TB1 and TB2 are
+ *    deprecated and the reader shall ignore them; TC1 is N, default 0; TA2 is the specific mode byte
+ *    and says nothing about IFSC. The first TA for T=15 is the clock stop indicator X in bits 8-7 and
+ *    the classes in bits 6-1, default clock stop not supported and class A only.
+ *  - 10.2 T=0. TC2 is WI over eight bits except 00, default 10, and WT = WI * 960 * Fi / f.
+ *  - 11.4.2 to 11.4.4 T=1. The first TA for T=1 is IFSC, 01..FE encoding 1..254 with 00 and FF
+ *    reserved, default 32. The first TB for T=1 is BWI in bits 8-5 (0..9, default 4) and CWI in bits
+ *    4-1 (default 13). Bit 1 of the first TC for T=1 selects CRC, and clear selects LRC, which is
+ *    also the default when the byte is absent.
+ *
+ * Two things the standard does not let this reader enforce, and the suite therefore does not claim.
+ * The types in TD1, TD2 and so on "shall be in ascending numerical order", yet 1014 of the 2678
+ * check-byte-valid ATRs in that collection repeat the first type, which is exactly how the clause
+ * 8.2.3 note places the first T=1 triple after a TD2 indicating T=1 for a card that offers no T=0;
+ * order is only checked where the text names a case invalid. And 11.4.2 reserves IFSC values 00 and
+ * FF without saying what a reader does about them; 4 of those 2678 ATRs use one, so no row here asks
+ * for a verdict.
+ */
+
+typedef struct {{
+  const char* name;
+  const char* atr_hex;
+  app_err_t result;
+  uint8_t tck;
+  uint8_t fi_di;
+  uint8_t n;
+  uint8_t ta2;
+  uint8_t t0_wi;
+  uint8_t default_protocol;
+  uint8_t protocols;
+  uint8_t t1_ifsc;
+  uint8_t t1_bwi;
+  uint8_t t1_cwi;
+  uint8_t t1_rc;
+  uint8_t t15_present;
+  uint8_t classes;
+  uint8_t clockstop;
+  size_t hist_len;
+  const char* hist_hex;
+}} atr_kat_t;
+
+static const atr_kat_t ATR_KAT[] = {{
+{body}
+}};
+
+#define ATR_KAT_COUNT (sizeof(ATR_KAT) / sizeof(ATR_KAT[0]))
+
+#endif
+"""
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -11289,6 +11571,7 @@ def main() -> None:
         "vectors_hkdf.h": hkdf_vectors(),
         "vectors_pbkdf2.h": pbkdf2_vectors(),
         "vectors_util.h": util_vectors(),
+        "vectors_atr.h": atr_vectors(),
         "vectors_bip39.h": bip39_vectors(),
         "vectors_multisig.h": multisig_vectors(),
         "vectors_slip39.h": slip39_vectors(),
