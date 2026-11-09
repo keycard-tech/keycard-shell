@@ -143,6 +143,16 @@ void hal_host_sc_sent_clear(void) {
   send_calls = 0;
 }
 
+void hal_host_sc_phase(void) {
+  sent_len = 0;
+  send_calls = 0;
+  read_calls = 0;
+  fail_read_after = SCRIPT_OFF;
+  timeout_count = 0;
+  blocklen = 0;
+  delayed_us = 0;
+}
+
 unsigned hal_host_sc_send_calls(void) {
   return send_calls;
 }

@@ -9,6 +9,12 @@
 #define T1_MAX_RESP_BLOCKS (APDU_BUF_LEN + 16)
 #define T1_MAX_LRC_RETRIES 3
 
+/* 11.4.4 lets the card ask for a CRC epilogue. Only the LRC is computed, so such a card is refused
+ * rather than answered with a code it will reject. */
+static bool t1_checksum_supported(const smartcard_t* sc) {
+  return sc->atr.t1_rc != ATR_T1_CRC;
+}
+
 static inline uint8_t t1_lrc(uint8_t* header, uint8_t* data, uint32_t len) {
   uint8_t lrc = header[0] ^ header[1] ^ header[2];
 
@@ -61,34 +67,53 @@ static app_err_t t1_handle_i(smartcard_t* sc, uint8_t pcb, uint8_t* more) {
   return ERR_OK;
 }
 
-static uint8_t t1_handle_s(smartcard_t* sc, uint8_t pcb, uint8_t data, uint8_t* more) {
+static uint8_t t1_handle_s(smartcard_t* sc, uint8_t pcb, uint8_t len_inf, uint8_t data, uint8_t* more) {
   uint8_t is_resp = (pcb & T1_S_RES) == T1_S_RES;
+  uint8_t type = pcb & T1_S_TYPE_MSK;
 
   uint8_t res = T1_S_RES;
   uint8_t len;
   app_err_t err = ERR_OK;
   *more = !is_resp;
 
-  if ((pcb & T1_S_WTX) == T1_S_WTX) {
+  if (type == T1_S_WTX) {
+    if (len_inf == 0) {
+      /* Rule 3 carries the multiplier in INF. */
+      *more = 0;
+      return ERR_RETRY;
+    }
     sc->t1_bwt_factor = data;
     len = 1;
     res |= T1_S_WTX;
-  } else if ((pcb & T1_S_ABORT) == T1_S_ABORT) {
+  } else if (type == T1_S_ABORT) {
     len = 0;
     res |= T1_S_ABORT;
     err = ERR_TXRX;
     *more = 0;
-  } else if ((pcb & T1_S_IFS) == T1_S_IFS) {
+  } else if (type == T1_S_IFS) {
+    if (len_inf == 0) {
+      *more = 0;
+      return ERR_RETRY;
+    }
     if (!is_resp) {
-      sc->atr.t1_ifsc = data;
+      /* 11.4.2 reserves '00' and 'FF'. Rule 4 echoes the request, so only the value that is
+       * kept is clamped. */
+      if (data != 0) {
+        sc->atr.t1_ifsc = MIN(data, T1_IFSD);
+      }
     }
     len = 1;
     res |= T1_S_IFS;
-  } else {
+  } else if (type == T1_S_RESYNCH) {
     len = 0;
     res |= T1_S_RESYNCH;
     sc->recv_seq = 0;
     sc->send_seq = 0;
+  } else {
+    /* Figure 20 leaves every other coding reserved, and 11.6.3.1 counts an unknown PCB as an
+     * invalid block: it is not a request to acknowledge, and least of all a resynchronization. */
+    *more = 0;
+    return ERR_RETRY;
   }
 
   if (!is_resp) {
@@ -102,7 +127,7 @@ static uint8_t t1_handle_s(smartcard_t* sc, uint8_t pcb, uint8_t data, uint8_t* 
 }
 
 static app_err_t t1_handle_r(smartcard_t* sc, uint8_t pcb) {
-  if (((pcb & T1_R_ERR_MSK) != T1_R_OK) || ((pcb & T1_R_SEQ_MSK) != (sc->send_seq ^ 1))) {
+  if (((pcb & T1_R_ERR_MSK) != T1_R_OK) || ((pcb & T1_R_SEQ_MSK) != T1_R_SEQ(sc->send_seq ^ 1))) {
     return ERR_RETRY;
   }
 
@@ -192,7 +217,7 @@ static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
     if (is_i_block) {
       err = t1_handle_i(sc, header[1], &more);
     } else if ((header[1] & T1_S_BLOCK) == T1_S_BLOCK) {
-      err = t1_handle_s(sc, header[1], s, &more);    
+      err = t1_handle_s(sc, header[1], blen, s, &more);
     } else {
       err = t1_handle_r(sc, header[1]);
     }
@@ -204,6 +229,10 @@ static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu) {
 }
 
 app_err_t t1_transmit(smartcard_t* sc, apdu_t* apdu) {
+  if (!t1_checksum_supported(sc)) {
+    return ERR_UNSUPPORTED;
+  }
+
   if (sc->atr.t1_ifsc == 0) {
     return ERR_TXRX;
   }
@@ -255,6 +284,10 @@ app_err_t t1_transmit(smartcard_t* sc, apdu_t* apdu) {
 }
 
 app_err_t t1_negotiate_ifsd(smartcard_t* sc, int retry) {
+  if (!t1_checksum_supported(sc)) {
+    return ERR_UNSUPPORTED;
+  }
+
   smartcard_delay(sc, T1_BGT);
   
   if (t1_transmit_s(sc, T1_S_IFS, 1, T1_IFSD) != ERR_OK) {

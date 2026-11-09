@@ -30,6 +30,11 @@ void hal_host_sc_pps_refuse(bool refuse);
 const uint8_t* hal_host_sc_sent(void);
 size_t hal_host_sc_sent_len(void);
 void hal_host_sc_sent_clear(void);
+
+/* Forget the wire, the reads, the timeouts and the delays, so that assertions describe only what
+ * follows: a multi-step exchange then cannot pass on what the setup read. */
+void hal_host_sc_phase(void);
+
 unsigned hal_host_sc_send_calls(void);
 
 /* Peripheral settings the module pushed, and the events it caused. */

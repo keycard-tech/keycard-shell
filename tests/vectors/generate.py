@@ -12016,6 +12016,394 @@ static const pps_kat_t PPS_KAT[] = {{
 #endif
 """
 
+# --- T=1 blocks: 11.3 framing, 11.4.2 field sizes, 11.4.4 epilogue, 11.6 blocks ---------------
+
+T1_IFSD = 254          # t1.h offers this as IFSD in S(IFS request)
+T1_BUF = 261           # smartcard.h's APDU_BUF_LEN
+T1_BGT = 22            # 11.2, both directions
+T1_EDC_RETRIES = 3     # t1.c's T1_MAX_LRC_RETRIES: 7.4.1 allows two further attempts, so one spare
+T1_TIMEOUTS_MAX = 24
+T1_XMIT, T1_IFSD_ENTRY = 0, 1
+
+
+def t1_lrc(body: bytes) -> int:
+    """11.3.4: exclusive-oring the block from NAD to LRC inclusive shall give 00."""
+    x = 0
+    for byte in body:
+        x ^= byte
+    return x
+
+
+def t1_block(pcb: int, inf: bytes = b"", bad_edc: bool = False) -> bytes:
+    body = bytes([0x00, pcb, len(inf)]) + inf
+    return body + bytes([t1_lrc(body) ^ (0xFF if bad_edc else 0)])
+
+
+def t1_i(ns: int, inf: bytes = b"", more: bool = False, bad_edc: bool = False) -> bytes:
+    return t1_block((ns << 6) | (0x20 if more else 0), inf, bad_edc)   # 11.3.2.2: bit 7 is N(S), bit 6 is M
+
+
+def t1_r(nr: int, err: int = 0) -> bytes:
+    return t1_block(0x80 | (nr << 5) | err)     # bits 8 and 7 are 10; N(R) is bit 6, the code bits 4 to 1
+
+
+def t1_s(kind: int, inf: bytes = b"", resp: bool = False) -> bytes:
+    return t1_block(0xC0 | (0x20 if resp else 0) | kind, inf)
+
+
+def apdu_bytes(cla: int, ins: int, p1: int, p2: int, data: bytes = b"", le: int | None = None):
+    """The command as the shell holds it, with the flags APDU_LEN counts."""
+    body = bytes([cla, ins, p1, p2])
+    has_lc = 1 if data else 0
+    has_le = 0 if data else (1 if le is not None else 0)
+    if data:
+        body += bytes([len(data)]) + data
+    if le is not None and not data:
+        body += bytes([le])
+    return body, has_lc, has_le
+
+
+def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
+              refuse_sends: int = 0) -> dict:
+    """The exchange 11.6 describes, from the script of blocks the card sends. Reader output is built
+    from the clauses, not from t1.c: the point is that the two agree by different routes."""
+    a = iso_expect(atr)
+    answer = pps_answer(a["default_protocol"], None if a["fi_di"] == 0x11 else a["fi_di"])
+    p = pps_expect(atr, answer)
+
+    ifsc = a["t1_ifsc"]
+    bwt, cwt, etu = p["bwt"], p["cwt"], p["etu_10ns"]
+    wire = bytearray()
+    resp = bytearray()
+    timeouts: list[int] = []
+    state = {"ns": 0, "nr": 0, "factor": 1, "retries": 0, "pos": 0, "delay": 0, "ifsc": ifsc}
+
+    def read(n: int) -> bytes | None:
+        if state["pos"] + n > len(card):
+            return None
+        out = card[state["pos"]:state["pos"] + n]
+        state["pos"] += n
+        return out
+
+    def receive_one(accept_i: bool) -> str:
+        """One block from the card. 'again' keeps waiting for the next one, 'advance' ends the
+        exchange or acknowledges a chunk, 'retry' retransmits it, 'fail' gives up."""
+        timeouts.append(bwt * state["factor"])
+        state["factor"] = 1                    # the extension the card granted is spent on this block
+        head = read(3)
+        if head is None:
+            return "fail"
+        _, pcb, ln = head
+        is_i = (pcb & 0x80) == 0
+        timeouts.append(cwt)
+        if is_i:
+            # 11.4.2: nothing lands outside the response buffer, and an I-block has no business in an
+            # exchange that asked only to negotiate. The rest of the block stays unread.
+            if not accept_i or len(resp) + ln > T1_BUF:
+                return "fail"
+        elif (pcb & 0xC0) == 0xC0 and ln > 1:
+            return "fail"
+        inf = read(ln) if ln else b""
+        if inf is None:
+            return "fail"
+        edc = read(1)
+        if edc is None:
+            return "fail"
+        state["delay"] += (etu * T1_BGT) // 100     # 11.2: BGT after each block received
+        if t1_lrc(head + inf) != edc[0]:
+            state["retries"] += 1
+            if state["retries"] > T1_EDC_RETRIES:
+                return "fail"
+            wire.extend(t1_r(state["nr"], 0x01))    # rule 7.1: ask again for the expected I-block
+            return "again"
+        state["retries"] = 0
+        if is_i:
+            resp.extend(inf)
+            if (pcb & 0x40) != (state["nr"] << 6):
+                wire.extend(t1_r(state["nr"], 0x02))
+                return "again"
+            state["nr"] ^= 1
+            if pcb & 0x20:
+                # 11.6.2.2: a more-data I-block is answered by R(N(R)) naming the next one
+                wire.extend(t1_r(state["nr"]))
+                return "again"
+            return "advance"
+        if (pcb & 0xC0) == 0x80:
+            # rule 5: the R-block acknowledging a chunk carries N(R) other than the N(S) just sent
+            if (pcb & 0x0F) != 0 or (pcb & 0x20) != ((state["ns"] ^ 1) << 5):
+                return "retry"
+            return "advance"
+        kind = pcb & 0x03
+        is_resp = (pcb & 0x20) != 0
+        if kind == 3:                                # rule 3
+            if ln != 1:
+                return "retry"                       # the multiplier is in INF: there is nothing to apply
+            state["factor"] = inf[0]
+            wire.extend(t1_s(3, inf, resp=True))
+            return "again"
+        if kind == 2:                                # rule 9
+            wire.extend(t1_s(2, resp=True))
+            return "fail"
+        if kind == 1:                                # rule 4
+            if ln != 1:
+                return "retry"
+            if is_resp:
+                return "advance"
+            if inf[0] != 0:                          # 11.4.2 reserves 00 and FF
+                state["ifsc"] = min(inf[0], T1_IFSD)
+            wire.extend(t1_s(1, inf, resp=True))     # the response echoes the byte, as rule 4 says
+            return "again"
+        kind = pcb & 0x1F
+        if kind != 0:
+            # Figure 20 reserves the other codings and 11.6.3.1 counts an unknown PCB as an invalid
+            # block: nothing is acknowledged, least of all a resynchronization.
+            return "retry"
+        if not is_resp:
+            wire.extend(t1_s(0, resp=True))          # rule 6.2 answers the request
+        state["ns"] = 0
+        state["nr"] = 0
+        return "advance" if is_resp else "again"
+
+    if refuse_sends:                                 # the peripheral will not write at all
+        return {"result": "ERR_TXRX", "wire": "", "send_seq": 0, "recv_seq": 0, "ifsc": ifsc,
+                "bwt_factor": 1, "unread": len(card), "delay_us": (etu * T1_BGT) // 100
+                if entry == T1_IFSD_ENTRY else 0, "timeouts": [], "pps_answer": answer}
+
+    if a["t1_rc"]:                                   # 11.4.4 asked for a CRC: nothing goes out
+        return {"result": "ERR_UNSUPPORTED", "wire": "", "send_seq": 0, "recv_seq": 0, "ifsc": ifsc,
+                "bwt_factor": 1, "unread": len(card), "delay_us": 0, "timeouts": [],
+                "pps_answer": answer}
+
+    if entry == T1_IFSD_ENTRY:
+        result = "ERR_TXRX"
+        for attempt in range(retry + 1):
+            # A negotiation is opened with a BGT, and rule 6 restarts it from the beginning.
+            state["delay"] += (etu * T1_BGT) // 100
+            wire.extend(t1_s(1, bytes([T1_IFSD])))
+            outcome = "again"
+            while outcome == "again":
+                outcome = receive_one(accept_i=False)
+            if outcome == "advance":
+                result = "ERR_OK"
+                break
+            if attempt == retry:
+                break
+            # rule 7.3 then rule 6: the request goes unanswered, so reach resynchronization first
+            wire.extend(t1_s(0))
+            outcome = "again"
+            while outcome == "again":
+                outcome = receive_one(accept_i=False)
+            if outcome != "advance":
+                break
+    else:
+        if ifsc == 0:
+            return {"result": "ERR_TXRX", "wire": "", "send_seq": 0, "recv_seq": 0, "ifsc": 0,
+                    "bwt_factor": 1, "unread": len(card), "delay_us": 0, "timeouts": [],
+                    "pps_answer": answer}
+        to_send, off, resend = len(cmd), 0, 0
+        while to_send > 0 and resend < 2:
+            blen = min(to_send, state["ifsc"])
+            # rule 1 wants N(S) = 0 first and it alternates after each I-block; the M-bit is rule 5
+            wire.extend(t1_i(state["ns"], cmd[off:off + blen], more=to_send > state["ifsc"]))
+            outcome = "again"
+            while outcome == "again":
+                outcome = receive_one(accept_i=True)
+            if outcome == "fail":
+                break
+            if outcome == "retry":
+                resend += 1
+                continue
+            state["ns"] ^= 1
+            off += blen
+            to_send -= blen
+            resend = 0
+        result = "ERR_OK" if to_send == 0 and len(resp) >= 2 else "ERR_TXRX"
+
+    return {"result": result, "wire": wire.hex(), "send_seq": state["ns"], "recv_seq": state["nr"],
+            "ifsc": state["ifsc"], "bwt_factor": state["factor"], "unread": len(card) - state["pos"],
+            "delay_us": state["delay"], "timeouts": timeouts, "pps_answer": answer}
+
+
+def t1_atr(ifsc: int = 0x20, tb: int = 0x45, tc: int = 0x00, ta1: int | None = 0x18) -> str:
+    """An ATR offering T=1 with its triple: TA is IFSC, TB is BWI and CWI, TC is the redundancy code
+    (11.4.1, 11.4.2 and 11.4.4). CWI = 5 and BWI = 4 are TB = 0x45; no TA1 leaves the global Fd and Dd."""
+    first = {} if ta1 is None else {"TA1": ta1}
+    return mk_atr([first, (1, {}), (1, {"TA": ifsc, "TB": tb, "TC": tc})])
+
+
+C5 = apdu_bytes(0x00, 0xA4, 0x04, 0x00, le=0x00)     # case 2: header and Le, nothing else
+SW_OK = bytes.fromhex("9000")
+PAYLOAD = bytes(range(0x41, 0x41 + 40))
+
+T1_CASES = [
+    ("single response", t1_atr(), C5, T1_XMIT, t1_i(0, SW_OK),
+     "the smallest exchange there is: one I-block out, one back carrying SW1 SW2, and the reader "
+     "acknowledges it by its next command rather than by an R-block (rule 2.1)"),
+    ("chained command", t1_atr(ifsc=0x20), apdu_bytes(0x80, 0xC0, 0x00, 0x00, PAYLOAD), T1_XMIT,
+     t1_r(1) + t1_i(0, SW_OK),
+     "figure 23: the command is longer than IFSC, so it is split with the M-bit set on all but the "
+     "last block, and each piece is acknowledged by R(N(R)) naming the next one (rule 5)"),
+    ("chained response", t1_atr(), C5, T1_XMIT,
+     t1_i(0, bytes(range(20)), more=True) + t1_i(1, SW_OK),
+     "11.6.2.2: a more-data I-block is answered by R(N(R)) with the sequence of the I-block expected "
+     "next, and the last block of the chain is not answered at all"),
+    ("wtx request", t1_atr(), C5, T1_XMIT,
+     t1_s(3, bytes([0x05])) + t1_i(0, SW_OK),
+     "rule 3: the multiplier is applied to the waiting time of the block being waited for, and the "
+     "response carries the same INF"),
+    ("wtx without inf", t1_atr(), C5, T1_XMIT,
+     t1_s(3) + t1_i(0, SW_OK),
+     "rule 3 puts the multiplier in INF, so a block that promises one without carrying it is not an "
+     "extension to apply: the factor stays one and the chunk is retransmitted"),
+    ("ifs request without inf", t1_atr(), C5, T1_XMIT,
+     t1_s(1) + t1_i(0, SW_OK),
+     "rule 4 puts the new IFSC in INF: a request carrying none is not a size to adopt, because "
+     "IFSC 0 would leave nothing to send, and the chunk goes out again"),
+    ("ifs request from card", t1_atr(), C5, T1_XMIT,
+     t1_s(1, bytes([0x40])) + t1_i(0, SW_OK),
+     "rule 4: the new IFSC is in force from the request, and the response echoes the byte"),
+    ("ifs request zero reserved", t1_atr(), C5, T1_XMIT,
+     t1_s(1, bytes([0x00])) + t1_i(0, SW_OK),
+     "11.4.2 reserves 00, so what is kept is unchanged while rule 4 still gets its echo"),
+    ("ifs request ff reserved", t1_atr(), C5, T1_XMIT,
+     t1_s(1, bytes([0xFF])) + t1_i(0, SW_OK),
+     "11.4.2 reserves FF too; the largest IFSD is what is kept, since a larger field than that "
+     "cannot be received anyway"),
+    ("ifs negotiate", t1_atr(), b"", T1_IFSD_ENTRY, t1_s(1, bytes([0xFE]), resp=True),
+     "rule 4 the other way round: the reader offers its IFSD and the exchange is over when the "
+     "response arrives, before any APDU is sent"),
+    ("edc error then good block", t1_atr(), C5, T1_XMIT,
+     t1_i(0, SW_OK, bad_edc=True) + t1_i(0, SW_OK),
+     "11.3.4 with the LRC: a block whose epilogue does not check is refused by R(N(R)) with the "
+     "redundancy-code error, and the block retransmitted is accepted with the same N(S)"),
+    ("edc error exhausted", t1_atr(), C5, T1_XMIT,
+     t1_i(0, SW_OK, bad_edc=True) * 4,
+     "the reader asks a bounded number of times: rule 7.4.1 allows two further attempts, and t1.c "
+     "grants three, so the fourth bad block is the last one it answers"),
+    ("card repeats a sequence", t1_atr(), C5, T1_XMIT,
+     t1_i(0, bytes(10), more=True) + t1_i(0, bytes(10), more=True) + t1_i(1, SW_OK),
+     "the second block repeats the N(S) the reader has already accepted, so it is a retransmission of "
+     "a piece already had: the reader says so with the other-error code, naming the I-block it wants"),
+    ("r block wrong n(r)", t1_atr(), C5, T1_XMIT,
+     t1_r(0) + t1_i(0, SW_OK),
+     "rule 5: N(R) of the R-block acknowledging a chunk is not the N(S) that chunk carried, so an "
+     "R(0) after I(0) acknowledges nothing and the chunk goes out again"),
+    ("abort", t1_atr(), C5, T1_XMIT,
+     t1_s(2) + t1_i(0, SW_OK),
+     "rule 9: a chain is aborted by S(ABORT request), answered by S(ABORT response); nothing the "
+     "card sends afterwards completes the exchange"),
+    ("response over the buffer", t1_atr(), C5, T1_XMIT,
+     b"".join(t1_i(i & 1, bytes(32), more=True) for i in range(9)),
+     "the response is bounded by the buffer the reader holds, not by what the card decides to send: "
+     "the block that would pass the end is refused and left unread"),
+    ("crc requested", t1_atr(tc=0x01), C5, T1_XMIT, t1_i(0, SW_OK),
+     "11.4.4: bit 1 of the first TC for T=1 asks for a CRC epilogue, which is not implemented, so "
+     "the card is refused before a single byte goes out rather than answered with an LRC it rejects"),
+    ("crc requested, negotiation", t1_atr(tc=0x01), b"", T1_IFSD_ENTRY, b"",
+     "the IFSD negotiation is the first thing the protocol does after PPS, so it refuses a CRC card "
+     "too, instead of talking at it with the wrong epilogue"),
+    ("silent card", t1_atr(), C5, T1_XMIT, b"",
+     "a card that answers nothing within BWT leaves the reader with the command it sent and a "
+     "waiting time that expired (rule 7.6 leaves R(0) unattempted here)"),
+    ("block without epilogue", t1_atr(), C5, T1_XMIT,
+     bytes([0x00, 0x00, 0x02]),
+     "11.3.1 makes the epilogue mandatory: a block that ends with its information field is not a "
+     "block, and there is no code to check"),
+    ("card asks to resynchronize", t1_atr(), C5, T1_XMIT,
+     t1_s(0) + t1_i(0, SW_OK),
+     "rule 6.2 acknowledged in the other direction: the answer to S(RESYNCH request) is S(RESYNCH "
+     "response), and both sequence numbers start again at zero (11.6.2.1)"),
+    dict(name="ifs request answered by resynchronization", atr=t1_atr(), cmd=C5, entry=T1_IFSD_ENTRY,
+         card=t1_r(0) + t1_s(0, resp=True) + t1_s(1, bytes([0xFE]), resp=True), retry=1,
+         note="rule 7.3: an S(request) that does not get its response is tried again, and rule 6 "
+              "puts S(RESYNCH request) between the attempts, after which the negotiation starts over "
+              "with the parameters at their initial values"),
+    dict(name="s block of an undefined type", atr=t1_atr(), cmd=C5, entry=T1_XMIT,
+         card=t1_s(4) + t1_i(0, SW_OK),
+         note="Figure 20 leaves the coding 4 reserved and 11.6.3.1 calls an unknown PCB an invalid "
+              "block: it is not a request, so nothing is acknowledged and the command goes out again"),
+    dict(name="peripheral refuses the write", atr=t1_atr(), cmd=C5, entry=T1_XMIT,
+         card=t1_i(0, SW_OK), refuse_sends=1,
+         note="a write the peripheral refuses is not a card error to retry: the exchange is over, "
+              "with nothing claimed to have been sent"),
+]
+
+
+def t1_vectors() -> str:
+    rows = []
+    for case in T1_CASES:
+        case = dict(zip(("name", "atr", "cmd", "entry", "card", "note"), case)) if isinstance(
+            case, tuple) else dict(case)
+        cmd, has_lc, has_le = case["cmd"] if isinstance(case["cmd"], tuple) else (case["cmd"], 0, 0)
+        e = t1_expect(case["atr"], cmd, case["entry"], case["card"], case.get("retry", 0),
+                      case.get("refuse_sends", 0))
+        rows.append((case["name"], case["atr"], cmd, case["entry"], case["card"], case["note"], e,
+                     has_lc, has_le, case.get("retry", 0), case.get("refuse_sends", 0)))
+
+    def comment(name, atr, note):
+        lines = textwrap.wrap(f"ATR {atr}. {note}", width=94)
+        out = [f"    /* {lines[0]}"] + [f"     * {line}" for line in lines[1:]]
+        out[-1] += " */"
+        return "\n".join(out)
+
+    body = "\n".join(
+        f'{comment(name, atr, note)}\n'
+        f'    {{\n'
+        f'        "{name}", "{atr.replace(" ", "")}", "{e["pps_answer"].replace(" ", "")}", "{cmd.hex().upper()}", '
+        f'{has_lc}, {has_le}, {entry}, {retry}, {refuse},\n'
+        f'        "{card.hex().upper()}", {e["result"]}, "{e["wire"].upper()}",\n'
+        f'        {e["send_seq"]}, {e["recv_seq"]}, {e["ifsc"]}, {e["bwt_factor"]}, '
+        f'{e["unread"]}, {e["delay_us"]},\n'
+        f'        {len(e["timeouts"])}, {{{", ".join(str(t) for t in e["timeouts"])}}},\n'
+        f'    }},'
+        for name, atr, cmd, entry, card, note, e, has_lc, has_le, retry, refuse in rows
+    )
+
+    return f"""#ifndef VECTORS_T1_H
+#define VECTORS_T1_H
+
+/* Generated by tests/vectors/generate.py: t1_vectors(). T=1 blocks, framed per 11.3 and exchanged
+ * per 11.6, with the parameters of 11.4. Every expectation is derived from those clauses; see the
+ * note above each row. */
+
+#define T1_TIMEOUTS_MAX {T1_TIMEOUTS_MAX}
+
+typedef struct {{
+  const char* name;
+  const char* atr_hex;
+  const char* pps_answer_hex;
+  const char* apdu_hex;
+  uint8_t has_lc;
+  uint8_t has_le;
+  uint8_t entry;           /* T1_ENTRY_TRANSMIT or T1_ENTRY_NEGOTIATE */
+  uint8_t retry;           /* the retries t1_negotiate_ifsd is granted */
+  uint8_t refuse_sends;    /* writes the peripheral refuses, before anything else happens */
+  const char* card_hex;    /* the blocks the card sends, in order */
+  app_err_t result;
+  const char* wire_hex;    /* every byte the reader transmits, in order */
+  uint8_t send_seq;
+  uint8_t recv_seq;
+  uint8_t ifsc;
+  uint8_t bwt_factor;
+  uint32_t unread;         /* card bytes left unconsumed */
+  uint32_t delay_us;       /* BGT delays, 11.2 */
+  unsigned timeout_count;
+  uint32_t timeouts[T1_TIMEOUTS_MAX];   /* BWT then CWT, per block awaited */
+}} t1_kat_t;
+
+#define T1_ENTRY_TRANSMIT 0
+#define T1_ENTRY_NEGOTIATE 1
+
+static const t1_kat_t T1_KAT[] = {{
+{body}
+}};
+
+#define T1_KAT_COUNT (sizeof(T1_KAT) / sizeof(T1_KAT[0]))
+
+#endif
+"""
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -12025,6 +12413,7 @@ def main() -> None:
         "vectors_util.h": util_vectors(),
         "vectors_atr.h": atr_vectors(),
         "vectors_pps.h": pps_vectors(),
+        "vectors_t1.h": t1_vectors(),
         "vectors_bip39.h": bip39_vectors(),
         "vectors_multisig.h": multisig_vectors(),
         "vectors_slip39.h": slip39_vectors(),
