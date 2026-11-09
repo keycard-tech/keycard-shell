@@ -84,14 +84,14 @@ static const pps_kat_t PPS_KAT[] = {
     {
         "jcop 2.4.1r3", "3BEB00008131FE450031C173C840000090007A01", "FF01FE", ERR_OK, 1,
         "FF01FE", 1, 5000000, 13440, 7440,
-        2, 43, 15371, 0, 1,
+        1, 43, 15371, 0, 1,
     },
     /* Card ATR 3B 90 17 81 11 FE E9. Table 8 gives Di = 64 for bits 4 to 1 equal to 0111, a valid
      * value the reader may not refuse */
     {
         "di 64", "3B90178111FEE9", "FF1117F9", ERR_OK, 1,
         "FF1117F9", 1, 5000000, 860215, 116,
-        2, 8203, 983051, 0, 1,
+        1, 8203, 983051, 0, 1,
     },
     /* Card ATR 3B 90 71 81 11 FE 8F. Table 7 leaves bits 8 to 5 = 0111 without an Fi, so there is no
      * rate to run and no exchange to start */
@@ -105,42 +105,42 @@ static const pps_kat_t PPS_KAT[] = {
     {
         "ta2 implicit", "3B9077911111FE88", "FF01FE", ERR_OK, 1,
         "FF01FE", 1, 5000000, 13440, 7440,
-        2, 8203, 15371, 0, 1,
+        1, 8203, 15371, 0, 1,
     },
     /* Card ATR 3B 90 95 91 01 11 FE 7A. TA2 = 01 leaves bit 5 clear, so the Fi = 512 and Di = 1 of
      * TA1 apply and are what gets proposed */
     {
         "ta2 indicated", "3B9095910111FE7A", "FF11957B", ERR_OK, 1,
         "FF11957B", 1, 5000000, 156250, 640,
-        2, 8203, 178571, 0, 1,
+        1, 8203, 178571, 0, 1,
     },
     /* Card ATR 3B 90 11 81 21 00 21. 11.4.3 with CWI = 0 gives CWT = 11 + 1 = 12 etu, the minimum
      * the text states */
     {
         "cwt zero", "3B901181210021", "FF01FE", ERR_OK, 1,
         "FF01FE", 1, 5000000, 13440, 7440,
-        2, 12, 971, 0, 1,
+        1, 12, 971, 0, 1,
     },
     /* Card ATR 3B 90 11 81 21 45 64. CWI = 5 and BWI = 4: CWT = 11 + 32 etu and BWT = 11 + 16 * 960
      * etu at Fd and Dd */
     {
         "cwt five", "3B901181214564", "FF01FE", ERR_OK, 1,
         "FF01FE", 1, 5000000, 13440, 7440,
-        2, 43, 15371, 0, 1,
+        1, 43, 15371, 0, 1,
     },
     /* Card ATR 3B 90 18 81 21 90 B8. BWI = 9 is the largest 11.4.3 defines, and Fd over f grows with
      * Di = 12 */
     {
         "bwt nine", "3B9018812190B8", "FF1118F6", ERR_OK, 1,
         "FF1118F6", 1, 5000000, 161290, 620,
-        2, 12, 5898251, 0, 1,
+        1, 12, 5898251, 0, 1,
     },
     /* Card ATR 3B D0 11 03 81 11 20 72. N = 3 with no T=15 in the ATR, so R = F / D and the extra
      * guard comes out as exactly N etu */
     {
         "guard n three", "3BD0110381112072", "FF01FE", ERR_OK, 1,
         "FF01FE", 1, 5000000, 13440, 7440,
-        8, 8203, 15371, 0, 1,
+        4, 8203, 15371, 0, 1,
     },
     /* Card ATR 3B D0 91 03 81 91 20 1F 03 6E. with T=15 present 8.3 takes R from Fi / Di instead of
      * from what is in force, which does not divide: 512 * 3 over 372 is 4.13 etu and the card must
@@ -148,7 +148,7 @@ static const pps_kat_t PPS_KAT[] = {
     {
         "guard n three t15", "3BD091038191201F036E", "FF01FE", ERR_OK, 1,
         "FF11917F", 1, 5000000, 13440, 7440,
-        12, 8203, 15371, 0, 1,
+        6, 8203, 15371, 0, 1,
     },
     /* Card ATR 3B D0 D1 FE 81 91 20 1F 03 D3. Fi = 2048 over the Fd = 372 that is in force would ask
      * for 1400 etu of guard and the peripheral holds 255: the card wanted more than the reader can
@@ -170,7 +170,7 @@ static const pps_kat_t PPS_KAT[] = {
     {
         "etu not divisible", "3B90268111FED8", "FF1126C8", ERR_OK, 1,
         "FF1126C8", 1, 5882352, 337339, 296,
-        2, 8203, 327691, 0, 1,
+        1, 8203, 327691, 0, 1,
     },
     /* Card ATR 3B 90 11 81 11 20 31. 9.3: bits 4 to 1 of the answer shall be identical to those of
      * the request */
@@ -253,7 +253,7 @@ static const pps_kat_t PPS_KAT[] = {
     {
         "t0 card", "3B69000241434F534A76313031", NULL, ERR_OK, 1,
         "", 0, 5000000, 13440, 7440,
-        5, 0, 0, 9600, 1,
+        3, 0, 0, 9600, 1,
     },
 };
 

@@ -11623,7 +11623,7 @@ FI_FMAX = {
 DI_CODE = {0x1: 1, 0x2: 2, 0x3: 4, 0x4: 8, 0x5: 16, 0x6: 32, 0x7: 64, 0x8: 12, 0x9: 20}
 DEFAULT_FMAX = 5000000  # 8.3: "f (max.) = 5 MHz" when TA1 is absent
 FD, DD = 372, 1         # 6.3.1
-GUARD_MAX = 255         # GTPR.GT is 8 bits of half etu: 127.5 etu is all there is
+GUARD_MAX = 255         # GTPR.GT is 8 bits of etu (baud clock periods)
 PPS_WT = 9600           # 9.1
 
 
@@ -11819,21 +11819,19 @@ def pps_expect(atr: str, answer: str | None) -> dict:
     e["baud"] = (e["freq"] * di) // fi
 
     def guard() -> int:
-        # 8.3 and 11.2, in the half etu of GTPR.GT. The frame carries eleven etu in T=1 (its single
-        # stop bit) and eleven and a half otherwise, so it pays for the eleven etu that 11.2 asks of
-        # N = 255 in T=1 and a part of the twelve that 8.3 asks otherwise. Both protocols take their
-        # GT from 8.3, so this applies to the T=0 rows too.
+        # 8.3 and 11.2 less the frame this reader sends -- eleven etu in T=1 (STOP = 00), eleven and a
+        # half otherwise, in half etu to keep that half exact. RM0481 programs GTPR.GT, in baud clock
+        # periods of one etu each, as CGT minus the duration of one character, and takes twelve for a
+        # frame with two stop bits. Both protocols take their CGT from 8.3, so this holds for the T=0
+        # rows too.
         n = a["n"]
-        frame = 22 if t == 1 else 23
-        required = 22 if (n == 255 and t == 1) else 24
-        units = max(0, required - frame)
         if n == 255:
-            return min(GUARD_MAX, units)
+            return 0 if t == 1 else 1
         if a["t15_present"] and not ta2_implicit:
             r_num, r_den = FI_FMAX.get(fi_code, (FD, DD))[0], DI_CODE.get(di_code, DD)
         else:
             r_num, r_den = fi, di
-        return min(GUARD_MAX, units + 2 * ceil_div(r_num * n * di, r_den * fi))
+        return min(GUARD_MAX, 1 + ceil_div(r_num * n * di, r_den * fi))
 
     if t != 1:
         e["guard"] = guard()

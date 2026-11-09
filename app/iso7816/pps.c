@@ -6,7 +6,7 @@
 #define PPS_HAS_PPS1 0x10 /* 9.2: bit 5 says a PPS1 -- an Fi, Di proposal -- follows */
 #define PPS_ANSWER_BITS 0xf0 /* 9.3: bits 5, 6 and 7 of the answer are the request's or 0; bit 8 is reserved */
 #define PPS_TYPE 0x0f
-#define PPS_GUARD_MAX 255 /* GTPR.GT is 8 bits, and it counts half etu: 127.5 etu is the most there is */
+#define PPS_GUARD_MAX 255
 
 /* 8.3 Table 7 pairs Fi with f(max) in bits 8 to 5 of TA1. The frequency is the device's choice
  * under that bound: the kernel clock divided by 2 * Prescaler, of which hal_smartcard_pps programs
@@ -128,24 +128,20 @@ app_err_t pps_negotiate(smartcard_t* sc) {
    * 32 is a valid etu and truncating first loses a sixth of it. */
   sc->etu_10ns = (uint32_t)(((uint64_t)100000000 * f) / ((uint64_t)d * freq));
 
-  /* 8.3 wants GT = 12 etu + R * N / f measured from the leading edge of the previous character, with
-   * R = F / D or Fi / Di when T=15 is in the ATR, and 11.2 makes N = 255 eleven etu in T=1 where 8.3
-   * keeps twelve. What the frame carries is subtracted from that: eleven etu with the single stop bit
-   * this reader configures for T=1, eleven and a half with the one and a half used otherwise. All of
-   * it in the units GTPR.GT counts in, which are half etu -- writing etu there leaves the card half
-   * the guard it asked for, and that reads on a bench as a card working with a reader that idles too
-   * much and failing with one that idles exactly as much as it was told to. */
-  const uint32_t frame = sc->atr.default_protocol == SC_T1 ? 22 : 23;
-  const uint32_t required = (sc->atr.n == 255 && sc->atr.default_protocol == SC_T1) ? 22 : 24;
-  uint32_t guard = required > frame ? required - frame : 0;
+  /* GTPR.GT is in etu, counted after the stop bit, so it wants CGT minus the character this reader
+   * sends: 11 etu with STOP = 00 in T=1, 11.5 otherwise, which is one etu short of the 12 that 8.3
+   * counts either way. CGT is 12 etu + R * N / f, R being F / D or Fi / Di when T=15 is in the ATR,
+   * except 11.2's 11 etu for N = 255 in T=1, which the frame spans by itself. Rounded up, since it is
+   * the card that waits. */
+  uint32_t extra = 0;
   if (sc->atr.n != 255) {
     const uint32_t r_num = (sc->atr.t15_present && !implicit) ? F_Table[fi_code] : f;
     const uint32_t r_den = (sc->atr.t15_present && !implicit) ? D_Table[di_code] : d;
     const uint32_t den = r_den * f;
-    const uint64_t extra = (((uint64_t)r_num * sc->atr.n * d) + den - 1) / den;
-    const uint64_t half = guard + 2 * extra;
-    guard = half > PPS_GUARD_MAX ? PPS_GUARD_MAX : (uint32_t)half;
+    extra = (((uint64_t)r_num * sc->atr.n * d) + den - 1) / den;
   }
+  const uint32_t want = (sc->atr.n == 255 && sc->atr.default_protocol == SC_T1) ? 0 : extra + 1;
+  const uint8_t guard = want > PPS_GUARD_MAX ? PPS_GUARD_MAX : want;
 
   /* 10.2: WT = WI * 960 * Fi / f, which is WI * 960 * D once F is Fi, as it is with no exchange. */
   const uint32_t timeout = sc->atr.default_protocol == SC_T1 ? 0 : sc->atr.t0_wi * 960 * d;
