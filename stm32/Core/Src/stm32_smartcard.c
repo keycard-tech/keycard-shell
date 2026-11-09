@@ -96,6 +96,10 @@ hal_err_t hal_smarcard_recv(uint8_t* data, size_t len) {
   return HAL_SMARTCARD_Receive_IT(&hsmartcard6, data, len);
 }
 
+uint32_t hal_smartcard_received(void) {
+  return hsmartcard6.RxXferSize - hsmartcard6.RxXferCount;
+}
+
 void hal_smartcard_abort() {
   HAL_SMARTCARD_Abort_IT(&hsmartcard6);
 }

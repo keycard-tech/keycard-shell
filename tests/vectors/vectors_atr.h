@@ -2,8 +2,9 @@
 #define VECTORS_ATR_H
 
 /* What ISO/IEC 7816-3:2006 requires of a reader facing an ATR, row by row. Each row is one ATR --
- * either captured from a real card, from pcsc-tools' smartcard_list.txt, or built from the
- * standard's own tables for a shape that collection does not contain -- and the fields are the
+ * captured from a real card, from pcsc-tools' smartcard_list.txt or from the cards at hand, or built
+ * from the standard's own tables for a shape those collections do not contain -- and the fields are
+ * the
  * answer in iso7816/atr.c's terms, derived from the text by tests/vectors/generate.py rather than
  * from that file.
  *
@@ -168,6 +169,56 @@ static const atr_kat_t ATR_KAT[] = {
         0x11, 0x00, 0xFF, 10, 0, 1,
         0x20, 4, 13, 0, 1, 0x07, 0x40,
         0, "",
+    },
+    /* Card: no interface byte. T0 sets no Y1 bit and offers no TD, so 8.2.3 leaves only T=0 by
+     * default: 8.3 and 10.2 give every parameter and 8.2.5 wants no check byte. 93 of the list's
+     * ATRs are shaped like this */
+    {
+        "no interface byte", "3B02141C", ERR_OK, 0,
+        0x11, 0x00, 0xFF, 10, 0, 1,
+        0x20, 4, 13, 0, 0, 0x01, 0x00,
+        2, "141c",
+    },
+    /* Card: comsign eid. TD1 offers T=1 and TD2 repeats it with a lone TA3 = IFSC 254, so 11.4.3 and
+     * 11.4.4 leave BWI at 4, CWI at 13 and the code at LRC; TD3 then brings T=15 last, classes A+C */
+    {
+        "comsign eid", "3BD518FF8191FE1FC38073C821100A", ERR_OK, 1,
+        0x18, 0xFF, 0xFF, 10, 1, 2,
+        0xFE, 4, 13, 0, 1, 0x03, 0xC0,
+        5, "8073c82110",
+    },
+    /* Card: renap guatemala. the chain of comsign eid with a TB3 added to TD2's third group, and
+     * 11.4.3 takes BWI 4 and CWI 5 out of it: the only difference between the two rows is which byte
+     * TD2 indicates */
+    {
+        "renap guatemala", "3BD518FF81B1FE451FC38073C821106F", ERR_OK, 1,
+        0x18, 0xFF, 0xFF, 10, 1, 2,
+        0xFE, 4, 5, 0, 1, 0x03, 0xC0,
+        5, "8073c82110",
+    },
+    /* Card: jcop3 p60. JCOP3 SecID P60: comsign eid's chain with 12 historical bytes, which 8.2.5
+     * folds into the check byte like any other count */
+    {
+        "jcop3 p60", "3BDC18FF8191FE1FC38073C821136605036351000250", ERR_OK, 1,
+        0x18, 0xFF, 0xFF, 10, 1, 2,
+        0xFE, 4, 13, 0, 1, 0x03, 0xC0,
+        12, "8073c8211366050363510002",
+    },
+    /* Card: jcop 2.4.1r3. Y1 sets TB1, TC1 and TD1 and no TA1, so 8.3 gives Fi = 372 and Di = 1 even
+     * though a TB1 is there to be ignored, and TC1 = 00 is N = 0 rather than a missing byte */
+    {
+        "jcop 2.4.1r3", "3BEA00008131FE450031C173C840000090007A", ERR_OK, 1,
+        0x11, 0x00, 0xFF, 10, 1, 2,
+        0xFE, 4, 5, 0, 0, 0x01, 0x00,
+        10, "0031c173c84000009000",
+    },
+    /* Card: acosj 40k. TB1 and TC1 and no TD anywhere, so 8.2.3 leaves only T=0 by default and 8.2.5
+     * wants no check byte: the ATR ends with the nine historical bytes spelling ACOSJv101 */
+    {
+        "acosj 40k", "3B69000241434F534A76313031", ERR_OK, 0,
+        0x11, 0x02, 0xFF, 10, 0, 1,
+        0x20, 4, 13, 0, 0, 0x01, 0x00,
+        9, "41434f534a76313031",
     },
     /* Synthetic: t0 not first. TD1 offers T=1 and TD2 then offers T=0, which 8.2.3 forbids: if T=0
      * is present it shall be first */

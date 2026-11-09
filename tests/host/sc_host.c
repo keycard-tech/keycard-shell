@@ -16,6 +16,7 @@ static unsigned send_refuse_left;
 static uint8_t reply[WIRE_MAX];
 static size_t reply_len;
 static size_t reply_pos;
+static uint32_t received;
 static unsigned read_calls;
 static unsigned fail_read_after = SCRIPT_OFF;
 
@@ -48,6 +49,7 @@ void hal_host_sc_reset(void) {
   memset(reply, 0, sizeof(reply));
   reply_len = 0;
   reply_pos = 0;
+  received = 0;
   read_calls = 0;
   fail_read_after = SCRIPT_OFF;
 
@@ -253,14 +255,17 @@ hal_err_t hal_smarcard_recv(uint8_t* data, size_t len) {
     return HAL_FAIL;
   }
 
-  if (reply_len - reply_pos < len) {
-    return HAL_FAIL;
-  }
+  const size_t available = reply_len - reply_pos;
+  const size_t taken = available < len ? available : len;
+  memcpy(data, reply + reply_pos, taken);
+  reply_pos += taken;
+  received = taken;
 
-  memcpy(data, reply + reply_pos, len);
-  reply_pos += len;
+  return taken == len ? HAL_SUCCESS : HAL_FAIL;
+}
 
-  return HAL_SUCCESS;
+uint32_t hal_smartcard_received(void) {
+  return received;
 }
 
 hal_err_t hal_smartcard_pps(smartcard_protocol_t protocol, uint32_t baud, uint32_t freq, uint8_t guard,

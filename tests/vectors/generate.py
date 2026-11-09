@@ -11287,6 +11287,8 @@ static const u64toa_kat_t U64TOA_KAT[] = {{
 #
 # - pcsc: captured from real cards, copied from pcsc-tools' smartcard_list.txt (Ludovic Rousseau's
 #   collection of ATRs reported by people running pcsc_scan), with the card that list names.
+# - own: captured on the bench with tools/capture-atr.py, from the stack of cards at hand. Every one
+#   of them is in pcsc-tools' collection too, which is where the row names come from.
 # - spec: built byte by byte from ISO/IEC 7816-3:2006 for a shape the collection does not contain,
 #   so that a clause the wild cards never exercise is still pinned.
 #
@@ -11327,6 +11329,24 @@ CAPTURED_ATRS = [
     ("t0 and t15", "3B 80 80 1F 47 58", "spec",
      "T=0 then T=15, whose first TA is classes A+B+C with clock stop preferred in state L. 8.2.3 says "
      "T=15 is not a protocol, so T=1 stays unoffered -- yet 8.2.5 still requires the check byte"),
+    ("no interface byte", "3B 02 14 1C", "pcsc",
+     "T0 sets no Y1 bit and offers no TD, so 8.2.3 leaves only T=0 by default: 8.3 and 10.2 give every "
+     "parameter and 8.2.5 wants no check byte. 93 of the list's ATRs are shaped like this"),
+    ("comsign eid", "3B D5 18 FF 81 91 FE 1F C3 80 73 C8 21 10 0A", "own",
+     "TD1 offers T=1 and TD2 repeats it with a lone TA3 = IFSC 254, so 11.4.3 and 11.4.4 leave BWI at "
+     "4, CWI at 13 and the code at LRC; TD3 then brings T=15 last, classes A+C"),
+    ("renap guatemala", "3B D5 18 FF 81 B1 FE 45 1F C3 80 73 C8 21 10 6F", "own",
+     "the chain of comsign eid with a TB3 added to TD2's third group, and 11.4.3 takes BWI 4 and CWI 5 "
+     "out of it: the only difference between the two rows is which byte TD2 indicates"),
+    ("jcop3 p60", "3B DC 18 FF 81 91 FE 1F C3 80 73 C8 21 13 66 05 03 63 51 00 02 50", "own",
+     "JCOP3 SecID P60: comsign eid's chain with 12 historical bytes, which 8.2.5 folds into the check "
+     "byte like any other count"),
+    ("jcop 2.4.1r3", "3B EA 00 00 81 31 FE 45 00 31 C1 73 C8 40 00 00 90 00 7A", "own",
+     "Y1 sets TB1, TC1 and TD1 and no TA1, so 8.3 gives Fi = 372 and Di = 1 even though a TB1 is there "
+     "to be ignored, and TC1 = 00 is N = 0 rather than a missing byte"),
+    ("acosj 40k", "3B 69 00 02 41 43 4F 53 4A 76 31 30 31", "own",
+     "TB1 and TC1 and no TD anywhere, so 8.2.3 leaves only T=0 by default and 8.2.5 wants no check "
+     "byte: the ATR ends with the nine historical bytes spelling ACOSJv101"),
     ("t0 not first", "3B 80 81 00 01", "spec",
      "TD1 offers T=1 and TD2 then offers T=0, which 8.2.3 forbids: if T=0 is present it shall be first"),
     ("t15 not last", "3B 80 80 9F 11 01 8F", "spec",
@@ -11392,10 +11412,12 @@ def iso_expect(atr: str) -> dict:
         "hist_len": len(hist), "hist": hist.hex(), "result": "ERR_OK",
     }
 
-    if groups[0][1].get("TA") is not None:
-        e["fi_di"] = groups[0][1]["TA"]
-    if groups[0][1].get("TC") is not None:
-        e["n"] = groups[0][1]["TC"]
+    # An empty group means T0 set no Y1 bit at all, so every byte here is a default of 8.3 and 10.2.
+    if groups:
+        if groups[0][1].get("TA") is not None:
+            e["fi_di"] = groups[0][1]["TA"]
+        if groups[0][1].get("TC") is not None:
+            e["n"] = groups[0][1]["TC"]
 
     if types:
         # 8.2.3: TD1 encodes the first offered protocol.
@@ -11477,7 +11499,7 @@ def atr_vectors() -> str:
         rows.append((name, atr, source, note, e))
 
     def comment(name, source, note, e):
-        origin = f"Card: {name}" if source == "pcsc" else f"Synthetic: {name}"
+        origin = f"Synthetic: {name}" if source == "spec" else f"Card: {name}"
         lines = textwrap.wrap(f"{origin}. {note}", width=94)
         out = [f"    /* {lines[0]}"] + [f"     * {line}" for line in lines[1:]]
         out[-1] += " */"
@@ -11500,8 +11522,9 @@ def atr_vectors() -> str:
 #define VECTORS_ATR_H
 
 /* What ISO/IEC 7816-3:2006 requires of a reader facing an ATR, row by row. Each row is one ATR --
- * either captured from a real card, from pcsc-tools' smartcard_list.txt, or built from the
- * standard's own tables for a shape that collection does not contain -- and the fields are the
+ * captured from a real card, from pcsc-tools' smartcard_list.txt or from the cards at hand, or built
+ * from the standard's own tables for a shape those collections do not contain -- and the fields are
+ * the
  * answer in iso7816/atr.c's terms, derived from the text by tests/vectors/generate.py rather than
  * from that file.
  *
@@ -11564,6 +11587,437 @@ static const atr_kat_t ATR_KAT[] = {{
 """
 
 
+
+# What a reader must ask the peripheral for once the ATR has been read. Every number is derived from
+# ISO/IEC 7816-3:2006, none from iso7816/pps.c:
+#
+#  - 7.1: 1 etu = F / (D * f) seconds, with F the clock rate conversion integer, D the baud rate
+#    adjustment integer and f the frequency supplied on CLK. Fd = 372 and Dd = 1 are the defaults of
+#    6.3.1, which is also what "implicit values" means in TA2.
+#  - 8.3 Table 7: bits 8 to 5 of TA1 give Fi and f(max) together, Table 8: bits 4 to 1 give Di. The
+#    two nibbles are independent, so Fi does not come from the same nibble as Di.
+#  - 8.3: GT = 12 etu + R * N / f, with R = F / D when T=15 is absent and R = Fi / Di when it is
+#    present. The character frame already spans twelve etu, so the peripheral is asked for the
+#    excess over that -- which is nothing for N = 0, and nothing for N = 255, where 11.2 fixes the
+#    guard at 11 etu for T=1 whatever TA1 says.
+#  - 9.1: the interface device starts the PPS exchange, the card answers a correct request or WT
+#    (9600 etu) elapses, and 9.2 puts the proposed Fi/Di in PPS1 -- present only when bit 5 of PPS0
+#    says so, encoded as in TA1, from Fd up and Dd up. A device that omits PPS1 proposes Fd and Dd.
+#  - 9.3: the exchange succeeds when bits 4 to 1 of the answer match, bits 5 to 7 are the same or 0,
+#    and an answer whose bit 5 is 0 means Fd and Dd are in force -- so the answer need not echo the
+#    request, and it is one byte shorter when it does not.
+#  - 10.2: WT = WI * 960 * Fi / f, which is WI * 960 * Fi * D / (F * f) in etu, and 11.4.3:
+#    CWT = (11 + 2^CWI) etu and BWT = 11 etu + 2^BWI * 960 * Fd / f, Fd being 372 whatever Fi is.
+#
+# The frequency fed to CLK is the hardware's choice and is only bounded by the text: it shall not
+# exceed f(max). This device divides the kernel clock by 2 * Prescaler (see
+# hal_smartcard_pps in stm32/Core/Src/stm32_smartcard.c), so the expectation is the fastest such
+# frequency the card allows -- derived from Table 7 and SMARTCARD_CLOCK, not from pps.c's table.
+
+FI_FMAX = {
+    0x0: (372, 4000000), 0x1: (372, 5000000), 0x2: (558, 6000000), 0x3: (744, 8000000),
+    0x4: (1116, 12000000), 0x5: (1488, 16000000), 0x6: (1860, 20000000),
+    0x9: (512, 5000000), 0xA: (768, 7500000), 0xB: (1024, 10000000),
+    0xC: (1536, 15000000), 0xD: (2048, 20000000),
+}
+DI_CODE = {0x1: 1, 0x2: 2, 0x3: 4, 0x4: 8, 0x5: 16, 0x6: 32, 0x7: 64, 0x8: 12, 0x9: 20}
+DEFAULT_FMAX = 5000000  # 8.3: "f (max.) = 5 MHz" when TA1 is absent
+FD, DD = 372, 1         # 6.3.1
+GUARD_MAX = 255         # GTPR.GT is 8 bits of half etu: 127.5 etu is all there is
+PPS_WT = 9600           # 9.1
+
+
+def kernel_clock() -> int:
+    """SMARTCARD_CLOCK, from the build rather than from a copy of it."""
+    found = set()
+    for cmake in (HERE / "../../CMakeLists.txt", HERE / "../../tests/CMakeLists.txt"):
+        m = re.search(r"SMARTCARD_CLOCK=(\d+)", cmake.read_text())
+        if m:
+            found.add(int(m.group(1)))
+    assert len(found) == 1, f"SMARTCARD_CLOCK disagrees between builds: {found}"
+    return found.pop()
+
+
+def card_clock(fmax: int) -> int:
+    """The fastest f = kernel / (2 * Prescaler) that a card allowing f(max) will accept."""
+    kernel = kernel_clock()
+    return max(kernel // (2 * p) for p in range(1, 512) if kernel // (2 * p) <= fmax)
+
+
+def mk_atr(groups: list, hist: bytes = b"", ts: int = 0x3B) -> str:
+    """Assemble an ATR from its groups: the timing group as a dict of TA1/TB1/TC1, then one
+    (type, dict of TA/TB/TC) per further group. TD bytes and their indicator nibbles follow from
+    which groups and slots exist, per 8.2.3; the check byte follows from 8.2.5."""
+    g1 = groups[0]
+    y1 = 0
+    body = []
+    for name, bit in (("TA1", 1), ("TB1", 2), ("TC1", 4)):
+        if name in g1:
+            y1 |= bit
+            body.append(g1[name])
+    if len(groups) > 1:
+        y1 |= 8
+    out = [ts, (y1 << 4) | (len(hist) & 0xF)] + body
+
+    rest = groups[1:]
+    for i, (t, slots) in enumerate(rest):
+        y = 0
+        tail = []
+        for name, bit in (("TA", 1), ("TB", 2), ("TC", 4)):
+            if name in slots:
+                y |= bit
+                tail.append(slots[name])
+        if i + 1 < len(rest):
+            y |= 8
+        out.append((y << 4) | t)
+        out.extend(tail)
+    out.extend(hist)
+
+    types = [g[0] for g in groups[1:]]
+    if types and set(types) != {0}:
+        parity = 0
+        for byte in out[1:]:
+            parity ^= byte
+        out.append(parity)
+    return " ".join(f"{b:02X}" for b in out)
+
+
+def pps_answer(t: int, fi_di: int | None, spu: bool = False, bad_pck: bool = False) -> str:
+    """A card's PPS response: an echo of a request carrying type t and, if fi_di is not None, a
+    PPS1 with those values. spu sets bit 6, and bad_pck corrupts the check byte."""
+    pps0 = t
+    if fi_di is not None:
+        pps0 |= 0x10
+    if spu:
+        pps0 |= 0x20
+    seq = [0xFF, pps0] + ([fi_di] if fi_di is not None else [])
+    pck = 0
+    for byte in seq:
+        pck ^= byte
+    seq.append(pck if not bad_pck else pck ^ 0xFF)
+    return " ".join(f"{b:02X}" for b in seq)
+
+
+def ceil_div(a: int, b: int) -> int:
+    return -(-a // b)
+
+
+# (name, atr, answer, note). `answer` names a card reply built by pps_answer(); None is a card that
+# never answers, which 9.1 settles by WT. The ATRs of the bench cards are their real bytes; the
+# others are assembled around the shape being pinned, and each offers T=1 through a TD2 with no
+# interface bytes of its own so that the triple after it is TA3, TB3 and TC3 rather than the global
+# TA2 of 8.3.
+PPS_CASES = [
+    ("comsign eid", mk_atr([{"TA1": 0x18, "TC1": 0xFF}, (1, {}), (1, {"TA": 0xFE}),
+                            (15, {"TA": 0xC3})], bytes.fromhex("8073C82110")),
+     "echo",
+     "Fi = 372 comes from the upper nibble of TA1 and Di = 12 from the lower, so the proposal carries "
+     "them, the bit rate is twelve per etu, and N = 255 asks for no extra guard"),
+    ("comsign declined", mk_atr([{"TA1": 0x18, "TC1": 0xFF}, (1, {}), (1, {"TA": 0xFE}),
+                                 (15, {"TA": 0xC3})], bytes.fromhex("8073C82110")),
+     "decline",
+     "9.3: an answer with bit 5 clear is a successful exchange, and Fd = 372 with Dn = 1 are then in "
+     "force even though TA1 indicated 372 over 12 -- the etu grows twelvefold, and so does CWT"),
+    ("jcop 2.4.1r3", mk_atr([{"TB1": 0x00, "TC1": 0x00}, (1, {}),
+                             (1, {"TA": 0xFE, "TB": 0x45})],
+                            bytes.fromhex("0031C173C840000090007A")),
+     "echo_default",
+     "no TA1 at all, so Fi = 372 and Di = 1 by default and there is nothing to propose in PPS1, yet "
+     "9.1 still requires the request: PPS0's type nibble is how the card is told to run T=1"),
+    ("di 64", mk_atr([{"TA1": 0x17}, (1, {}), (1, {"TA": 0xFE})]), "echo",
+     "Table 8 gives Di = 64 for bits 4 to 1 equal to 0111, a valid value the reader may not refuse"),
+    ("fi rfu", mk_atr([{"TA1": 0x71}, (1, {}), (1, {"TA": 0xFE})]), None,
+     "Table 7 leaves bits 8 to 5 = 0111 without an Fi, so there is no rate to run and no exchange to "
+     "start"),
+    ("ta2 implicit", mk_atr([{"TA1": 0x77}, (1, {"TA": 0x11}), (1, {"TA": 0xFE})]), "decline",
+     "TA2 = 11 has bit 5 set, so 8.3 takes the implicit Fd and Dd, and the RFU nibble of TA1 is none "
+     "of the reader's business because nothing reads it"),
+    ("ta2 indicated", mk_atr([{"TA1": 0x95}, (1, {"TA": 0x01}), (1, {"TA": 0xFE})]), "echo",
+     "TA2 = 01 leaves bit 5 clear, so the Fi = 512 and Di = 1 of TA1 apply and are what gets proposed"),
+    ("cwt zero", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TB": 0x00})]), "echo_default",
+     "11.4.3 with CWI = 0 gives CWT = 11 + 1 = 12 etu, the minimum the text states"),
+    ("cwt five", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TB": 0x45})]), "echo_default",
+     "CWI = 5 and BWI = 4: CWT = 11 + 32 etu and BWT = 11 + 16 * 960 etu at Fd and Dd"),
+    ("bwt nine", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TB": 0x90})]), "echo",
+     "BWI = 9 is the largest 11.4.3 defines, and Fd over f grows with Di = 12"),
+    ("guard n three", mk_atr([{"TA1": 0x11, "TC1": 0x03}, (1, {}), (1, {"TA": 0x20})]), "echo_default",
+     "N = 3 with no T=15 in the ATR, so R = F / D and the extra guard comes out as exactly N etu"),
+    ("guard n three t15", mk_atr([{"TA1": 0x91, "TC1": 0x03}, (1, {}), (1, {"TA": 0x20}),
+                                  (15, {"TA": 0x03})]),
+     "decline",
+     "with T=15 present 8.3 takes R from Fi / Di instead of from what is in force, which does not "
+     "divide: 512 * 3 over 372 is 4.13 etu and the card must not be shortchanged, so 5"),
+    ("guard clamped", mk_atr([{"TA1": 0xD1, "TC1": 0xFE}, (1, {}), (1, {"TA": 0x20}),
+                              (15, {"TA": 0x03})]),
+     "decline",
+     "Fi = 2048 over the Fd = 372 that is in force would ask for 1400 etu of guard and the peripheral "
+     "holds 255: the card wanted more than the reader can give, so it gets the maximum, no error"),
+    ("n 255", mk_atr([{"TA1": 0x11, "TC1": 0xFF}, (1, {}), (1, {"TA": 0x20})]), "echo_default",
+     "8.3 defers N = 255 to the protocol and 11.2 answers 11 etu, which the character frame spans by "
+     "itself: no extra guard either way"),
+    ("etu not divisible", mk_atr([{"TA1": 0x26}, (1, {}), (1, {"TA": 0xFE})]), "echo",
+     "Fi = 558 with Di = 32: the etu is 558 over 32 times f, so dividing F by D before multiplying by "
+     "the clock loses a sixth of it"),
+    ("answer wrong type", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), "wrong_type",
+     "9.3: bits 4 to 1 of the answer shall be identical to those of the request"),
+    ("answer bad pck", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), "bad_pck",
+     "9.2: exclusive-oring PPSS to PCK inclusive shall give 00, and 9.1 hands a device whose answer "
+     "does not check to a deactivation"),
+    ("answer asks spu", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), "spu",
+     "9.3 lets bit 6 of the answer be what the request made it or 0, and the request made it 0, so a "
+     "card offering the SPU of 5.2.4 here is answering a different request from the one it got"),
+    ("no answer", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), None,
+     "9.1: a card that stays silent after a correct request leaves the reader to wait out WT and stop"),
+    ("answer truncated", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF11",
+     "the answer promises a PPS1 and then stops: two bytes are not an exchange, and 9.1 leaves the "
+     "reader with a waiting time rather than with what it half heard"),
+    ("answer without pck", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF1118",
+     "9.2 puts PCK last, so an answer that ends before it says nothing whatever it carried"),
+    ("answer unasked pps1", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), "FF1118F6",
+     "the request asked for no PPS1, so 9.3 lets bit 5 of the answer read only 0: a card that insists "
+     "on proposing rates to a reader that did not ask is not answering this request"),
+    ("answer one byte", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF",
+     "one byte is not the start of an answer either: 9.1 gives the reader a waiting time and a "
+     "deactivation, and nothing here reads meaning into a PPSS on its own"),
+    ("decline with a fourth byte", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF01FE00",
+     "9.3: with bit 5 clear PPS1 of the answer shall be absent, so the three bytes that do check are "
+     "the whole answer and whatever followed it is not part of this exchange"),
+    ("answer other rates", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF1112ED",
+     "9.3: PPS1 of the answer shall be identical to the request's, so a card that agrees to T=1 while "
+     "putting other integers in their place is refused rather than run at a rate neither asked for"),
+    ("t0 card", mk_atr([{"TB1": 0x00, "TC1": 0x02}], b"ACOSJv101"), None,
+     "no TD anywhere, so the only offer is T=0, which the shell refuses at the APDU layer; 10.2 still "
+     "gives the waiting time to program, and N = 2 the guard"),
+]
+
+
+def pps_expect(atr: str, answer: str | None) -> dict:
+    a = iso_expect(atr)
+    b = bytes.fromhex(atr.replace(" ", ""))
+    t = a["default_protocol"]
+
+    e = {"atr": atr, "result": "ERR_OK", "pps_called": 0, "request": "", "protocol": t,
+         "freq": 0, "baud": 0, "etu_10ns": 9300, "guard": 0, "cwt": 0, "bwt": 0, "timeout": 0,
+         # t1.c scales the block waiting time by this, so a card in T=1 must find 1 in it.
+         "bwt_factor": 1}
+
+    fi_code, di_code = a["fi_di"] >> 4, a["fi_di"] & 0xF
+    fi, fmax = FI_FMAX.get(fi_code, (None, DEFAULT_FMAX))
+    ta2_implicit = a["ta2"] != 0xFF and (a["ta2"] & 0x10)
+    if ta2_implicit:
+        # 8.3: with bit 5 of TA2 set the implicit values apply, which are Fd and Dd -- and that
+        # holds even when TA1 carries nibbles with no valid meaning, since nothing reads them.
+        fi, di = FD, DD
+    elif fi is None or di_code not in DI_CODE:
+        e["result"] = "ERR_DATA"
+        return e
+    else:
+        di = DI_CODE[di_code]
+
+    e["freq"] = card_clock(fmax)
+    e["etu_10ns"] = (100000000 * fi) // (di * e["freq"])
+    e["baud"] = (e["freq"] * di) // fi
+
+    def guard() -> int:
+        # 8.3 and 11.2, in the half etu of GTPR.GT. The frame carries eleven etu in T=1 (its single
+        # stop bit) and eleven and a half otherwise, so it pays for the eleven etu that 11.2 asks of
+        # N = 255 in T=1 and a part of the twelve that 8.3 asks otherwise. Both protocols take their
+        # GT from 8.3, so this applies to the T=0 rows too.
+        n = a["n"]
+        frame = 22 if t == 1 else 23
+        required = 22 if (n == 255 and t == 1) else 24
+        units = max(0, required - frame)
+        if n == 255:
+            return min(GUARD_MAX, units)
+        if a["t15_present"] and not ta2_implicit:
+            r_num, r_den = FI_FMAX.get(fi_code, (FD, DD))[0], DI_CODE.get(di_code, DD)
+        else:
+            r_num, r_den = fi, di
+        return min(GUARD_MAX, units + 2 * ceil_div(r_num * n * di, r_den * fi))
+
+    if t != 1:
+        e["guard"] = guard()
+
+        # 10.2: WT = WI * 960 * Fi / f, in etu WI * 960 * Fi * D / F, and F is Fi until a PPS says
+        # otherwise. The shell does not speak T=0, so it asks the peripheral for the waiting time
+        # and leaves the exchange to fail later, where the reason is visible.
+        e["timeout"] = a["t0_wi"] * 960 * di  # F is Fi until a PPS changes it, so 10.2 is WI*960*Di
+        e["pps_called"] = 1  # the waiting time still reaches the peripheral; no exchange is made
+        return e
+
+    # 9.1 and 9.2: the request goes out whatever the rates are, because PPS0's type nibble is what
+    # puts the card into T=1. PPS1 is only there when there is something to propose.
+    propose = (fi, di) != (FD, DD)
+    pps0 = t | (0x10 if propose else 0)
+    seq = [0xFF, pps0] + ([a["fi_di"]] if propose else [])
+    pck = 0
+    for byte in seq:
+        pck ^= byte
+    e["request"] = " ".join(f"{x:02X}" for x in seq + [pck])
+
+    if answer is None:
+        e["result"] = "ERR_TXRX"
+        return e
+
+    r = bytes.fromhex(answer.replace(" ", ""))
+    # The reader takes the answer in one reception of four bytes, which is all of it it can see: an
+    # answer longer than that arrives as one unread byte after the exchange, and one shorter ends
+    # the reception by waiting time.
+    r = r[:4]
+    if len(r) < 2:
+        e["result"] = "ERR_TXRX"
+        return e
+    req0 = (0x10 if propose else 0) | t
+    if r[0] != 0xFF or (r[1] & 0x0F) != t or (r[1] & ~req0 & 0xF0):
+        # 9.3: bits 4 to 1 identical, and each of bits 5, 6 and 7 as requested or 0, with bit 8
+        # reserved. A bit the answer sets on its own claims a parameter byte the request never sent,
+        # and is refused before any further byte is asked for.
+        e["result"] = "ERR_DATA"
+        return e
+
+    checked = 3
+    if r[1] & 0x10:
+        if len(r) < 4:
+            e["result"] = "ERR_TXRX"
+            return e
+        if r[2] != a["fi_di"]:
+            e["result"] = "ERR_DATA"
+            return e
+        checked = 4
+    else:
+        # 9.3: clearing bit 5 is a success, and it puts Fd and Dd in force however TA1 read.
+        fi, di = FD, DD
+    if len(r) != checked:
+        # A PPS1 where none was invited is as much a violation as a missing PCK: 9.3 makes the
+        # answer's shape follow the request's, so the reader takes what it promised and nothing more.
+        e["result"] = "ERR_TXRX"
+        return e
+
+    parity = 0
+    for byte in r[:checked]:
+        parity ^= byte
+    if parity != 0:
+        e["result"] = "ERR_DATA"
+        return e
+
+    # Nothing reaches the peripheral unless the exchange succeeded: 9.1 sends a device whose answer
+    # does not check, or one that heard nothing at all, to a deactivation.
+    e["pps_called"] = 1
+    e["etu_10ns"] = (100000000 * fi) // (di * e["freq"])
+    e["baud"] = (e["freq"] * di) // fi
+    e["guard"] = guard()
+    e["cwt"] = 11 + (1 << a["t1_cwi"])
+    e["bwt"] = 11 + (((1 << a["t1_bwi"]) * 960 * FD * di) // fi)
+
+    return e
+
+
+def pps_vectors() -> str:
+    rows = []
+    for name, atr, answer, note in PPS_CASES:
+        if answer is not None and re.fullmatch(r"[0-9A-F]+", answer):
+            rows.append((name, atr, answer, note, pps_expect(atr, answer)))
+            continue
+        if answer == "echo":
+            a = iso_expect(atr)
+            answer = pps_answer(a["default_protocol"], None if a["fi_di"] == 0x11 else a["fi_di"])
+        elif answer == "echo_default":
+            answer = pps_answer(1, None)
+        elif answer == "decline":
+            answer = pps_answer(1, None)
+        elif answer == "wrong_type":
+            answer = pps_answer(0, None)
+        elif answer == "bad_pck":
+            answer = pps_answer(1, None, bad_pck=True)
+        elif answer == "spu":
+            answer = pps_answer(1, None, spu=True)
+        rows.append((name, atr, answer, note, pps_expect(atr, answer)))
+
+    def comment(name, atr, note, e):
+        text = f"Card ATR {atr}. {note}"
+        lines = textwrap.wrap(text, width=94)
+        out = [f"    /* {lines[0]}"] + [f"     * {line}" for line in lines[1:]]
+        out[-1] += " */"
+        return "\n".join(out)
+
+    body = "\n".join(
+        f'{comment(name, atr, note, e)}\n'
+        f'    {{\n'
+        f'        "{name}", "{atr.replace(" ", "")}", '
+        f'{"NULL" if answer is None else chr(34) + answer.replace(" ", "") + chr(34)}, '
+        f'{e["result"]}, {e["pps_called"]},\n'
+        f'        "{e["request"].replace(" ", "")}", {e["protocol"]}, '
+        f'{e["freq"]}, {e["baud"]}, {e["etu_10ns"]},\n'
+        f'        {e["guard"]}, {e["cwt"]}, {e["bwt"]}, {e["timeout"]}, {e["bwt_factor"]},\n'
+        f'    }},'
+        for name, atr, answer, note, e in rows
+    )
+
+    fmax_rows = "\n".join(
+        f'    {{ 0x{code:X}, {fmax}, "TA1 {code:X}x" }},' for code, (_, fmax) in sorted(FI_FMAX.items())
+    )
+
+    return f"""#ifndef VECTORS_PPS_H
+#define VECTORS_PPS_H
+
+/* What ISO/IEC 7816-3:2006 requires of a reader once it has read an ATR: the protocol and parameter
+ * selection of clause 9 and the rates, guard and waiting times that follow from clauses 7, 8, 10
+ * and 11. One row is one ATR and one card answer, and the fields are what pps.c must hand to
+ * hal_smartcard_pps and to smartcard_t, derived from the text by tests/vectors/generate.py.
+ *
+ * The derivation is in pps_vectors() above; the short version is that Table 7 of 8.3 pairs Fi with
+ * f(max) in the upper nibble of TA1 and Table 8 puts Di in the lower one, so the two are read from
+ * different nibbles; that the clock fed to CLK is whatever the device can produce under f(max) --
+ * kernel / (2 * Prescaler) here -- and that everything else is arithmetic on 7.1's etu, 8.3's guard
+ * with its R taken from F/D or from Fi/Di depending on whether T=15 is in the ATR, 10.2's waiting
+ * time, and 11.4.3's CWT and BWT, both of which carry an 11 etu term. Clause 9 is structural: the
+ * request is always sent, PPS1 only when there is something to propose and only with bit 5 of PPS0
+ * set, and a card may answer shorter than it was asked, in which case Fd and Dd are in force.
+ */
+
+#include "error.h"
+#include "iso7816/smartcard.h"
+
+typedef struct {{
+  const char* name;
+  const char* atr_hex;
+  const char* pps_answer_hex; /* NULL when the card never answers */
+  app_err_t result;
+  uint8_t pps_called;
+  const char* pps_request_hex;
+  uint8_t protocol;
+  uint32_t freq;
+  uint32_t baud;
+  uint32_t etu_10ns;
+  uint8_t guard;
+  uint32_t t1_cwt;
+  uint32_t t1_bwt;
+  uint32_t t0_timeout;
+  uint8_t t1_bwt_factor;
+}} pps_kat_t;
+
+/* Table 7 of 8.3, as a bound a test can check the device's own frequency table against. */
+typedef struct {{
+  uint8_t code;
+  uint32_t fmax_hz;
+  const char* name;
+}} pps_fmax_t;
+
+static const pps_fmax_t PPS_FMAX[] = {{
+{fmax_rows}
+}};
+
+#define PPS_FMAX_COUNT (sizeof(PPS_FMAX) / sizeof(PPS_FMAX[0]))
+
+static const pps_kat_t PPS_KAT[] = {{
+{body}
+}};
+
+#define PPS_KAT_COUNT (sizeof(PPS_KAT) / sizeof(PPS_KAT[0]))
+
+#endif
+"""
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
@@ -11572,6 +12026,7 @@ def main() -> None:
         "vectors_pbkdf2.h": pbkdf2_vectors(),
         "vectors_util.h": util_vectors(),
         "vectors_atr.h": atr_vectors(),
+        "vectors_pps.h": pps_vectors(),
         "vectors_bip39.h": bip39_vectors(),
         "vectors_multisig.h": multisig_vectors(),
         "vectors_slip39.h": slip39_vectors(),
