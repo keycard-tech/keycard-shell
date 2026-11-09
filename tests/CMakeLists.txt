@@ -306,6 +306,8 @@ shellos_test(hash LIBS app_crypto)
 shellos_test(hmac LIBS app_crypto)
 shellos_test(rand LIBS app_crypto)
 shellos_test(pbkdf2 LIBS app_crypto)
+# crypto/util.c, named for the module rather than test_util, which is the framework helper.
+shellos_test(crypto_util LIBS app_crypto)
 shellos_test(hkdf LIBS app_crypto)
 shellos_test(bip39 LIBS app_crypto)
 shellos_test(slip39 LIBS app_crypto)

@@ -11108,12 +11108,187 @@ static const pbkdf2_kat_t PBKDF2_KAT[] = {{
 """
 
 
+def util_vectors() -> str:
+    """crypto/util.c -- the parsers that sit between a string someone typed and the bytes that get
+    hashed, plus the ISO 7816-4 padding the secure channel uses.
+
+    The arithmetic is Python's: a decimal or hex string through Python's big integers and to_bytes(32).
+    That is the point -- decimal_to_256 is a hand-rolled 256-bit accumulator (limbs * 8 plus a carry),
+    and an error in it changes the number being signed without changing its shape. The accept/reject
+    lines are not Python's: they are the contract str_to_int256 implements, written out here so that a
+    change to it -- what gets trimmed, whether a bare sign or a negative hex literal is accepted, where
+    a hex string stops fitting -- has to be changed in two places on purpose.
+    """
+    WS = " \t\n\v\f\r"
+    DIGITS = set("0123456789")
+    HEX = DIGITS | set("abcdefABCDEF")
+
+    def parse(text: str):
+        """The contract, as the module documents it: surrounding whitespace trimmed, one optional sign,
+        0x/0X introducing up to 64 hex digits and no sign, otherwise decimal up to 2**256 - 1. Returns
+        (magnitude, negative) or None for a rejection."""
+        i, j = 0, len(text)
+        while i < j and text[i] in WS:
+            i += 1
+        while j > i and text[j - 1] in WS:
+            j -= 1
+        neg = False
+        if i < j and text[i] in "+-":
+            neg = text[i] == "-"
+            i += 1
+            if i == j:
+                return None
+        if i == j:
+            return (0, False)
+        body = text[i:j]
+        if len(body) >= 2 and body[0] == "0" and body[1] in "xX":
+            if neg:
+                return None
+            digits = body[2:]
+            if len(digits) == 0 or len(digits) > 64 or any(c not in HEX for c in digits):
+                return None
+            return (int(digits, 16), False)
+        if any(c not in DIGITS for c in body):
+            return None
+        value = int(body)
+        if value >= 1 << 256:
+            return None
+        return (value, neg)
+
+    inputs = [
+        ("empty string", ""),
+        ("whitespace only", "   \t\n "),
+        ("zero", "0"),
+        ("one", "1"),
+        ("single digit with spaces", "\t 7 \n"),
+        ("carriage return and vertical tab", "\r\v42\f\v"),
+        ("leading zeros", "000000000000000000000016"),
+        ("plus sign", "+1234"),
+        ("negative one", "-1"),
+        ("negative zero", "-0"),
+        ("space after the sign", "- 7"),
+        ("bare sign", "-"),
+        ("bare sign with space", "+ "),
+        ("ten", "10"),
+        ("uint64 max", str(2**64 - 1)),
+        ("uint128 boundary", "340282366920938463463374607431768211455"),
+        ("uint256 max", str(2**256 - 1)),
+        ("uint256 overflow", str(2**256)),
+        ("seventy nine digits", "9" * 79),
+        ("negative uint256 max", "-" + str(2**256 - 1)),
+        ("two to the 255", str(2**255)),
+        ("negative two to the 255", "-" + str(2**255)),
+        ("hex zero", "0x0"),
+        ("hex lowercase", "0xdeadbeef"),
+        ("hex uppercase prefix", "0XFF"),
+        ("hex odd digits", "0xabc"),
+        ("hex one digit", "0xf"),
+        ("hex uint256 max", "0x" + "f" * 64),
+        ("hex one digit too many", "0x" + "f" * 65),
+        ("hex no digits", "0x"),
+        ("hex with a space inside", "0x1 f"),
+        ("negative hex", "-0x10"),
+        ("not a number", "12a3"),
+        ("space inside a decimal", "1 2"),
+        ("leading zero then letters", "0abc"),
+        ("hex letters out of range", "0xg"),
+    ]
+
+    int256_rows = []
+    for name, text in inputs:
+        got = parse(text)
+        if got is None:
+            int256_rows.append(f'    {{ "{name}", "{hexs(text.encode())}", NULL, false, NULL, 0 }},')
+            continue
+        mag, neg = got
+        value = (-mag) & ((1 << 256) - 1) if neg else mag
+        sig = 32 - ((mag.bit_length() + 7 + 7) // 8) if mag == 0 else (mag.bit_length() + 7) // 8
+        sig = 0 if mag == 0 else sig
+        int256_rows.append(
+            f'    {{ "{name}", "{hexs(text.encode())}", '
+            f'"{mag.to_bytes(32, "big").hex()}", {"true" if neg else "false"}, '
+            f'"{value.to_bytes(32, "big").hex()}", {sig} }},'
+        )
+
+    pad_rows = []
+    for plen in (16, 8):
+        for size in (0, 1, 7, 8, 15, 16, 17, 31, 32):
+            payload = bytes((0xa0 + i) & 0xff for i in range(size))
+            padding = plen - (size % plen)
+            padded = payload + b"\x80" + b"\x00" * (padding - 1)
+            pad_rows.append(
+                f'    {{ {plen}, "{hexs(payload)}", "{hexs(padded)}", {size + padding}, {size + plen} }},'
+            )
+
+    u64_rows = []
+    for value in (0, 1, 9, 10, 99, 100, 2**31 - 1, 2**32 - 1, 2**32, 2**53, 10**18, 2**64 - 1):
+        text = str(value)
+        u64_rows.append(f'    {{ {value}ULL, "{text}", {len(text) + 1} }},')
+
+    return f"""#ifndef VECTORS_UTIL_H
+#define VECTORS_UTIL_H
+
+/* The values are Python's -- big integers, to_bytes(32, "big"), str(). decimal_to_256 is a hand-rolled
+ * 256-bit accumulator and u64toa a hand-rolled decimal conversion, so the arithmetic here belongs to
+ * nobody who shipped this firmware. Which strings are accepted is this module's own contract, restated
+ * below and asserted verbatim: it is not pinned by any standard, and eip712.c reads whatever it returns
+ * into the struct hash of a message the user is being asked to approve.
+ */
+
+typedef struct {{
+  const char* name;
+  const char* text_hex;
+  const char* mag_hex;
+  bool negative;
+  const char* value_hex;
+  size_t significant;
+}} int256_kat_t;
+
+static const int256_kat_t INT256_KAT[] = {{
+{chr(10).join(int256_rows)}
+}};
+
+#define INT256_KAT_COUNT (sizeof(INT256_KAT) / sizeof(INT256_KAT[0]))
+
+/* ISO 7816-4 padding: 0x80 then zeros up to the next block. room is what the caller has to leave
+ * past the payload, because pad_iso9797_m1 always writes a whole block's worth. */
+typedef struct {{
+  uint8_t block;
+  const char* data_hex;
+  const char* padded_hex;
+  uint32_t padded_len;
+  uint32_t room;
+}} pad_kat_t;
+
+static const pad_kat_t PAD_KAT[] = {{
+{chr(10).join(pad_rows)}
+}};
+
+#define PAD_KAT_COUNT (sizeof(PAD_KAT) / sizeof(PAD_KAT[0]))
+
+typedef struct {{
+  uint64_t value;
+  const char* text;
+  uint32_t room;
+}} u64toa_kat_t;
+
+static const u64toa_kat_t U64TOA_KAT[] = {{
+{chr(10).join(u64_rows)}
+}};
+
+#define U64TOA_KAT_COUNT (sizeof(U64TOA_KAT) / sizeof(U64TOA_KAT[0]))
+
+#endif
+"""
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
         "vectors_hmac.h": hmac_vectors(),
         "vectors_hkdf.h": hkdf_vectors(),
         "vectors_pbkdf2.h": pbkdf2_vectors(),
+        "vectors_util.h": util_vectors(),
         "vectors_bip39.h": bip39_vectors(),
         "vectors_multisig.h": multisig_vectors(),
         "vectors_slip39.h": slip39_vectors(),
