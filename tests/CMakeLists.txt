@@ -372,6 +372,7 @@ shellos_test(hal_pka LIBS app_crypto)
 shellos_test(bip32 LIBS app_crypto)
 shellos_test(taproot LIBS app_bitcoin app_crypto)
 
+shellos_test(smartcard LIBS app_iso7816)
 shellos_test(atr LIBS app_iso7816)
 shellos_test(pps LIBS app_iso7816)
 shellos_test(t1 LIBS app_iso7816)

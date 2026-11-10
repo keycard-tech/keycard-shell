@@ -1,8 +1,9 @@
 #include "atr.h"
 #include "hal.h"
 
-#define ATR_T0_DEF_TIMEOUT 9600
-#define ATR_TIMEOUT 110
+/* 8.1: the answer to reset is framed with GT = 12 etu and WT = 9600 etu, which a card is free to use
+ * before its first character. The peripheral counts baud blocks, etu in smartcard mode. */
+#define ATR_WT 9600
 #define ATR_SIZE 2
 #define ATR_DIRECT_CONVENTION 0x3b
 
@@ -116,12 +117,10 @@ app_err_t atr_read(smartcard_t* sc) {
 
   uint8_t buf[4];
 
-  hal_smartcard_set_timeout(ATR_TIMEOUT);
+  hal_smartcard_set_timeout(ATR_WT);
   if (smartcard_receive_sync(sc, buf, 2) != ERR_OK) {
     return ERR_TXRX;
   }
-
-  hal_smartcard_set_timeout(ATR_T0_DEF_TIMEOUT);
 
   if (buf[0] != ATR_DIRECT_CONVENTION) {
     return ERR_DATA;
