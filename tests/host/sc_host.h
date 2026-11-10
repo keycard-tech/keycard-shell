@@ -29,6 +29,9 @@ void hal_host_sc_pps_refuse(bool refuse);
 /* What the shell transmitted, oldest first. */
 const uint8_t* hal_host_sc_sent(void);
 size_t hal_host_sc_sent_len(void);
+size_t hal_host_sc_apdu(uint8_t* out, size_t maxlen);
+size_t hal_host_sc_apdu_at(unsigned index, uint8_t* out, size_t maxlen);
+void hal_host_sc_reply_apdu(const char* hex);
 void hal_host_sc_sent_clear(void);
 
 /* Forget the wire, the reads, the timeouts and the delays, so that assertions describe only what

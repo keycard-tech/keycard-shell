@@ -10,6 +10,7 @@
 
 static uint8_t sent[WIRE_MAX];
 static size_t sent_len;
+static size_t last_sent_start;
 static unsigned send_calls;
 static unsigned send_refuse_left;
 
@@ -43,6 +44,7 @@ static bool pps_refuse;
 void hal_host_sc_reset(void) {
   memset(sent, 0, sizeof(sent));
   sent_len = 0;
+  last_sent_start = 0;
   send_calls = 0;
   send_refuse_left = 0;
 
@@ -106,6 +108,34 @@ void hal_host_sc_reply_hex(const char* hex) {
   }
 }
 
+/* Frames a card's answer to a one-block exchange the way the generated T=1 vectors queue one: NAD, an
+ * I-block PCB, the length, the payload, and the LRC of 11.4.4. */
+void hal_host_sc_reply_apdu(const char* hex) {
+  uint8_t info[WIRE_MAX];
+  size_t len = 0;
+
+  while ((*hex != '\0') && (hex[1] != '\0')) {
+    while ((*hex == ' ') || (hex[1] == ' ')) {
+      hex++;
+    }
+    if (hex[1] == '\0') {
+      return;
+    }
+    info[len++] = (uint8_t)((unhex_char(*hex) << 4) | unhex_char(hex[1]));
+    hex += 2;
+  }
+
+  const uint8_t hdr[3] = {0x00, 0x00, (uint8_t)len};
+  uint8_t lrc = hdr[0] ^ hdr[1] ^ hdr[2];
+  for (size_t i = 0; i < len; i++) {
+    lrc ^= info[i];
+  }
+
+  hal_host_sc_reply(hdr, sizeof(hdr));
+  hal_host_sc_reply(info, len);
+  hal_host_sc_reply(&lrc, 1);
+}
+
 size_t hal_host_sc_unread(void) {
   return reply_len - reply_pos;
 }
@@ -134,17 +164,51 @@ const uint8_t* hal_host_sc_sent(void) {
   return sent;
 }
 
+/* The information field of the first block in the record, header and epilogue removed, so that a
+ * consumer of the transport reads its rows as APDUs instead of of T=1 blocks: t1.c hands the
+ * peripheral a block in pieces, so there is no per-block send call to point at, and a test takes the
+ * record from hal_host_sc_sent_clear(). Zero when what went out first is not an I-block (11.2: the
+ * top bit of the PCB is clear) or is shorter than the length it declares -- the test's own failure,
+ * rather than the fake guessing at it. */
+size_t hal_host_sc_apdu_at(unsigned index, uint8_t* out, size_t maxlen) {
+  size_t off = 0;
+
+  for (unsigned seen = 0; off + 4 <= sent_len;) {
+    const size_t info = sent[off + 2];
+    if ((off + info + 4) > sent_len) {
+      return 0;
+    }
+    if (seen == index) {
+      if (((sent[off + 1] & 0x80) != 0) || (info > maxlen)) {
+        return 0;
+      }
+      memcpy(out, sent + off + 3, info);
+      return info;
+    }
+    off += info + 4;
+    seen++;
+  }
+
+  return 0;
+}
+
+size_t hal_host_sc_apdu(uint8_t* out, size_t maxlen) {
+  return hal_host_sc_apdu_at(0, out, maxlen);
+}
+
 size_t hal_host_sc_sent_len(void) {
   return sent_len;
 }
 
 void hal_host_sc_sent_clear(void) {
   sent_len = 0;
+  last_sent_start = 0;
   send_calls = 0;
 }
 
 void hal_host_sc_phase(void) {
   sent_len = 0;
+  last_sent_start = 0;
   send_calls = 0;
   read_calls = 0;
   fail_read_after = SCRIPT_OFF;

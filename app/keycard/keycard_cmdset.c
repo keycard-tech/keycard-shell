@@ -8,8 +8,6 @@
 #include "crypto/util.h"
 #include "keycard/secure_channel.h"
 
-const extern uint8_t KEYCARD_DEFAULT_PSK[];
-
 #define KEYCARD_INIT_CMD_LEN_V1 (KEYCARD_PIN_LEN + KEYCARD_PUK_LEN + SHA256_DIGEST_LENGTH + 2 + KEYCARD_PIN_LEN)
 #define KEYCARD_INIT_CMD_LEN_V2 (KEYCARD_PIN_LEN + KEYCARD_PUK_LEN + 2 + KEYCARD_PIN_LEN)
 

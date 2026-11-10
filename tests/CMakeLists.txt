@@ -153,6 +153,20 @@ target_include_directories(app_keycard PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURREN
 target_compile_options(app_keycard PRIVATE ${SHELLOS_COMMON_FLAGS})
 target_link_libraries(app_keycard PUBLIC app_util)
 
+# The commands the applet is spoken to, and the channel they are handed to. keycard_cmdset.c is the
+# APDU builders and the status-word mapping; secure_channel*.c is what decides whether a command goes
+# out at all, so the three are one link unit. keycard.c is not in it: it needs the ui, and the two
+# statements of keycard_init are made by the test's own setUp.
+add_library(app_keycard_cmdset STATIC
+    ${SHELLOS_ROOT}/app/keycard/keycard_cmdset.c
+    ${SHELLOS_ROOT}/app/keycard/secure_channel.c
+    ${SHELLOS_ROOT}/app/keycard/secure_channel_v1.c
+    ${SHELLOS_ROOT}/app/keycard/secure_channel_v2.c
+)
+target_include_directories(app_keycard_cmdset PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_keycard_cmdset PRIVATE ${SHELLOS_COMMON_FLAGS})
+target_link_libraries(app_keycard_cmdset PUBLIC app_util app_aes)
+
 # What a SIGN reply becomes once it is a PSBT input record: BIP-174's key and value, assembled from
 # the reply that test_keycard_signature pins. Kept apart from core_btc.c, which cannot be linked
 # here, so that a record built wrong is a failing test and not a device symptom.
@@ -355,6 +369,7 @@ shellos_test(tlv LIBS app_keycard)
 shellos_test(ecdsa_der LIBS app_crypto app_keycard)
 shellos_test(ecdsa_curve LIBS app_crypto)
 shellos_test(keycard_signature LIBS app_crypto app_keycard)
+shellos_test(keycard_cmdset LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)

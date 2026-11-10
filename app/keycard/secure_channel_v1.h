@@ -8,6 +8,8 @@
 
 #define SC_PAD AES_IV_SIZE
 
+extern const uint8_t KEYCARD_DEFAULT_PSK[];
+
 typedef struct __attribute__((packed, aligned(4))) {
   uint8_t enc_key[AES_256_KEY_SIZE];
   uint8_t mac_key[AES_256_KEY_SIZE];
