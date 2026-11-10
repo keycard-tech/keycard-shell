@@ -16,6 +16,9 @@ typedef struct __attribute__((packed, aligned(4))) {
   uint8_t iv[AES_IV_SIZE];
 } secure_channel_v1_t;
 
+/* What follows are the protocol steps of this version, private to secure_channel.c: call the
+ * securechannel_*() wrappers, which own the open state and wipe the keys when an exchange fails. */
+
 app_err_t securechannel_v1_open(secure_channel_v1_t* sc, smartcard_t* card, apdu_t* apdu, pairing_t* pairing, uint8_t* sc_pub);
 app_err_t securechannel_v1_init(smartcard_t* card, apdu_t* apdu, uint8_t* sc_pub, uint8_t* data, uint32_t len);
 app_err_t securechannel_v1_protect_apdu(secure_channel_v1_t *sc, apdu_t* apdu, uint8_t* data, uint32_t len);

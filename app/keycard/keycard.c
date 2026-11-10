@@ -496,11 +496,11 @@ static app_err_t keycard_read_name(keycard_t* kc) {
 }
 
 static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin) {
+  securechannel_close(&kc->ch);
+
   if (keycard_cmd_select(kc, KEYCARD_AID, KEYCARD_AID_LEN) != ERR_OK) {
     return ERR_TXRX;
   }
-
-  kc->ch.open = 0;
 
   if (APDU_SW(&kc->apdu) != SW_OK) {
     ui_keycard_wrong_card();
@@ -606,7 +606,7 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
 
 void keycard_init(keycard_t* kc) {
   smartcard_init(&kc->sc);
-  kc->ch.open = 0;
+  securechannel_close(&kc->ch);
 }
 
 void keycard_activate(keycard_t* kc) {
@@ -729,5 +729,6 @@ void keycard_in(keycard_t* kc) {
 void keycard_out(keycard_t* kc) {
   ui_card_removed();
   smartcard_out(&kc->sc);
-  kc->ch.open = 0;
+  /* The card is gone; the session keys for it have to be too. */
+  securechannel_close(&kc->ch);
 }

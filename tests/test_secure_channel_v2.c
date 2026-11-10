@@ -278,7 +278,8 @@ void test_a_command_reaches_the_card_in_plaintext_it_holds_keys_for(void) {
   APDU_P1(&kc.apdu) = 0;
   APDU_P2(&kc.apdu) = 0;
 
-  TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_v2_send_apdu(&kc.sc, &kc.ch.v2, &kc.apdu, pin, sizeof(pin)));
+  /* Through the wrapper, the way keycard_cmdset.c sends everything. */
+  TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_send_apdu(&kc.sc, &kc.ch, &kc.apdu, pin, sizeof(pin)));
 
   /* What left is SECURED_APDU around a CCM seal; opening the seal must show the VERIFY command the
    * card is meant to see, header and all. */
@@ -423,6 +424,20 @@ void test_a_substituted_identity_is_caught(void) {
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
   TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
+
+  /* The keys are derived before the signature is looked at, so the failed open has to leave nothing
+   * behind -- and the wrapper refuses a command on a channel that never opened, so no PIN of the
+   * user's is ever sealed under an impostor's keys. */
+  const uint8_t zero[sizeof(kc.ch.v2)] = {0};
+  TEST_ASSERT_EQUAL_MEMORY(zero, &kc.ch.v2, sizeof(kc.ch.v2));
+
+  const size_t sent = hal_host_sc_sent_len();
+  TEST_ASSERT_TRUE_MESSAGE(sent > 0, "the handshake never reached the card");
+
+  SC_BUF(pin, KEYCARD_PIN_LEN);
+  memset(pin, '1', KEYCARD_PIN_LEN);
+  TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, securechannel_send_apdu(&kc.sc, &kc.ch, &kc.apdu, pin, KEYCARD_PIN_LEN));
+  TEST_ASSERT_EQUAL_UINT_MESSAGE(sent, hal_host_sc_sent_len(), "a sealed command reached the wire");
 }
 
 /* The card's ephemeral point is used in ECDHE before its signature is looked at, so the point
@@ -510,7 +525,18 @@ void test_a_tampered_reply_is_not_unlocked(void) {
   APDU_P2(&kc.apdu) = 0;
 
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO,
-                        securechannel_v2_send_apdu(&kc.sc, &kc.ch.v2, &kc.apdu, pin, sizeof(pin)));
+                        securechannel_send_apdu(&kc.sc, &kc.ch, &kc.apdu, pin, sizeof(pin)));
+
+  /* A reply the shell cannot open ends the session rather than pausing it: keys, nonce chain and
+   * open flag together, so a card that stops proving itself cannot keep talking. */
+  TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
+  const uint8_t zero[sizeof(kc.ch.v2)] = {0};
+  TEST_ASSERT_EQUAL_MEMORY(zero, &kc.ch.v2, sizeof(kc.ch.v2));
+
+  const size_t sent = hal_host_sc_sent_len();
+  TEST_ASSERT_EQUAL_INT(ERR_CRYPTO,
+                        securechannel_send_apdu(&kc.sc, &kc.ch, &kc.apdu, pin, sizeof(pin)));
+  TEST_ASSERT_EQUAL_UINT_MESSAGE(sent, hal_host_sc_sent_len(), "a command went out on a dead session");
 }
 
 /* 6982 is the applet saying the security condition is not satisfied; the channel is over, whatever

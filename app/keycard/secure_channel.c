@@ -16,7 +16,16 @@ app_err_t securechannel_open(secure_channel_t* sc, smartcard_t* card, apdu_t* ap
   }
 
   sc->version = version;
-  sc->open = err == ERR_OK ? 1 : 0;
+
+  if (err != ERR_OK) {
+    /* Both versions install the session keys before the card has proved anything -- v1 before the
+     * mutual authenticate, v2 before the signature over the transcript is checked -- so clearing the
+     * flag alone would leave keys for a session nobody completed. */
+    securechannel_close(sc);
+    return err;
+  }
+
+  sc->open = 1;
 
   return err;
 }
@@ -28,7 +37,13 @@ app_err_t securechannel_init(smartcard_t* card, secure_channel_t* sc, apdu_t* ap
         return err;
       }
 
-      return securechannel_v2_init(card, &sc->v2, apdu, data, len);
+      err = securechannel_v2_init(card, &sc->v2, apdu, data, len);
+      if (err != ERR_OK) {
+        /* The handshake succeeded a command ago, so there is something to wipe here. */
+        securechannel_v2_close(&sc->v2);
+      }
+
+      return err;
     } else {
       return securechannel_v1_init(card, apdu, sc_data, data, len);
     }
@@ -49,12 +64,16 @@ app_err_t securechannel_send_apdu(smartcard_t* card, secure_channel_t *sc, apdu_
   }
 
   if (err != ERR_OK) {
-    sc->open = 0;
+    /* A sealed exchange that failed is not resumable -- the chain or nonce that failed is state, not
+     * a retry -- so the keys go with the flag that was already being cleared. */
+    securechannel_close(sc);
   }
 
   return err;
 }
 
+/* Also correct on a struct that was never opened, which is what the callers at boot and at card
+ * removal rely on: it only zeroes, whatever half it picks. */
 void securechannel_close(secure_channel_t* sc) {
   if (sc->version == SC_V2) {
     securechannel_v2_close(&sc->v2);
