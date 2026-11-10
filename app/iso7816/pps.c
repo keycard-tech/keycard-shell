@@ -38,6 +38,12 @@ app_err_t pps_negotiate(smartcard_t* sc) {
    * Fd and Dd -- do, and a TA1 that carries no valid values is then not read. */
   const int implicit = (sc->atr.ta2 != ATR_INVALID_TA2) && (sc->atr.ta2 & 0x10);
 
+  /* 6.3.1: an answer to reset that carries TA2 puts the card in specific mode, where the interface
+   * device shall start the specific protocol with the specific values instead -- and such a card need
+   * not support a PPS exchange at all. The specific values are the ones taken from TA1 below, or Fd
+   * and Dd when TA2 bit 5 says they are implicit. */
+  const int specific = (sc->atr.ta2 != ATR_INVALID_TA2);
+
   uint8_t rate = fi_code;
   if (implicit) {
     if ((F_Table[rate] == 0) || (D_Table[di_code] == 0)) {
@@ -52,7 +58,7 @@ app_err_t pps_negotiate(smartcard_t* sc) {
   uint32_t f = implicit ? fd : F_Table[fi_code];
   uint32_t d = implicit ? dd : D_Table[di_code];
 
-  if (sc->atr.default_protocol == SC_T1) {
+  if (!specific && (sc->atr.default_protocol == SC_T1)) {
     /* 9.1: the request goes out whatever the rates are, because PPS0's type nibble is how the card
      * is told which protocol to run, at WT = 9600 etu -- the waiting time the ATR read already
      * armed, so nothing here reprograms it before the exchange. PPS1 is there only when there is
@@ -119,6 +125,9 @@ app_err_t pps_negotiate(smartcard_t* sc) {
       return ERR_DATA;
     }
 
+  }
+
+  if (sc->atr.default_protocol == SC_T1) {
     /* 11.4.3, both of which carry an 11 etu term, and BWT with Fd over f rather than Fi. */
     sc->t1_cwt = 11 + (1u << sc->atr.t1_cwi);
     sc->t1_bwt = 11 + ((1u << sc->atr.t1_bwi) * 960 * fd * d / f);

@@ -70,6 +70,14 @@ static const pps_kat_t PPS_KAT[] = {
         "FF1118F6", 1, 5000000, 161290, 620,
         0, 8203, 184331, 0, 1,
     },
+    /* Card ATR 3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2. TB3 = 00: CWI = 0 is
+     * legal, 11.4.3 says so, and puts CWT at its minimum of 12 etu -- one etu above the eleven this
+     * reader's character spans -- while BWI = 0 puts BWT at 960 Fd/f plus the 11 etu. */
+    {
+        "cryptnox fido2", "3BFA1300FF910131FE000031C173C84000009000D2", NULL, ERR_OK, 1,
+        "", 1, 5000000, 53763, 1860,
+        0, 12, 3851, 0, 1,
+    },
     /* Card ATR 3B D5 18 FF 81 91 FE 1F C3 80 73 C8 21 10 0A. 9.3: an answer with bit 5 clear is a
      * successful exchange, and Fd = 372 with Dn = 1 are then in force even though TA1 indicated 372
      * over 12 -- the etu grows twelvefold, and so does CWT */
@@ -103,15 +111,15 @@ static const pps_kat_t PPS_KAT[] = {
     /* Card ATR 3B 90 77 91 11 11 FE 88. TA2 = 11 has bit 5 set, so 8.3 takes the implicit Fd and Dd,
      * and the RFU nibble of TA1 is none of the reader's business because nothing reads it */
     {
-        "ta2 implicit", "3B9077911111FE88", "FF01FE", ERR_OK, 1,
-        "FF01FE", 1, 5000000, 13440, 7440,
+        "ta2 implicit", "3B9077911111FE88", NULL, ERR_OK, 1,
+        "", 1, 5000000, 13440, 7440,
         1, 8203, 15371, 0, 1,
     },
     /* Card ATR 3B 90 95 91 01 11 FE 7A. TA2 = 01 leaves bit 5 clear, so the Fi = 512 and Di = 1 of
      * TA1 apply and are what gets proposed */
     {
-        "ta2 indicated", "3B9095910111FE7A", "FF11957B", ERR_OK, 1,
-        "FF11957B", 1, 5000000, 156250, 640,
+        "ta2 indicated", "3B9095910111FE7A", NULL, ERR_OK, 1,
+        "", 1, 5000000, 156250, 640,
         1, 8203, 178571, 0, 1,
     },
     /* Card ATR 3B 90 11 81 21 00 21. 11.4.3 with CWI = 0 gives CWT = 11 + 1 = 12 etu, the minimum

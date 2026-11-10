@@ -11344,6 +11344,9 @@ CAPTURED_ATRS = [
     ("jcop 2.4.1r3", "3B EA 00 00 81 31 FE 45 00 31 C1 73 C8 40 00 00 90 00 7A", "own",
      "Y1 sets TB1, TC1 and TD1 and no TA1, so 8.3 gives Fi = 372 and Di = 1 even though a TB1 is there "
      "to be ignored, and TC1 = 00 is N = 0 rather than a missing byte"),
+    ("cryptnox fido2", "3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2", "own",
+     "VPP not connected, TC1 = FF, T=1 offered by TD1 and again by TD2, whose triple is IFSC 254 "
+     "with TB3 = 00, asking for CWI 0 and BWI 0"),
     ("acosj 40k", "3B 69 00 02 41 43 4F 53 4A 76 31 30 31", "own",
      "TB1 and TC1 and no TD anywhere, so 8.2.3 leaves only T=0 by default and 8.2.5 wants no check "
      "byte: the ATR ends with the nine historical bytes spelling ACOSJv101"),
@@ -11713,6 +11716,10 @@ PPS_CASES = [
      "echo",
      "Fi = 372 comes from the upper nibble of TA1 and Di = 12 from the lower, so the proposal carries "
      "them, the bit rate is twelve per etu, and N = 255 asks for no extra guard"),
+    ("cryptnox fido2", "3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2", "echo",
+     "TB3 = 00: CWI = 0 is legal, 11.4.3 says so, and puts CWT at its minimum of 12 etu -- one etu "
+     "above the eleven this reader's character spans -- while BWI = 0 puts BWT at 960 Fd/f plus the "
+     "11 etu. The card that lights only the backlight"),
     ("comsign declined", mk_atr([{"TA1": 0x18, "TC1": 0xFF}, (1, {}), (1, {"TA": 0xFE}),
                                  (15, {"TA": 0xC3})], bytes.fromhex("8073C82110")),
      "decline",
@@ -11843,6 +11850,17 @@ def pps_expect(atr: str, answer: str | None) -> dict:
         e["pps_called"] = 1  # the waiting time still reaches the peripheral; no exchange is made
         return e
 
+    if a["ta2"] != 0xFF:
+        # 6.3.1: an answer to reset carrying TA2 puts the card in specific mode. The interface device
+        # shall start the specific protocol with the specific values -- Fi and Di from TA1, or Fd and
+        # Dd when TA2 bit 5 says they are implicit -- and such a card need not support a PPS exchange,
+        # so nothing goes on the wire: the parameters are simply applied.
+        e["pps_called"] = 1
+        e["guard"] = guard()
+        e["cwt"] = 11 + (1 << a["t1_cwi"])
+        e["bwt"] = 11 + (((1 << a["t1_bwi"]) * 960 * FD * di) // fi)
+        return e
+
     # 9.1 and 9.2: the request goes out whatever the rates are, because PPS0's type nibble is what
     # puts the card into T=1. PPS1 is only there when there is something to propose.
     propose = (fi, di) != (FD, DD)
@@ -11913,6 +11931,8 @@ def pps_expect(atr: str, answer: str | None) -> dict:
 def pps_vectors() -> str:
     rows = []
     for name, atr, answer, note in PPS_CASES:
+        if iso_expect(atr)["ta2"] != 0xFF:
+            answer = None  # 6.3.1: specific mode, the exchange never happens
         if answer is not None and re.fullmatch(r"[0-9A-F]+", answer):
             rows.append((name, atr, answer, note, pps_expect(atr, answer)))
             continue
@@ -12068,7 +12088,10 @@ def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
     """The exchange 11.6 describes, from the script of blocks the card sends. Reader output is built
     from the clauses, not from t1.c: the point is that the two agree by different routes."""
     a = iso_expect(atr)
-    answer = pps_answer(a["default_protocol"], None if a["fi_di"] == 0x11 else a["fi_di"])
+    # 6.3.1: a card in specific mode is addressed by the specific protocol from the first character,
+    # so the blocks below are not preceded by an answer to a PPS request.
+    answer = None if a["ta2"] != 0xFF else pps_answer(
+        a["default_protocol"], None if a["fi_di"] == 0x11 else a["fi_di"])
     p = pps_expect(atr, answer)
 
     ifsc = a["t1_ifsc"]
@@ -12343,6 +12366,16 @@ T1_CASES = [
          entry=T1_XMIT, card=t1_r(1) + t1_i(0, SW_OK),
          note="APDU_LEN is 4 + 1 + 255 for a full data field, which is why the count of bytes left "
               "to send is not a byte: 254 in the first chunk, 6 in the second"),
+    dict(name="cryptnox single response", atr="3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2",
+         cmd=apdu_bytes(0x00, 0xA4, 0x04, 0x00, bytes.fromhex("A0 00 00 08 04 00 01")),
+         entry=T1_XMIT, card=t1_i(0, SW_OK),
+         note="the card that lights only the backlight, at its own parameters: IFSC 254, CWI 0 so CWT is "
+              "the 12 etu minimum of 11.4.3, BWI 0 so BWT is 960 Fd/f plus 11 etu, and no TC3 so the LRC"),
+    dict(name="cryptnox silent card", atr="3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2",
+         cmd=apdu_bytes(0x00, 0xA4, 0x04, 0x00, bytes.fromhex("A0 00 00 08 04 00 01")),
+         entry=T1_XMIT, card=b"",
+         note="the same card saying nothing: the block waiting time it asked for is the only thing that "
+              "ends the exchange, and with BWI = 0 it is the shortest the text allows"),
     dict(name="peripheral refuses the write", atr=t1_atr(), cmd=C5, entry=T1_XMIT,
          card=t1_i(0, SW_OK), refuse_sends=1,
          note="a write the peripheral refuses is not a card error to retry: the exchange is over, "
@@ -12370,7 +12403,9 @@ def t1_vectors() -> str:
     body = "\n".join(
         f'{comment(name, atr, note)}\n'
         f'    {{\n'
-        f'        "{name}", "{atr.replace(" ", "")}", "{e["pps_answer"].replace(" ", "")}", "{cmd.hex().upper()}", '
+        f'        "{name}", "{atr.replace(" ", "")}", '
+        f'{"NULL" if e["pps_answer"] is None else chr(34) + e["pps_answer"].replace(" ", "") + chr(34)}, '
+        f'"{cmd.hex().upper()}", '
         f'{has_lc}, {has_le}, {entry}, {retry}, {refuse},\n'
         f'        "{card.hex().upper()}", {e["result"]}, "{e["wire"].upper()}",\n'
         f'        {e["send_seq"]}, {e["recv_seq"]}, {e["ifsc"]}, {e["bwt_factor"]}, '

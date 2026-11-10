@@ -212,6 +212,14 @@ static const atr_kat_t ATR_KAT[] = {
         0xFE, 4, 5, 0, 0, 0x01, 0x00,
         10, "0031c173c84000009000",
     },
+    /* Card: cryptnox fido2. VPP not connected, TC1 = FF, T=1 offered by TD1 and again by
+     * TD2, whose triple is IFSC 254 with TB3 = 00, asking for CWI 0 and BWI 0 */
+    {
+        "cryptnox fido2", "3BFA1300FF910131FE000031C173C84000009000D2", ERR_OK, 1,
+        0x13, 0xFF, 0x01, 10, 1, 2,
+        0xFE, 0, 0, 0, 0, 0x01, 0x00,
+        10, "0031c173c84000009000",
+    },
     /* Card: acosj 40k. TB1 and TC1 and no TD anywhere, so 8.2.3 leaves only T=0 by default and 8.2.5
      * wants no check byte: the ATR ends with the nine historical bytes spelling ACOSJv101 */
     {

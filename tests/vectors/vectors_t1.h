@@ -257,6 +257,24 @@ static const t1_kat_t T1_KAT[] = {
         0, 1, 254, 1, 0, 272, 2,
         4, {184331, 43, 184331, 43},
     },
+    /* ATR 3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2. the card that lights only
+     * the backlight, at its own parameters: IFSC 254, CWI 0 so CWT is the 12 etu minimum of 11.4.3,
+     * BWI 0 so BWT is 960 Fd/f plus 11 etu, and no TC3 so the LRC */
+    {
+        "cryptnox single response", "3BFA1300FF910131FE000031C173C84000009000D2", NULL, "00A4040007A0000008040001", 1, 0, 0, 0, 0,
+        "000002900092", ERR_OK, "00000C00A4040007A000000804000106",
+        1, 1, 254, 1, 0, 409, 2,
+        2, {3851, 12},
+    },
+    /* ATR 3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2. the same card saying
+     * nothing: the block waiting time it asked for is the only thing that ends the exchange, and
+     * with BWI = 0 it is the shortest the text allows */
+    {
+        "cryptnox silent card", "3BFA1300FF910131FE000031C173C84000009000D2", NULL, "00A4040007A0000008040001", 1, 0, 0, 0, 0,
+        "", ERR_TXRX, "00000C00A4040007A000000804000106",
+        0, 0, 254, 1, 0, 0, 0,
+        1, {3851},
+    },
     /* ATR 3B 90 18 81 71 20 45 00 1D. a write the peripheral refuses is not a card error to retry:
      * the exchange is over, with nothing claimed to have been sent */
     {
