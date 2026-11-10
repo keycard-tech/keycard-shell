@@ -497,6 +497,8 @@ static void dialog_measure_string_in_pages(screen_text_ctx_t* ctx, pager_ctx_t* 
     uint16_t to_display = str_len - offset;
     uint16_t remaining = screen_draw_text(ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &str[offset], to_display, true, false);
 
+    /* TODO: report page/offset exhaustion to callers instead of truncating.
+     * Expanded calldata can exceed the pager's existing limits. */
     if (!remaining || pager->last_page == (MAX_PAGE_COUNT - 1)) {
       break;
     }
