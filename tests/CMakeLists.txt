@@ -370,6 +370,7 @@ shellos_test(ecdsa_der LIBS app_crypto app_keycard)
 shellos_test(ecdsa_curve LIBS app_crypto)
 shellos_test(keycard_signature LIBS app_crypto app_keycard)
 shellos_test(keycard_cmdset LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
+shellos_test(secure_channel_v2 LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)
