@@ -72,11 +72,19 @@ static const pps_kat_t PPS_KAT[] = {
     },
     /* Card ATR 3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2. TB3 = 00: CWI = 0 is
      * legal, 11.4.3 says so, and puts CWT at its minimum of 12 etu -- one etu above the eleven this
-     * reader's character spans -- while BWI = 0 puts BWT at 960 Fd/f plus the 11 etu. */
+     * reader's character spans -- while BWI = 0 puts BWT at 960 Fd/f plus the 11 etu. The card that
+     * lights only the backlight */
     {
         "cryptnox fido2", "3BFA1300FF910131FE000031C173C84000009000D2", NULL, ERR_OK, 1,
         "", 1, 5000000, 53763, 1860,
         0, 12, 3851, 0, 1,
+    },
+    /* Card ATR 3B F0 11 00 FF 91 00 01 8E. 6.3.1 applies the specific values at once, so T=0 is
+     * programmed with 10.2's waiting time and no request goes out */
+    {
+        "specific t0", "3BF01100FF9100018E", NULL, ERR_OK, 1,
+        "", 0, 5000000, 13440, 7440,
+        1, 0, 0, 9600, 1,
     },
     /* Card ATR 3B D5 18 FF 81 91 FE 1F C3 80 73 C8 21 10 0A. 9.3: an answer with bit 5 clear is a
      * successful exchange, and Fd = 372 with Dn = 1 are then in force even though TA1 indicated 372

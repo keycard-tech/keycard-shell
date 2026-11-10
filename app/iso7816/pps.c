@@ -38,10 +38,8 @@ app_err_t pps_negotiate(smartcard_t* sc) {
    * Fd and Dd -- do, and a TA1 that carries no valid values is then not read. */
   const int implicit = (sc->atr.ta2 != ATR_INVALID_TA2) && (sc->atr.ta2 & 0x10);
 
-  /* 6.3.1: an answer to reset that carries TA2 puts the card in specific mode, where the interface
-   * device shall start the specific protocol with the specific values instead -- and such a card need
-   * not support a PPS exchange at all. The specific values are the ones taken from TA1 below, or Fd
-   * and Dd when TA2 bit 5 says they are implicit. */
+  /* 6.3.1: an answer to reset carrying TA2 is in specific mode, where the specific values apply at once
+   * and the card need not support a PPS exchange. */
   const int specific = (sc->atr.ta2 != ATR_INVALID_TA2);
 
   uint8_t rate = fi_code;

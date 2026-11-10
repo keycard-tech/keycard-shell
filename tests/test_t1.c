@@ -38,7 +38,7 @@ static size_t queue(const char* hex) {
   uint8_t bytes[512];
 
   if (hex == NULL) {
-    return 0; /* a card in specific mode is met without a PPS answer, 6.3.1 */
+    return 0; /* 6.3.1: specific mode, no PPS answer */
   }
   const size_t len = test_unhex(hex, bytes, sizeof(bytes));
   TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE((unsigned)sizeof(bytes), (unsigned)len, "vector too long");

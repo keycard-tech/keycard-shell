@@ -133,7 +133,7 @@ static const atr_kat_t ATR_KAT[] = {
      * invalid */
     {
         "t15 in td1", "3B811F00CC52", ERR_DATA, 1,
-        0x11, 0x00, 0x00, 10, 15, 0,
+        0x11, 0x00, 0x00, 10, 0, 0,
         0x20, 4, 13, 0, 0, 0x01, 0x00,
         1, "cc",
     },
@@ -212,8 +212,8 @@ static const atr_kat_t ATR_KAT[] = {
         0xFE, 4, 5, 0, 0, 0x01, 0x00,
         10, "0031c173c84000009000",
     },
-    /* Card: cryptnox fido2. VPP not connected, TC1 = FF, T=1 offered by TD1 and again by
-     * TD2, whose triple is IFSC 254 with TB3 = 00, asking for CWI 0 and BWI 0 */
+    /* Card: cryptnox fido2. VPP not connected, TC1 = FF, T=1 offered by TD1 and again by TD2, whose
+     * triple is IFSC 254 with TB3 = 00, asking for CWI 0 and BWI 0 */
     {
         "cryptnox fido2", "3BFA1300FF910131FE000031C173C84000009000D2", ERR_OK, 1,
         0x13, 0xFF, 0x01, 10, 1, 2,
@@ -248,8 +248,24 @@ static const atr_kat_t ATR_KAT[] = {
      * class A and clock stop not supported; with nothing but T=0 indicated, 8.2.5 gives no check
      * byte */
     {
-        "t0 offered, no t15", "3B80100B", ERR_OK, 0,
-        0x11, 0x00, 0x0B, 10, 0, 1,
+        "t0 offered, no t15", "3B80400B", ERR_OK, 0,
+        0x11, 0x00, 0xFF, 11, 0, 1,
+        0x20, 4, 13, 0, 0, 0x01, 0x00,
+        0, "",
+    },
+    /* Synthetic: specific t0. TD1 offers T=1, but TA2 = 00 is specific mode with type 0, so 6.3.1
+     * runs T=0 and bit 5 clear keeps TA1's Fi = 372 and Di = 1 */
+    {
+        "specific t0", "3BF01100FF9100018E", ERR_OK, 1,
+        0x11, 0xFF, 0x00, 10, 0, 2,
+        0x20, 4, 13, 0, 0, 0x01, 0x00,
+        0, "",
+    },
+    /* Synthetic: specific unsupported type. 8.3's NOTE: a type the interface device cannot run is a
+     * warm reset or a deactivation, so TA2 = 8F of specific mode and type 15 is refused */
+    {
+        "specific unsupported type", "3BF01100FF918F0101", ERR_DATA, 1,
+        0x11, 0xFF, 0x8F, 10, 1, 2,
         0x20, 4, 13, 0, 0, 0x01, 0x00,
         0, "",
     },

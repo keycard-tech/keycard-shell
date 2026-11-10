@@ -11355,9 +11355,15 @@ CAPTURED_ATRS = [
     ("t15 not last", "3B 80 80 9F 11 01 8F", "spec",
      "TD2 brings T=15 and TD3 repeats T=1 after it; 8.2.3 puts T=15 last, so the offer is refused "
      "rather than handed to pps_negotiate as a protocol of 15"),
-    ("t0 offered, no t15", "3B 80 10 0B", "spec",
+    ("t0 offered, no t15", "3B 80 40 0B", "spec",
      "TD1 offers T=0 and TC2 = 0B is its WI. With no T=15, 8.3 gives class A and clock stop not "
      "supported; with nothing but T=0 indicated, 8.2.5 gives no check byte"),
+    ("specific t0", "3B F0 11 00 FF 91 00 01 8E", "spec",
+     "TD1 offers T=1, but TA2 = 00 is specific mode with type 0, so 6.3.1 runs T=0 and bit 5 clear "
+     "keeps TA1's Fi = 372 and Di = 1"),
+    ("specific unsupported type", "3B F0 11 00 FF 91 8F 01 01", "spec",
+     "8.3's NOTE: a type the interface device cannot run is a warm reset or a deactivation, so TA2 = 8F "
+     "of specific mode and type 15 is refused"),
 ]
 
 
@@ -11446,6 +11452,15 @@ def iso_expect(atr: str) -> dict:
             e["ta2"] = g2["TA"]
         if g2.get("TC") is not None:
             e["t0_wi"] = g2["TC"]
+
+    if e["ta2"] != 0xFF:
+        # 6.3.1 with 8.3: in specific mode the protocol is the type TA2 encodes. A type the reader
+        # cannot run is the deactivation 8.3's NOTE asks for.
+        specific = e["ta2"] & 0x0F
+        if specific in (0, 1):
+            e["default_protocol"] = specific
+        else:
+            e["result"] = "ERR_DATA"
 
     # 8.2.3: from the third group on, the type in the TD before it decides what TAi TBi TCi mean.
     # 11.4.1 and 8.3 then take only the first of each kind for their type.
@@ -11720,6 +11735,9 @@ PPS_CASES = [
      "TB3 = 00: CWI = 0 is legal, 11.4.3 says so, and puts CWT at its minimum of 12 etu -- one etu "
      "above the eleven this reader's character spans -- while BWI = 0 puts BWT at 960 Fd/f plus the "
      "11 etu. The card that lights only the backlight"),
+    ("specific t0", "3B F0 11 00 FF 91 00 01 8E", None,
+     "6.3.1 applies the specific values at once, so T=0 is programmed with 10.2's waiting time and no "
+     "request goes out"),
     ("comsign declined", mk_atr([{"TA1": 0x18, "TC1": 0xFF}, (1, {}), (1, {"TA": 0xFE}),
                                  (15, {"TA": 0xC3})], bytes.fromhex("8073C82110")),
      "decline",
@@ -11851,10 +11869,8 @@ def pps_expect(atr: str, answer: str | None) -> dict:
         return e
 
     if a["ta2"] != 0xFF:
-        # 6.3.1: an answer to reset carrying TA2 puts the card in specific mode. The interface device
-        # shall start the specific protocol with the specific values -- Fi and Di from TA1, or Fd and
-        # Dd when TA2 bit 5 says they are implicit -- and such a card need not support a PPS exchange,
-        # so nothing goes on the wire: the parameters are simply applied.
+        # 6.3.1: specific mode applies the specific values at once, and the card need not support a PPS
+        # exchange, so nothing goes on the wire.
         e["pps_called"] = 1
         e["guard"] = guard()
         e["cwt"] = 11 + (1 << a["t1_cwi"])
@@ -12041,6 +12057,7 @@ static const pps_kat_t PPS_KAT[] = {{
 T1_IFSD = 254          # t1.h offers this as IFSD in S(IFS request)
 T1_BUF = 261           # smartcard.h's APDU_BUF_LEN
 T1_BGT = 22            # 11.2, both directions
+T1_BWT_WAIT = 2        # 11.4.3 bounds the card's reply; 32 bits leave room for two times the largest
 T1_EDC_RETRIES = 3     # t1.c's T1_MAX_LRC_RETRIES: 7.4.1 allows two further attempts, so one spare
 T1_TIMEOUTS_MAX = 24
 T1_XMIT, T1_IFSD_ENTRY = 0, 1
@@ -12088,8 +12105,7 @@ def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
     """The exchange 11.6 describes, from the script of blocks the card sends. Reader output is built
     from the clauses, not from t1.c: the point is that the two agree by different routes."""
     a = iso_expect(atr)
-    # 6.3.1: a card in specific mode is addressed by the specific protocol from the first character,
-    # so the blocks below are not preceded by an answer to a PPS request.
+    # 6.3.1: specific mode, so no PPS answer precedes the blocks below.
     answer = None if a["ta2"] != 0xFF else pps_answer(
         a["default_protocol"], None if a["fi_di"] == 0x11 else a["fi_di"])
     p = pps_expect(atr, answer)
@@ -12111,7 +12127,7 @@ def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
     def receive_one(accept_i: bool, chain_open: bool = False) -> str:
         """One block from the card. 'again' keeps waiting for the next one, 'advance' ends the
         exchange or acknowledges a chunk, 'retry' retransmits it, 'fail' gives up."""
-        timeouts.append(bwt * state["factor"])
+        timeouts.append(T1_BWT_WAIT * bwt * state["factor"])
         state["factor"] = 1                    # the extension the card granted is spent on this block
         head = read(3)
         if head is None:

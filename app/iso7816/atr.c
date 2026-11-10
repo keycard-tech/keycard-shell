@@ -179,6 +179,18 @@ app_err_t atr_read(smartcard_t* sc) {
     i++;
   }
 
+  /* 6.3.1 with 8.3: in specific mode the protocol is the type TA2 encodes. A type we cannot run is the
+   * deactivation 8.3's NOTE asks for. */
+  if (sc->atr.ta2 != ATR_INVALID_TA2) {
+    const uint8_t t = sc->atr.ta2 & 0x0f;
+
+    if ((t != SC_T0) && (t != SC_T1)) {
+      return ERR_DATA;
+    }
+
+    sc->atr.default_protocol = t;
+  }
+
   if (smartcard_receive_sync(sc, sc->atr.hist, sc->atr.hist_len) != ERR_OK) {
     return ERR_TXRX;
   }

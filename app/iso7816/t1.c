@@ -8,6 +8,7 @@
 #define T1_BGT 22
 #define T1_MAX_RESP_BLOCKS (APDU_BUF_LEN + 16)
 #define T1_MAX_LRC_RETRIES 3
+#define T1_BWT_WAIT 2
 
 /* 11.4.4 lets the card ask for a CRC epilogue. Only the LRC is computed, so such a card is refused
  * rather than answered with a code it will reject. */
@@ -141,7 +142,7 @@ static app_err_t t1_handle_resp(smartcard_t* sc, apdu_t* apdu, bool chain_open) 
   for(;;) {
     uint8_t header[3];
 
-    hal_smartcard_set_timeout(sc->t1_bwt * sc->t1_bwt_factor);
+    hal_smartcard_set_timeout(T1_BWT_WAIT * sc->t1_bwt * sc->t1_bwt_factor);
     sc->t1_bwt_factor = 1;
     if (smartcard_receive_sync(sc, header, 3) != ERR_OK) {
       return ERR_TXRX;

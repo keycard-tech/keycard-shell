@@ -85,7 +85,13 @@ hal_err_t hal_smartcard_set_blocklen(uint32_t len) {
 hal_err_t hal_smartcard_send(const uint8_t* data, size_t len) {
   configASSERT(g_smartcard_task == NULL);
   g_smartcard_task = xTaskGetCurrentTaskHandle();
-  return HAL_SMARTCARD_Transmit_IT(&hsmartcard6, data, len);
+
+  const HAL_StatusTypeDef res = HAL_SMARTCARD_Transmit_IT(&hsmartcard6, data, len);
+  if (res != HAL_OK) {
+    g_smartcard_task = NULL;
+  }
+
+  return res;
 }
 
 hal_err_t hal_smarcard_recv(uint8_t* data, size_t len) {
@@ -93,7 +99,13 @@ hal_err_t hal_smarcard_recv(uint8_t* data, size_t len) {
   g_smartcard_task = xTaskGetCurrentTaskHandle();
   __HAL_SMARTCARD_CLEAR_FLAG(&hsmartcard6, SMARTCARD_CLEAR_RTOF);
   __HAL_SMARTCARD_ENABLE_IT(&hsmartcard6, SMARTCARD_IT_RTO);
-  return HAL_SMARTCARD_Receive_IT(&hsmartcard6, data, len);
+
+  const HAL_StatusTypeDef res = HAL_SMARTCARD_Receive_IT(&hsmartcard6, data, len);
+  if (res != HAL_OK) {
+    g_smartcard_task = NULL;
+  }
+
+  return res;
 }
 
 uint32_t hal_smartcard_received(void) {
@@ -101,5 +113,6 @@ uint32_t hal_smartcard_received(void) {
 }
 
 void hal_smartcard_abort() {
+  g_smartcard_task = NULL;
   HAL_SMARTCARD_Abort_IT(&hsmartcard6);
 }
