@@ -1,4 +1,4 @@
-# Kohaku encrypted credential export
+# kohaku-key encrypted credential export
 
 BIP-85 root material remains on Keycard/Shell. After the user reviews the full
 validated derivation paths and approves export, path-specific credentials are
