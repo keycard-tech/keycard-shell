@@ -100,6 +100,19 @@ set(BOOTLOADER_SOURCES
 )
 
 # Source files - App
+execute_process(
+    COMMAND git rev-parse --short=7 HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE RAILGUN_GIT_REV
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+set_source_files_properties(
+    app/core/core_railgun_diagnostics.c
+    PROPERTIES COMPILE_DEFINITIONS
+    "RAILGUN_GIT_REV=\"${RAILGUN_GIT_REV}\""
+)
+
 set(APP_SOURCES
     app/util/fmath.c
     app/util/tlv.c

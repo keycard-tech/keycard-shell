@@ -107,10 +107,7 @@ static void show_result(const char* name, bool passed, uint32_t ms) {
           LSTR(MENU_RAILGUN_DIAGNOSTICS), message, 0);
 }
 
-static void show_stack_headroom(void) {
-  UBaseType_t free_words = uxTaskGetStackHighWaterMark(NULL);
-  uint32_t free_bytes =
-      (uint32_t) free_words * (uint32_t) sizeof(StackType_t);
+static void show_stack_headroom(uint32_t free_bytes) {
 
   char message[80] = {0};
   size_t length = 0;
@@ -124,7 +121,112 @@ static void show_stack_headroom(void) {
             message, UI_INFO_CANCELLABLE);
 }
 
+
+#ifndef RAILGUN_GIT_REV
+#define RAILGUN_GIT_REV "unknown"
+#endif
+
+typedef enum {
+  BENCH_NOT_RUN,
+  BENCH_PASS,
+  BENCH_FAIL,
+  BENCH_TIMEOUT,
+  BENCH_SKIPPED
+} bench_status_t;
+
+typedef struct {
+  bench_status_t status;
+  uint32_t time_ms;
+} bench_result_t;
+
+typedef struct {
+  bench_result_t bn64;
+  bench_result_t poseidon;
+  bench_result_t bj2;
+  bench_result_t bj256;
+} railgun_report_t;
+
+static const char* benchmark_status(bench_status_t status) {
+  switch (status) {
+  case BENCH_PASS: return "pass";
+  case BENCH_FAIL: return "fail";
+  case BENCH_TIMEOUT: return "timeout";
+  case BENCH_SKIPPED: return "skipped";
+  default: return "not_run";
+  }
+}
+
+static void append_benchmark_json(
+    char* output, size_t capacity, size_t* length,
+    const char* name, const bench_result_t* result) {
+  append_text(output, capacity, length, "\"");
+  append_text(output, capacity, length, name);
+  append_text(output, capacity, length, "\":{\"s\":\"");
+  append_text(output, capacity, length,
+              benchmark_status(result->status));
+  append_text(output, capacity, length, "\",\"ms\":");
+
+  if (result->status == BENCH_NOT_RUN ||
+      result->status == BENCH_SKIPPED) {
+    append_text(output, capacity, length, "null");
+  } else {
+    append_decimal(output, capacity, length, result->time_ms);
+  }
+
+  append_text(output, capacity, length, "}");
+}
+
+static void finish_report(const railgun_report_t* report) {
+  uint32_t free_bytes =
+      (uint32_t) uxTaskGetStackHighWaterMark(NULL) *
+      (uint32_t) sizeof(StackType_t);
+
+  show_stack_headroom(free_bytes);
+
+  if (ui_prompt(LSTR(MENU_RAILGUN_DIAGNOSTICS),
+                "Export benchmark results as QR?",
+                UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
+    return;
+  }
+
+  /*
+   * Fixed schema and fixed field names: bounded to <320 bytes.
+   * No wallet material, secret scalar, or host connection.
+   */
+  char json[320] = {0};
+  size_t length = 0;
+
+  append_text(json, sizeof(json), &length,
+              "{\"v\":1,\"rev\":\"");
+  append_text(json, sizeof(json), &length, RAILGUN_GIT_REV);
+  append_text(json, sizeof(json), &length, "\",");
+
+  append_benchmark_json(
+      json, sizeof(json), &length, "bn64", &report->bn64);
+  append_text(json, sizeof(json), &length, ",");
+
+  append_benchmark_json(
+      json, sizeof(json), &length, "p6", &report->poseidon);
+  append_text(json, sizeof(json), &length, ",");
+
+  append_benchmark_json(
+      json, sizeof(json), &length, "bj2", &report->bj2);
+  append_text(json, sizeof(json), &length, ",");
+
+  append_benchmark_json(
+      json, sizeof(json), &length, "bj256", &report->bj256);
+
+  append_text(json, sizeof(json), &length, ",\"stack_free\":");
+  append_decimal(json, sizeof(json), &length, free_bytes);
+  append_text(json, sizeof(json), &length, "}");
+
+  ui_display_msg_qr(
+      LSTR(MENU_RAILGUN_DIAGNOSTICS),
+      json, "Scan benchmark JSON");
+}
+
 void core_railgun_diagnostics_run(void) {
+  railgun_report_t report = {0};
   uint8_t a[32] = {0};
   uint8_t b[32] = {0};
   uint8_t result[32] = {0};
@@ -157,10 +259,12 @@ void core_railgun_diagnostics_run(void) {
   }
 
   uint32_t ms = elapsed_ms(start);
+  report.bn64.status = passed ? BENCH_PASS : BENCH_FAIL;
+  report.bn64.time_ms = ms;
   show_result("BN254 PKA x64", passed, ms);
 
   if (!passed) {
-    show_stack_headroom();
+    finish_report(&report);
     return;
   }
 
@@ -182,12 +286,15 @@ void core_railgun_diagnostics_run(void) {
            memcmp(hash, expected_poseidon, 32) == 0;
 
   ms = elapsed_ms(start);
+  report.poseidon.status = poseidon_budget.expired ? BENCH_TIMEOUT :
+                           (passed ? BENCH_PASS : BENCH_FAIL);
+  report.poseidon.time_ms = ms;
   show_result(
       poseidon_budget.expired ? "Poseidon timeout" : "Poseidon t6",
       passed, ms);
 
   if (!passed) {
-    show_stack_headroom();
+    finish_report(&report);
     return;
   }
 
@@ -212,6 +319,9 @@ void core_railgun_diagnostics_run(void) {
   }
 
   ms = elapsed_ms(start);
+  report.bj2.status = small_budget.expired ? BENCH_TIMEOUT :
+                      (passed ? BENCH_PASS : BENCH_FAIL);
+  report.bj2.time_ms = ms;
   show_result(
       small_budget.expired ? "BabyJubjub timeout" : "BabyJubjub x2",
       passed, ms);
@@ -220,7 +330,10 @@ void core_railgun_diagnostics_run(void) {
       ui_prompt(LSTR(MENU_RAILGUN_DIAGNOSTICS),
                 "Run full-width public test? May take minutes.",
                 UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
-    show_stack_headroom();
+    if (passed) {
+      report.bj256.status = BENCH_SKIPPED;
+    }
+    finish_report(&report);
     return;
   }
 
@@ -240,10 +353,13 @@ void core_railgun_diagnostics_run(void) {
   }
 
   ms = elapsed_ms(start);
+  report.bj256.status = full_budget.expired ? BENCH_TIMEOUT :
+                        (passed ? BENCH_PASS : BENCH_FAIL);
+  report.bj256.time_ms = ms;
   show_result(
       full_budget.expired ? "Full-width timeout" : "BabyJubjub full",
       passed, ms);
-  show_stack_headroom();
+  finish_report(&report);
 }
 
 /*
