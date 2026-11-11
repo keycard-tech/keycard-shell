@@ -363,8 +363,13 @@ function(shellos_test name)
   # direction -- hal_pka_host.c computes with bignum.c out of app_crypto, and app_crypto's curve
   # code calls back into it -- which a single left-to-right scan of static archives cannot
   # resolve, hence the group.
-  target_link_libraries(test_${name} PRIVATE
-      -Wl,--start-group ${TEST_LIBS} test_framework -Wl,--end-group)
+  if(APPLE)
+    target_link_libraries(test_${name} PRIVATE
+        ${TEST_LIBS} test_framework ${TEST_LIBS} test_framework)
+  else()
+    target_link_libraries(test_${name} PRIVATE
+        -Wl,--start-group ${TEST_LIBS} test_framework -Wl,--end-group)
+  endif()
   add_test(NAME ${name} COMMAND test_${name})
   # The exit code is the verdict, but a test whose main() forgets to return UNITY_END() exits 0
   # whatever it found, so the summary line is checked as well.
