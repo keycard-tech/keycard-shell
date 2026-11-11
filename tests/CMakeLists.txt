@@ -402,6 +402,7 @@ set_tests_properties(fuzz PROPERTIES TIMEOUT 120)
 shellos_test(bignum LIBS app_crypto)
 shellos_test(railgun_babyjubjub LIBS app_crypto)
 target_sources(test_railgun_babyjubjub PRIVATE
+    ${SHELLOS_ROOT}/app/crypto/railgun_babyjubjub.c
     ${SHELLOS_ROOT}/app/crypto/railgun_blake512.c
     ${SHELLOS_ROOT}/app/crypto/railgun_poseidon_t6.c)
 shellos_test(railgun_poseidon LIBS app_crypto)

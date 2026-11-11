@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "crypto/bignum.h"
+#include "crypto/railgun_babyjubjub.h"
 #include "crypto/railgun_blake512.h"
 #include "crypto/railgun_poseidon_t6.h"
 #include "hal.h"
@@ -791,6 +792,98 @@ static void test_synthetic_eddsa_poseidon_signatures(void) {
   }
 }
 
+
+static void test_firmware_public_mul_vectors(void) {
+  static const struct {
+    const char *scalar;
+    const char *x;
+    const char *y;
+  } vectors[] = {
+    {
+      "0000000000000000000000000000000000000000000000000000000000000000",
+      "0000000000000000000000000000000000000000000000000000000000000000",
+      "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "0000000000000000000000000000000000000000000000000000000000000001",
+      BASE_X, BASE_Y
+    },
+    {
+      "060c89ce5c263405370a08b6d0302b0bab3eedb83920ee0a677297dc392126f1",
+      "0000000000000000000000000000000000000000000000000000000000000000",
+      "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "0ba9f4de43d3c912590c6ab4f8e7f3c0c0229e25c7dd052203b928fcdc87dfba",
+      "234056d968baf183fe8d237d496d1c04188220cd33e8f8d14df9b84479736b20",
+      "2624393fad9b71c04b3b14d8ac45202dbb4eaff4c2d1350c9453fc08d18651fe"
+    },
+    {
+      "031dd101d9c07a84285b4273a397aa286f406d30d7fce36fd3925ab93380abdb",
+      "25a426befdcc7918713ea23d9b3f0d87ad843362145d7b92d4cd3f166ad6c8bd",
+      "241f9a479cf221163eda6eb3772d36f8b398d9f5d13b5ef3e9223215d57ca2b8"
+    },
+    {
+      "00df4db54e41e4fc50b13c0e02e0c1414a763b5e0529678277027051579fe8b4",
+      "14a052afd7879fe4bf9aea3cb3cf354f75dd677b15103bf401920efe292d00e0",
+      "03c3fdc3bb383e8c5f80b41dc3ce512dc8ae33c9e53be80fd1a352232c39e45a"
+    },
+    {
+      "0159d924c64d7d42dd0936b68b0948a90a820da1888185125671de372e766215",
+      "24ccbdfb612d47b4c41b440eb927f21f34e341f89215932b053ec2b19dc84ce6",
+      "171a92a4562a9a063a5d510623bb0537ffba3fb04aa1a16bcc83ea5e881d0651"
+    }
+  };
+
+  uint8_t base_x[32], base_y[32];
+
+  TEST_ASSERT_EQUAL_UINT(
+      32, test_unhex(BASE_X, base_x, 32));
+  TEST_ASSERT_EQUAL_UINT(
+      32, test_unhex(BASE_Y, base_y, 32));
+
+  for (size_t i = 0;
+       i < sizeof(vectors) / sizeof(vectors[0]); i++) {
+    uint8_t scalar[32], actual_x[32], actual_y[32];
+    uint8_t expected_x[32], expected_y[32];
+
+    TEST_ASSERT_EQUAL_UINT(
+        32, test_unhex(vectors[i].scalar, scalar, 32));
+    TEST_ASSERT_EQUAL_UINT(
+        32, test_unhex(vectors[i].x, expected_x, 32));
+    TEST_ASSERT_EQUAL_UINT(
+        32, test_unhex(vectors[i].y, expected_y, 32));
+
+    TEST_ASSERT_EQUAL_INT(
+        HAL_SUCCESS,
+        railgun_babyjubjub_public_mul(
+            base_x, base_y, scalar, actual_x, actual_y));
+
+    TEST_ASSERT_EQUAL_MEMORY(expected_x, actual_x, 32);
+    TEST_ASSERT_EQUAL_MEMORY(expected_y, actual_y, 32);
+  }
+}
+
+static void test_firmware_public_mul_rejects_invalid(void) {
+  uint8_t scalar[32] = {0};
+  uint8_t x[32] = {0};
+  uint8_t y[32] = {0};
+  uint8_t out_x[32], out_y[32];
+
+  scalar[31] = 1;
+  x[31] = 1;
+
+  TEST_ASSERT_EQUAL_INT(
+      HAL_FAIL,
+      railgun_babyjubjub_public_mul(
+          x, y, scalar, out_x, out_y));
+
+  TEST_ASSERT_EQUAL_INT(
+      HAL_FAIL,
+      railgun_babyjubjub_public_mul(
+          NULL, y, scalar, out_x, out_y));
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_base_point_is_on_curve);
@@ -804,5 +897,7 @@ int main(void) {
   RUN_TEST(test_full_width_scalar_vectors);
   RUN_TEST(test_full_width_rejects_invalid_base);
   RUN_TEST(test_synthetic_eddsa_poseidon_signatures);
+  RUN_TEST(test_firmware_public_mul_vectors);
+  RUN_TEST(test_firmware_public_mul_rejects_invalid);
   return UNITY_END();
 }
