@@ -347,6 +347,205 @@ static void test_public_scalar_rejects_invalid_point(void) {
   TEST_ASSERT_FALSE(public_mul_u32(&invalid, 8, &result));
 }
 
+
+/*
+ * Full-width public-scalar test reference.
+ * Uses the projective add-2008-bbjlp formula from kohaku_crypto.
+ * Variable-time: NOT suitable for private spending scalars.
+ */
+typedef struct {
+  bignum256 x, y, z;
+} babyjub_projective_t;
+
+static int projective_add(
+    const babyjub_projective_t *p,
+    const babyjub_projective_t *q,
+    babyjub_projective_t *out) {
+  bignum256 a, b, c, dxy, e, f, g;
+  bignum256 aux, ac, dac, t1, t2;
+
+  mul_mod(&p->z, &q->z, &a);
+  mul_mod(&a, &a, &b);
+  mul_mod(&p->x, &q->x, &c);
+  mul_mod(&p->y, &q->y, &dxy);
+
+  mul_mod(&curve_d, &c, &e);
+  mul_mod(&e, &dxy, &e);
+
+  sub_mod(&b, &e, &f);
+  add_mod(&b, &e, &g);
+
+  add_mod(&p->x, &p->y, &t1);
+  add_mod(&q->x, &q->y, &t2);
+  mul_mod(&t1, &t2, &aux);
+  sub_mod(&aux, &c, &aux);
+  sub_mod(&aux, &dxy, &aux);
+
+  mul_mod(&a, &f, &t1);
+  mul_mod(&t1, &aux, &out->x);
+
+  mul_mod(&curve_a, &c, &ac);
+  sub_mod(&dxy, &ac, &dac);
+
+  mul_mod(&a, &g, &t1);
+  mul_mod(&t1, &dac, &out->y);
+
+  mul_mod(&f, &g, &out->z);
+
+  return !bn_is_zero(&out->z);
+}
+
+static int projective_to_affine(
+    const babyjub_projective_t *p,
+    babyjub_point_t *out) {
+  bignum256 inverse;
+
+  if (bn_is_zero(&p->z)) {
+    return 0;
+  }
+
+  inverse = p->z;
+  inv_mod(&inverse);
+
+  mul_mod(&p->x, &inverse, &out->x);
+  mul_mod(&p->y, &inverse, &out->y);
+
+  return on_curve(out);
+}
+
+/*
+ * Read the full 256-bit scalar as big-endian.
+ * Skip leading zeros, then double-and-add.
+ */
+static int public_mul_256(
+    const babyjub_point_t *base,
+    const uint8_t scalar[32],
+    babyjub_point_t *out) {
+  babyjub_projective_t accumulator, point, next;
+  int started = 0;
+
+  if (!on_curve(base)) {
+    return 0;
+  }
+
+  point.x = base->x;
+  point.y = base->y;
+  bn_one(&point.z);
+
+  bn_zero(&accumulator.x);
+  bn_one(&accumulator.y);
+  bn_one(&accumulator.z);
+
+  for (unsigned i = 0; i < 32; i++) {
+    for (int bit = 7; bit >= 0; bit--) {
+      unsigned set = (scalar[i] >> bit) & 1u;
+
+      if (!started) {
+        if (!set) {
+          continue;
+        }
+
+        accumulator = point;
+        started = 1;
+        continue;
+      }
+
+      if (!projective_add(
+              &accumulator, &accumulator, &next)) {
+        return 0;
+      }
+      accumulator = next;
+
+      if (set) {
+        if (!projective_add(
+                &accumulator, &point, &next)) {
+          return 0;
+        }
+        accumulator = next;
+      }
+    }
+  }
+
+  return projective_to_affine(&accumulator, out);
+}
+
+static void test_full_width_scalar_vectors(void) {
+  static const struct {
+    const char *scalar;
+    const char *x;
+    const char *y;
+  } vectors[] = {
+    /* 0 * B8 = identity */
+    {
+      "0000000000000000000000000000000000000000000000000000000000000000",
+      "0000000000000000000000000000000000000000000000000000000000000000",
+      "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    /* subgroup_order * B8 = identity */
+    {
+      "060c89ce5c263405370a08b6d0302b0bab3eedb83920ee0a677297dc392126f1",
+      "0000000000000000000000000000000000000000000000000000000000000000",
+      "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    /* (subgroup_order + 1) * B8 = B8 */
+    {
+      "060c89ce5c263405370a08b6d0302b0bab3eedb83920ee0a677297dc392126f2",
+      BASE_X, BASE_Y
+    },
+    /* Kohaku synthetic [1u8; 32] key's derived scalar */
+    {
+      "0ba9f4de43d3c912590c6ab4f8e7f3c0c0229e25c7dd052203b928fcdc87dfba",
+      "234056d968baf183fe8d237d496d1c04188220cd33e8f8d14df9b84479736b20",
+      "2624393fad9b71c04b3b14d8ac45202dbb4eaff4c2d1350c9453fc08d18651fe"
+    },
+    /* Kohaku synthetic deterministic nonce: message 0 */
+    {
+      "031dd101d9c07a84285b4273a397aa286f406d30d7fce36fd3925ab93380abdb",
+      "25a426befdcc7918713ea23d9b3f0d87ad843362145d7b92d4cd3f166ad6c8bd",
+      "241f9a479cf221163eda6eb3772d36f8b398d9f5d13b5ef3e9223215d57ca2b8"
+    },
+    /* Message 1 */
+    {
+      "00df4db54e41e4fc50b13c0e02e0c1414a763b5e0529678277027051579fe8b4",
+      "14a052afd7879fe4bf9aea3cb3cf354f75dd677b15103bf401920efe292d00e0",
+      "03c3fdc3bb383e8c5f80b41dc3ce512dc8ae33c9e53be80fd1a352232c39e45a"
+    },
+    /* Message 12345 */
+    {
+      "0159d924c64d7d42dd0936b68b0948a90a820da1888185125671de372e766215",
+      "24ccbdfb612d47b4c41b440eb927f21f34e341f89215932b053ec2b19dc84ce6",
+      "171a92a4562a9a063a5d510623bb0537ffba3fb04aa1a16bcc83ea5e881d0651"
+    }
+  };
+
+  babyjub_point_t base;
+  load_point(&base, BASE_X, BASE_Y);
+
+  for (size_t i = 0;
+       i < sizeof(vectors) / sizeof(vectors[0]); i++) {
+    uint8_t scalar[32];
+    babyjub_point_t result;
+
+    TEST_ASSERT_EQUAL_UINT(
+        32, test_unhex(vectors[i].scalar, scalar, 32));
+
+    TEST_ASSERT_TRUE(public_mul_256(&base, scalar, &result));
+    assert_point(&result, vectors[i].x, vectors[i].y);
+  }
+}
+
+static void test_full_width_rejects_invalid_base(void) {
+  babyjub_point_t invalid, result;
+  uint8_t scalar[32] = {0};
+  scalar[31] = 1;
+
+  bn_one(&invalid.x);
+  bn_zero(&invalid.y);
+
+  TEST_ASSERT_FALSE(
+      public_mul_256(&invalid, scalar, &result));
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_base_point_is_on_curve);
@@ -357,5 +556,7 @@ int main(void) {
   RUN_TEST(test_reject_off_curve_coordinates);
   RUN_TEST(test_public_scalar_reference_vectors);
   RUN_TEST(test_public_scalar_rejects_invalid_point);
+  RUN_TEST(test_full_width_scalar_vectors);
+  RUN_TEST(test_full_width_rejects_invalid_base);
   return UNITY_END();
 }
