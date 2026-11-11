@@ -2,6 +2,7 @@
 #include "core/core.h"
 #include "core/core_multisig.h"
 #include "core/core_openpgp.h"
+#include "core/core_railgun_diagnostics.h"
 #include "core/card.h"
 #include "core/settings.h"
 #include "keycard/keycard.h"
@@ -21,9 +22,11 @@ static inline void core_action_run(i18n_str_id_t menu) {
     break;
 #ifndef BITCOIN_ONLY
   case MENU_RAILGUN_DIAGNOSTICS:
-    ui_prompt(LSTR(MENU_RAILGUN_DIAGNOSTICS),
-              LSTR(RAILGUN_DIAGNOSTICS_INFO),
-              UI_INFO_CANCELLABLE);
+    if (ui_prompt(LSTR(MENU_RAILGUN_DIAGNOSTICS),
+                  LSTR(RAILGUN_DIAGNOSTICS_INFO),
+                  UI_INFO_CANCELLABLE) == CORE_EVT_UI_OK) {
+      core_railgun_diagnostics_run();
+    }
     break;
 #endif
   case MENU_CONNECT:

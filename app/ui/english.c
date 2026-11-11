@@ -355,5 +355,5 @@ const char *const i18n_english_strings[] = {
     // Experimental Kohaku research
     "Kohaku Research",
     "RAILGUN Diagnostics",
-    "Research only. Hardware tests are not enabled yet. No keys or signing.",
+    "Run public RAILGUN test vectors on Shell. No keys, signing, or transactions.",
 };
