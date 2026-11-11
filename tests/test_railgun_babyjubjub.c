@@ -890,6 +890,52 @@ static void test_firmware_public_mul_rejects_invalid(void) {
           NULL, y, scalar, out_x, out_y));
 }
 
+/*
+ * Document the existing public-data API's subgroup limitation.
+ *
+ * (0, Fr - 1) is a valid order-two BabyJubjub point outside the
+ * prime-order subgroup. The current implementation validates the
+ * curve equation but does not enforce subgroup membership.
+ *
+ * This test records current behavior; it does not endorse using
+ * untrusted points in security-sensitive protocols.
+ */
+static void test_firmware_public_mul_accepts_low_order_point(void) {
+  uint8_t x[32] = {0};
+  uint8_t y[32];
+  uint8_t scalar[32] = {0};
+  uint8_t out_x[32], out_y[32];
+  uint8_t identity_y[32] = {0};
+
+  TEST_ASSERT_EQUAL_UINT(
+      32, test_unhex(FIELD_FR, y, sizeof(y)));
+
+  TEST_ASSERT_EQUAL_HEX8(1, y[31]);
+  --y[31];
+
+  scalar[31] = 1;
+
+  TEST_ASSERT_EQUAL_INT(
+      HAL_SUCCESS,
+      railgun_babyjubjub_public_mul(
+          x, y, scalar, out_x, out_y));
+
+  TEST_ASSERT_EQUAL_MEMORY(x, out_x, sizeof(x));
+  TEST_ASSERT_EQUAL_MEMORY(y, out_y, sizeof(y));
+
+  scalar[31] = 2;
+  identity_y[31] = 1;
+
+  TEST_ASSERT_EQUAL_INT(
+      HAL_SUCCESS,
+      railgun_babyjubjub_public_mul(
+          x, y, scalar, out_x, out_y));
+
+  TEST_ASSERT_EQUAL_MEMORY(x, out_x, sizeof(x));
+  TEST_ASSERT_EQUAL_MEMORY(
+      identity_y, out_y, sizeof(identity_y));
+}
+
 static void test_diagnostic_checkpoint_abort(void) {
   uint8_t x[32], y[32];
   uint8_t scalar[32] = {0};
@@ -922,6 +968,7 @@ int main(void) {
   RUN_TEST(test_synthetic_eddsa_poseidon_signatures);
   RUN_TEST(test_firmware_public_mul_vectors);
   RUN_TEST(test_firmware_public_mul_rejects_invalid);
+  RUN_TEST(test_firmware_public_mul_accepts_low_order_point);
   RUN_TEST(test_diagnostic_checkpoint_abort);
   return UNITY_END();
 }
