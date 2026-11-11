@@ -148,8 +148,13 @@ add_library(app_keycard STATIC
     ${SHELLOS_ROOT}/app/keycard/application_info.c
     ${SHELLOS_ROOT}/app/keycard/signature.c
     ${SHELLOS_ROOT}/app/keycard/scv2_whitelist.c
+    # Activation is the card's state machine -- SELECT, pairing, channel, PIN -- and it needs no
+    # hardware: every platform call is a smartcard one, plus the ui calls scripted in
+    # host/ui_keycard_host.c. Its ui.h chain reaches the CBOR codec, hence zcbor here.
+    ${SHELLOS_ROOT}/app/keycard/keycard.c
 )
-target_include_directories(app_keycard PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_include_directories(app_keycard PUBLIC
+    ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_keycard PRIVATE ${SHELLOS_COMMON_FLAGS})
 target_link_libraries(app_keycard PUBLIC app_util)
 
@@ -259,7 +264,7 @@ target_include_directories(app_storage PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURREN
 target_compile_options(app_storage PRIVATE ${SHELLOS_COMMON_FLAGS} -Wno-pointer-to-int-cast)
 
 # Settings: the store half is the point of the test, and the four menus it hangs off are scripted in
-# host/ui_host.c. i18n.c and english.c compile as they are, so the string table is the device's own --
+# host/ui_host.c and host/ui_keycard_host.c. i18n.c and english.c compile as they are, so the string table is the device's own --
 # menu.c is the one that cannot, needing FreeRTOS for data the seam only takes the address of.
 add_library(app_settings STATIC
     ${SHELLOS_ROOT}/app/core/settings.c
@@ -269,9 +274,15 @@ add_library(app_settings STATIC
 target_include_directories(app_settings PUBLIC ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_settings PRIVATE ${SHELLOS_COMMON_FLAGS})
 
-add_library(settings_seam STATIC host/ui_host.c)
-target_include_directories(settings_seam PUBLIC ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
-target_compile_options(settings_seam PRIVATE ${SHELLOS_COMMON_FLAGS})
+add_library(ui_seam STATIC
+    host/ui_host.c
+    # The notices and prompts keycard.c shows while it activates a card, recorded by name and answered
+    # from a script. One library with the menus above, because host_ui_reset() resets both.
+    host/ui_keycard_host.c
+)
+target_include_directories(ui_seam PUBLIC
+    ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(ui_seam PRIVATE ${SHELLOS_COMMON_FLAGS})
 
 # The OpenPGP card mode's packet and request parsers, which are every byte of this device that
 # reads an OpenPGP stream. They need no hardware and no UI: the one function that touches the
@@ -372,13 +383,14 @@ shellos_test(keycard_signature LIBS app_crypto app_keycard)
 shellos_test(keycard_cmdset LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(secure_channel_v2 LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(secure_channel_v1 LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
+shellos_test(keycard_activate LIBS app_keycard app_keycard_cmdset app_settings ui_seam app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)
 shellos_test(storage_fs LIBS app_storage)
 shellos_test(eth_db LIBS app_ethereum app_storage)
 shellos_test(scv2_whitelist LIBS app_keycard app_storage)
-shellos_test(settings LIBS app_settings settings_seam app_storage)
+shellos_test(settings LIBS app_settings ui_seam app_storage)
 shellos_test(aes LIBS app_aes)
 shellos_test(hal_aes)
 shellos_test(keys LIBS app_keys app_crypto)

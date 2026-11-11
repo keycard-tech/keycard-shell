@@ -157,7 +157,7 @@ static app_err_t keycard_factoryreset_on_init(keycard_t* kc) {
   }
 }
 
-static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instance_uid) {
+static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instance_uid, bool* paired_now) {
   memcpy(pairing->instance_uid, instance_uid, APP_INFO_INSTANCE_UID_LEN);
   
   if (pairing_read(pairing) == ERR_OK) {
@@ -192,6 +192,7 @@ static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instan
         return ERR_DATA;
       }
 
+      *paired_now = true;
       ui_keycard_paired(default_pass);
       return ERR_OK;
     } else if (err == ERR_FULL) {
@@ -547,7 +548,8 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
 
   if (info.version < KEYCARD_SCV2_MIN_VERSION) {
     APP_ALIGNED(pairing_t pairing, 4);
-    err = keycard_pair(kc, &pairing, info.v3.instance_uid);
+    bool paired_now = false;
+    err = keycard_pair(kc, &pairing, info.v3.instance_uid, &paired_now);
     if (err == ERR_FULL) {
       if (ui_keycard_no_pairing_slots() == CORE_EVT_UI_OK) {
         return keycard_factoryreset_on_init(kc);
@@ -564,7 +566,9 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
       if (err != ERR_TXRX) {
         pairing_erase(&pairing);
         ui_keycard_secure_channel_failed();
-        return ERR_RETRY;
+
+        /* If the pairing was just created but SecureChannel opening still fails, we give up. */
+        return paired_now ? ERR_CRYPTO : ERR_RETRY;
       } else {
         return ERR_TXRX;
       }

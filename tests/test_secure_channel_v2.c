@@ -15,6 +15,7 @@
 #include "keycard/keycard.h"
 #include "keycard/secure_channel.h"
 #include "keycard/secure_channel_v2.h"
+#include "sc_card.h"
 #include "sc_host.h"
 #include "unity.h"
 
@@ -32,8 +33,6 @@
  * module from the same seed.
  */
 
-#define ATR_T1 "3BFA1300FF910131FE000031C173C84000009000D2" /* specific mode, T=1, LRC */
-#define IFS_ANSWER "00E101FE1E"                             /* the card's answer to S(IFS) */
 #define LABEL "sc_v2_ccm"
 #define LABEL_LEN 9
 
@@ -65,40 +64,6 @@ void setUp(void) {
 }
 
 void tearDown(void) {}
-
-static void activate(void) {
-  hal_host_sc_reply_hex(ATR_T1);
-  hal_host_sc_reply_hex(IFS_ANSWER);
-  smartcard_activate(&kc.sc);
-  TEST_ASSERT_EQUAL_UINT8_MESSAGE(SC_READY, kc.sc.state, "activation");
-  hal_host_sc_sent_clear();
-}
-
-/* A card's answer as a T=1 I-block: NAD, the PCB carrying N(S), length, payload and the LRC of
- * 11.4.4. N(S) is one bit and counts modulo 2 (11.6, and T1_I_SEQ_MSK is 0x40), so the third block
- * is back to 0 -- pass the count and let it wrap, because a 2 in that field is the top bit of an
- * R-block instead. */
-static void card_answer(const uint8_t* info, size_t len, uint8_t seq) {
-  const uint8_t hdr[3] = {0x00, (uint8_t)((seq & 1) << 6), (uint8_t)len};
-
-  uint8_t lrc = hdr[0] ^ hdr[1] ^ hdr[2];
-  for (size_t i = 0; i < len; i++) {
-    lrc ^= info[i];
-  }
-
-  hal_host_sc_reply(hdr, sizeof(hdr));
-  hal_host_sc_reply(info, len);
-  hal_host_sc_reply(&lrc, 1);
-}
-
-static void assert_apdu_bytes(const uint8_t* want, size_t len) {
-  uint8_t got[128];
-
-  TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)(len + 4), (unsigned)hal_host_sc_sent_len(), "one block");
-  const size_t sent = hal_host_sc_apdu(got, sizeof(got));
-  TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)len, (unsigned)sent, "apdu length");
-  TEST_ASSERT_EQUAL_MEMORY_MESSAGE(want, got, (unsigned)((len < sent) ? len : sent), "apdu");
-}
 
 /* The transcript the card signs: SHA-256 over the label, the shell's salt and both ephemeral public
  * keys, in that order. */
@@ -218,8 +183,8 @@ void test_open_sends_the_salt_and_the_ephemeral_key(void) {
   uint8_t answer[256];
   const size_t answer_len = card_open_answer(salt, client_pub, CARD_ID_PRIV, answer, sizeof(answer));
 
-  activate();
-  card_answer(answer, answer_len, 0);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(answer, answer_len, 0);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
@@ -236,7 +201,7 @@ void test_open_sends_the_salt_and_the_ephemeral_key(void) {
   memcpy(&want[5 + SCV2_SALT_SIZE], client_pub, SCV2_PUBKEY_SIZE);
   want[sizeof(want) - 1] = 0x00;
 
-  assert_apdu_bytes(want, sizeof(want));
+  sc_card_assert_apdu(want, sizeof(want));
 }
 
 /* The point of the handshake: a command sent after it is readable by the card, and the reply the
@@ -262,9 +227,9 @@ void test_a_command_reaches_the_card_in_plaintext_it_holds_keys_for(void) {
   TEST_ASSERT_TRUE(aes128_ccm_encrypt(c2h, nonce, plain, sizeof(plain), reply));
   memcpy(&reply[sizeof(plain) + CCM_TAG_SIZE], (uint8_t[]){0x90, 0x00}, 2);
 
-  activate();
-  card_answer(answer, answer_len, 0);
-  card_answer(reply, sizeof(reply), 1);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(answer, answer_len, 0);
+  sc_card_answer(reply, sizeof(reply), 1);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
@@ -333,10 +298,10 @@ void test_each_command_advances_the_nonce(void) {
   TEST_ASSERT_TRUE(aes128_ccm_encrypt(c2h, nonce1, plain, sizeof(plain), reply2));
   memcpy(&reply2[3 + CCM_TAG_SIZE], (uint8_t[]){0x90, 0x00}, 2);
 
-  activate();
-  card_answer(answer, answer_len, 0);
-  card_answer(reply, sizeof(reply), 1);
-  card_answer(reply2, sizeof(reply2), 2);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(answer, answer_len, 0);
+  sc_card_answer(reply, sizeof(reply), 1);
+  sc_card_answer(reply2, sizeof(reply2), 2);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
@@ -390,8 +355,8 @@ void test_an_unparseable_signature_is_a_data_error(void) {
   const size_t answer_len = card_open_answer(salt, client_pub, CARD_ID_PRIV, answer, sizeof(answer));
   answer[SCV2_PUBKEY_SIZE + 4] ^= 0xff; /* inside the DER, at r */
 
-  activate();
-  card_answer(answer, answer_len, 0);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(answer, answer_len, 0);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_DATA, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
@@ -418,8 +383,8 @@ void test_a_substituted_identity_is_caught(void) {
   uint8_t answer[256];
   const size_t answer_len = card_open_answer(salt, client_pub, other, answer, sizeof(answer));
 
-  activate();
-  card_answer(answer, answer_len, 0);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(answer, answer_len, 0);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
@@ -461,8 +426,8 @@ void test_a_card_public_key_off_the_curve_is_refused(void) {
   memcpy(refused, answer, answer_len);
   memcpy(refused, bogus, sizeof(bogus));
 
-  activate();
-  card_answer(refused, answer_len, 0);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(refused, answer_len, 0);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
@@ -473,14 +438,14 @@ void test_a_card_public_key_off_the_curve_is_refused(void) {
 
 /* Less than a public key and a signature is not an answer at all. */
 void test_a_short_open_answer_is_a_data_error(void) {
-  activate();
+  sc_card_activate(&kc.sc);
 
   /* Public key and signature truncated, status word intact -- the length is checked after it. */
   uint8_t short_answer[SCV2_PUBKEY_SIZE - 1 + 2];
   memset(short_answer, 0x04, sizeof(short_answer) - 2);
   short_answer[sizeof(short_answer) - 2] = 0x90;
   short_answer[sizeof(short_answer) - 1] = 0x00;
-  card_answer(short_answer, sizeof(short_answer), 0);
+  sc_card_answer(short_answer, sizeof(short_answer), 0);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_DATA, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
@@ -509,9 +474,9 @@ void test_a_tampered_reply_is_not_unlocked(void) {
   memcpy(&reply[3 + CCM_TAG_SIZE], (uint8_t[]){0x90, 0x00}, 2);
   reply[3] ^= 0x01; /* the tag */
 
-  activate();
-  card_answer(answer, answer_len, 0);
-  card_answer(reply, sizeof(reply), 1);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(answer, answer_len, 0);
+  sc_card_answer(reply, sizeof(reply), 1);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
@@ -550,9 +515,9 @@ void test_the_card_refusing_the_security_condition_closes_the_exchange(void) {
   uint8_t answer[256];
   const size_t answer_len = card_open_answer(salt, client_pub, CARD_ID_PRIV, answer, sizeof(answer));
 
-  activate();
-  card_answer(answer, answer_len, 0);
-  card_answer((const uint8_t[]){0x69, 0x82}, 2, 1);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(answer, answer_len, 0);
+  sc_card_status(0x6982, 1);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));
@@ -580,8 +545,8 @@ void test_closing_zeroes_the_session(void) {
   uint8_t answer[256];
   const size_t answer_len = card_open_answer(salt, client_pub, CARD_ID_PRIV, answer, sizeof(answer));
 
-  activate();
-  card_answer(answer, answer_len, 0);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(answer, answer_len, 0);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, SC_V2, cert));

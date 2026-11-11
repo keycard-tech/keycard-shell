@@ -164,12 +164,13 @@ const uint8_t* hal_host_sc_sent(void) {
   return sent;
 }
 
-/* The information field of the first block in the record, header and epilogue removed, so that a
+/* The information field of the nth I-block in the record, header and epilogue removed, so that a
  * consumer of the transport reads its rows as APDUs instead of of T=1 blocks: t1.c hands the
  * peripheral a block in pieces, so there is no per-block send call to point at, and a test takes the
- * record from hal_host_sc_sent_clear(). Zero when what went out first is not an I-block (11.2: the
- * top bit of the PCB is clear) or is shorter than the length it declares -- the test's own failure,
- * rather than the fake guessing at it. */
+ * record from hal_host_sc_sent_clear(). S- and R-blocks (11.2: the top bit of the PCB set) carry no
+ * APDU and are not counted -- the reader's own S(IFS) during activation would otherwise shift every
+ * index a test writes. Zero when there is no such I-block, or it is shorter than the length it
+ * declares -- the test's own failure, rather than the fake guessing at it. */
 size_t hal_host_sc_apdu_at(unsigned index, uint8_t* out, size_t maxlen) {
   size_t off = 0;
 
@@ -178,15 +179,17 @@ size_t hal_host_sc_apdu_at(unsigned index, uint8_t* out, size_t maxlen) {
     if ((off + info + 4) > sent_len) {
       return 0;
     }
-    if (seen == index) {
-      if (((sent[off + 1] & 0x80) != 0) || (info > maxlen)) {
-        return 0;
+    if ((sent[off + 1] & 0x80) == 0) {
+      if (seen == index) {
+        if (info > maxlen) {
+          return 0;
+        }
+        memcpy(out, sent + off + 3, info);
+        return info;
       }
-      memcpy(out, sent + off + 3, info);
-      return info;
+      seen++;
     }
     off += info + 4;
-    seen++;
   }
 
   return 0;

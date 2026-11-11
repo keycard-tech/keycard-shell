@@ -15,6 +15,7 @@
 #include "keycard/pairing.h"
 #include "keycard/secure_channel.h"
 #include "keycard/secure_channel_v1.h"
+#include "sc_card.h"
 #include "sc_host.h"
 #include "unity.h"
 
@@ -31,8 +32,6 @@
  * by the module from the same seed.
  */
 
-#define ATR_T1 "3BFA1300FF910131FE000031C173C84000009000D2" /* specific mode, T=1, LRC */
-#define IFS_ANSWER "00E101FE1E"                             /* the card's answer to S(IFS) */
 #define RNG_SEED 0x5eedULL
 
 /* The applet's secure-element key, whose public half is what open() is handed. */
@@ -60,36 +59,6 @@ void setUp(void) {
 }
 
 void tearDown(void) {}
-
-static void activate(void) {
-  hal_host_sc_reply_hex(ATR_T1);
-  hal_host_sc_reply_hex(IFS_ANSWER);
-  smartcard_activate(&kc.sc);
-  TEST_ASSERT_EQUAL_UINT8_MESSAGE(SC_READY, kc.sc.state, "activation");
-  hal_host_sc_sent_clear();
-}
-
-/* A card's answer as a T=1 I-block. N(S) is one bit and counts modulo 2 (T1_I_SEQ_MSK is 0x40), so
- * the third block is back to 0: a 2 in that field is the top bit of an R-block. */
-static void card_answer(const uint8_t* info, size_t len, uint8_t seq) {
-  const uint8_t hdr[3] = {0x00, (uint8_t)((seq & 1) << 6), (uint8_t)len};
-
-  uint8_t lrc = hdr[0] ^ hdr[1] ^ hdr[2];
-  for (size_t i = 0; i < len; i++) {
-    lrc ^= info[i];
-  }
-
-  hal_host_sc_reply(hdr, sizeof(hdr));
-  hal_host_sc_reply(info, len);
-  hal_host_sc_reply(&lrc, 1);
-}
-
-/* The nth block the shell put on the wire, as an APDU. */
-static size_t sent_apdu(unsigned n, uint8_t* out, size_t maxlen) {
-  const size_t len = hal_host_sc_apdu_at(n, out, maxlen);
-  TEST_ASSERT_TRUE_MESSAGE(len != 0, "block is not an I-block");
-  return len;
-}
 
 /* ISO 9797-1 mechanism 1: 0x80 then zeros to the next block boundary. */
 static size_t pad1(const uint8_t* data, size_t len, uint8_t* out) {
@@ -231,7 +200,7 @@ static void queue_open_answers(v1_session_t* s) {
   memcpy(&first[sizeof(s->card_nonce)], s->card_iv, sizeof(s->card_iv));
   first[sizeof(first) - 2] = 0x90;
   first[sizeof(first) - 1] = 0x00;
-  card_answer(first, sizeof(first), 0);
+  sc_card_answer(first, sizeof(first), 0);
 
   uint8_t rc[32];
   memset(rc, 0x5a, sizeof(rc));
@@ -243,7 +212,7 @@ static void queue_open_answers(v1_session_t* s) {
   uint8_t second[64 + 2];
   const size_t len =
       card_reply(s->enc_key, s->mac_key, s->cmd_mac, plain, sizeof(plain), second, s->iv);
-  card_answer(second, len, 1);
+  sc_card_answer(second, len, 1);
 }
 
 static app_err_t open_channel(v1_session_t* s) {
@@ -263,7 +232,7 @@ static app_err_t open_channel(v1_session_t* s) {
 void test_open_seals_the_challenge_under_the_derived_session(void) {
   handshake_draws(s);
 
-  activate();
+  sc_card_activate(&kc.sc);
   queue_open_answers(s);
 
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
@@ -272,7 +241,7 @@ void test_open_seals_the_challenge_under_the_derived_session(void) {
   uint8_t apdu[128];
 
   /* MUTUAL AUTHENTICATE's predecessor: 80 10 <idx> 00, the 65-byte key, Le. */
-  size_t len = sent_apdu(0, apdu, sizeof(apdu));
+  size_t len = sc_card_apdu(0, apdu, sizeof(apdu));
   TEST_ASSERT_EQUAL_UINT(5 + 65 + 1, len);
   TEST_ASSERT_EQUAL_UINT8(0x80, apdu[0]);
   TEST_ASSERT_EQUAL_UINT8(0x10, apdu[1]);
@@ -282,7 +251,7 @@ void test_open_seals_the_challenge_under_the_derived_session(void) {
 
   /* Then the challenge: Lc 64, the command MAC, and the ciphertext -- byte for byte what a card
    * holding the same keys computes. */
-  len = sent_apdu(1, apdu, sizeof(apdu));
+  len = sc_card_apdu(1, apdu, sizeof(apdu));
   TEST_ASSERT_EQUAL_UINT(5 + 64 + 1, len);
   TEST_ASSERT_EQUAL_UINT8(0x11, apdu[1]);
   TEST_ASSERT_EQUAL_UINT8(0, apdu[2]);
@@ -313,9 +282,9 @@ void test_a_card_that_cannot_mac_its_reply_is_not_opened(void) {
       card_reply(s->enc_key, s->mac_key, s->cmd_mac, plain, sizeof(plain), second, ignored_iv);
   second[3] ^= 0x01; /* the MAC the shell recomputes will not match */
 
-  activate();
-  card_answer(first, sizeof(first), 0);
-  card_answer(second, len, 1);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(first, sizeof(first), 0);
+  sc_card_answer(second, len, 1);
 
   const app_err_t res = open_channel(s);
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, res);
@@ -339,8 +308,8 @@ void test_a_command_on_a_channel_that_was_never_opened_never_reaches_the_wire(vo
   first[sizeof(first) - 2] = 0x90;
   first[sizeof(first) - 1] = 0x00;
 
-  activate();
-  card_answer(first, sizeof(first), 0);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(first, sizeof(first), 0);
 
   /* The card answers the key exchange and then says nothing more, so it cannot finish. */
   TEST_ASSERT_NOT_EQUAL(ERR_OK, open_channel(s));
@@ -385,9 +354,9 @@ void test_the_mutual_authenticate_answer_has_one_length(void) {
   const size_t len =
       card_reply(s->enc_key, s->mac_key, s->cmd_mac, plain, sizeof(plain), second, ignored_iv);
 
-  activate();
-  card_answer(first, sizeof(first), 0);
-  card_answer(second, len, 1);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(first, sizeof(first), 0);
+  sc_card_answer(second, len, 1);
 
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, open_channel(s));
   TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
@@ -395,13 +364,13 @@ void test_the_mutual_authenticate_answer_has_one_length(void) {
 
 /* Less than a nonce and an iv in the first answer is refused before any key is derived. */
 void test_a_short_card_nonce_refuses_the_session(void) {
-  activate();
+  sc_card_activate(&kc.sc);
 
   uint8_t short_answer[SHA256_DIGEST_LENGTH + 2];
   memset(short_answer, 0xc0, sizeof(short_answer) - 2);
   short_answer[sizeof(short_answer) - 2] = 0x90;
   short_answer[sizeof(short_answer) - 1] = 0x00;
-  card_answer(short_answer, sizeof(short_answer), 0);
+  sc_card_answer(short_answer, sizeof(short_answer), 0);
 
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, open_channel(s));
   TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
@@ -421,12 +390,12 @@ void test_an_off_curve_secure_element_key_is_refused(void) {
 
   memcpy(sc_pub, bogus, sizeof(bogus));
 
-  activate();
+  sc_card_activate(&kc.sc);
   uint8_t first[SHA256_DIGEST_LENGTH + AES_IV_SIZE + 2];
   memset(first, 0xc0, sizeof(first) - 2);
   first[sizeof(first) - 2] = 0x90;
   first[sizeof(first) - 1] = 0x00;
-  card_answer(first, sizeof(first), 0);
+  sc_card_answer(first, sizeof(first), 0);
 
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, open_channel(s));
   TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
@@ -443,9 +412,9 @@ void test_the_card_refusing_the_security_condition_ends_open(void) {
   first[sizeof(first) - 2] = 0x90;
   first[sizeof(first) - 1] = 0x00;
 
-  activate();
-  card_answer(first, sizeof(first), 0);
-  card_answer((const uint8_t[]){0x69, 0x82}, 2, 1);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(first, sizeof(first), 0);
+  sc_card_status(0x6982, 1);
 
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, open_channel(s));
   TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
@@ -458,7 +427,7 @@ void test_the_chain_moves_with_every_command(void) {
   /* SC_BUF, not pin[6], and the length passed is 6 rather than sizeof(pin): protect_apdu pads the
    * caller's buffer in place, which is what the macro's extra SC_PAD bytes are for. */
 
-  activate();
+  sc_card_activate(&kc.sc);
   queue_open_answers(s); /* leaves the shell chained to the MAC of the card's reply */
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
 
@@ -481,7 +450,7 @@ void test_the_chain_moves_with_every_command(void) {
       card_reply(s->enc_key, s->mac_key, next_iv, reply_plain, sizeof(reply_plain), reply, s->iv);
 
   hal_host_sc_sent_clear();
-  card_answer(reply, reply_len, 0); /* the card's third I-block: N(S) is back to 0 */
+  sc_card_answer(reply, reply_len, 0); /* the card's third I-block: N(S) is back to 0 */
 
   APDU_RESET(&kc.apdu);
   APDU_CLA(&kc.apdu) = 0x80;
@@ -490,7 +459,7 @@ void test_the_chain_moves_with_every_command(void) {
   APDU_P2(&kc.apdu) = 0;
   TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_send_apdu(&kc.sc, &kc.ch, &kc.apdu, pin, 6));
 
-  const size_t len1 = sent_apdu(0, apdu, sizeof(apdu));
+  const size_t len1 = sc_card_apdu(0, apdu, sizeof(apdu));
   TEST_ASSERT_EQUAL_UINT(5u + want_len + 1u, len1);
   TEST_ASSERT_EQUAL_UINT8(0x20, apdu[4]);
   TEST_ASSERT_EQUAL_MEMORY(want, apdu + 5, want_len);
@@ -505,7 +474,7 @@ void test_the_chain_moves_with_every_command(void) {
       card_reply(s->enc_key, s->mac_key, next_iv, reply_plain, sizeof(reply_plain), reply, s->iv);
 
   hal_host_sc_sent_clear();
-  card_answer(reply, reply2_len, 1);
+  sc_card_answer(reply, reply2_len, 1);
 
   APDU_RESET(&kc.apdu);
   APDU_CLA(&kc.apdu) = 0x80;
@@ -514,7 +483,7 @@ void test_the_chain_moves_with_every_command(void) {
   APDU_P2(&kc.apdu) = 0;
   TEST_ASSERT_EQUAL_INT(ERR_OK, securechannel_v1_send_apdu(&kc.sc, &kc.ch.v1, &kc.apdu, pin, 6));
 
-  const size_t len2 = sent_apdu(0, apdu, sizeof(apdu));
+  const size_t len2 = sc_card_apdu(0, apdu, sizeof(apdu));
   TEST_ASSERT_EQUAL_UINT(5u + want_len + 1u, len2);
   TEST_ASSERT_EQUAL_MEMORY(want, apdu + 5, want_len);
 
@@ -529,7 +498,7 @@ void test_the_chain_moves_with_every_command(void) {
 void test_a_reply_that_does_not_mac_ends_the_session(void) {
   handshake_draws(s);
 
-  activate();
+  sc_card_activate(&kc.sc);
   queue_open_answers(s);
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
 
@@ -545,7 +514,7 @@ void test_a_reply_that_does_not_mac_ends_the_session(void) {
   reply[3] ^= 0x01; /* the MAC, not the ciphertext */
 
   hal_host_sc_sent_clear();
-  card_answer(reply, reply_len, 0);
+  sc_card_answer(reply, reply_len, 0);
 
   SC_BUF(pin, 6);
   memset(pin, '1', 6);
@@ -572,7 +541,7 @@ void test_a_reply_that_does_not_mac_ends_the_session(void) {
 void test_the_plaintext_is_wiped_as_it_is_sealed(void) {
   handshake_draws(s);
 
-  activate();
+  sc_card_activate(&kc.sc);
   queue_open_answers(s);
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
 
@@ -587,7 +556,7 @@ void test_the_plaintext_is_wiped_as_it_is_sealed(void) {
   uint8_t ignored_iv[16];
   const size_t reply_len =
       card_reply(s->enc_key, s->mac_key, s->iv, plain, sizeof(plain), reply, ignored_iv);
-  card_answer(reply, reply_len, 0);
+  sc_card_answer(reply, reply_len, 0);
 
   APDU_RESET(&kc.apdu);
   APDU_CLA(&kc.apdu) = 0x80;
@@ -605,7 +574,7 @@ void test_the_plaintext_is_wiped_as_it_is_sealed(void) {
  * the contacts must not show those bytes, and the applet must be able to unwrap them, so the exact
  * shape is pinned here against the same schedule. */
 void test_pairing_wraps_the_card_secrets_under_a_fresh_ecdh_secret(void) {
-  activate();
+  sc_card_activate(&kc.sc);
 
   /* Follows init's own order -- key, secret, public key, iv -- so that the draws land where the
    * module's land whatever the key agreement does to the generator in between. */
@@ -635,14 +604,14 @@ void test_pairing_wraps_the_card_secrets_under_a_fresh_ecdh_secret(void) {
   uint8_t ct[48];
   TEST_ASSERT_TRUE(aes_encrypt_cbc(&point[1], iv, plain, padded_len, ct));
 
-  card_answer((const uint8_t[]){0x90, 0x00}, 2, 0);
+  sc_card_answer((const uint8_t[]){0x90, 0x00}, 2, 0);
 
   hal_host_rng_seed(RNG_SEED); /* the module draws the same key and iv again */
   TEST_ASSERT_EQUAL_INT(ERR_OK,
                         securechannel_init(&kc.sc, &kc.ch, &kc.apdu, SC_V1, sc_pub, payload, 32));
 
   uint8_t apdu[256];
-  const size_t len = sent_apdu(0, apdu, sizeof(apdu));
+  const size_t len = sc_card_apdu(0, apdu, sizeof(apdu));
   TEST_ASSERT_EQUAL_UINT(5u + 1u + 65u + AES_IV_SIZE + padded_len + 1u, len);
   TEST_ASSERT_EQUAL_UINT8(0x80, apdu[0]);
   TEST_ASSERT_EQUAL_UINT8(0xfe, apdu[1]);
@@ -664,7 +633,7 @@ void test_pairing_wraps_the_card_secrets_under_a_fresh_ecdh_secret(void) {
 void test_closing_zeroes_the_session(void) {
   handshake_draws(s);
 
-  activate();
+  sc_card_activate(&kc.sc);
   queue_open_answers(s);
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
 

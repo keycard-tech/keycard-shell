@@ -26,6 +26,8 @@ void host_ui_reset(void) {
   memset(&answer, 0, sizeof(answer));
   memset(&seen, 0, sizeof(seen));
 
+  host_ui_keycard_reset();
+
   answer.menu_answer = CORE_EVT_UI_CANCELLED;
   answer.prompt_answer = CORE_EVT_UI_CANCELLED;
   answer.brightness_answer = CORE_EVT_UI_CANCELLED;

@@ -11,6 +11,7 @@
 #include "keycard/keycard.h"
 #include "keycard/keycard_cmdset.h"
 #include "keycard/secure_channel.h"
+#include "sc_card.h"
 #include "sc_host.h"
 #include "unity.h"
 
@@ -25,9 +26,6 @@
  * and what it does is the two statements in setUp.
  */
 
-#define ATR_T1 "3BFA1300FF910131FE000031C173C84000009000D2" /* specific mode, T=1, LRC */
-#define IFS_ANSWER "00E101FE1E"                             /* the card's answer to S(IFS) */
-
 #define RNG_SEED 0x5eedULL
 
 static keycard_t kc;
@@ -41,46 +39,6 @@ void setUp(void) {
 
 void tearDown(void) {}
 
-static void activate(void) {
-  hal_host_sc_reply_hex(ATR_T1);
-  hal_host_sc_reply_hex(IFS_ANSWER);
-  smartcard_activate(&kc.sc);
-  TEST_ASSERT_EQUAL_UINT8_MESSAGE(SC_READY, kc.sc.state, "activation");
-
-  /* Counted from nothing afterwards, so a row cannot inherit the activation's block. */
-  hal_host_sc_sent_clear();
-}
-
-/* A card's answer as a T=1 I-block: NAD, the PCB carrying N(S), length, payload and the LRC of
- * 11.4.4, for the answers that are computed rather than written down. N(S) advances with every block
- * the card sends: a second answer repeating it is a block the reader already had, and it is NACKed. */
-static void card_answer(const uint8_t* info, size_t len, uint8_t seq) {
-  const uint8_t hdr[3] = {0x00, (uint8_t)(seq << 6), (uint8_t)len};
-
-  uint8_t lrc = hdr[0] ^ hdr[1] ^ hdr[2];
-  for (size_t i = 0; i < len; i++) {
-    lrc ^= info[i];
-  }
-
-  hal_host_sc_reply(hdr, sizeof(hdr));
-  hal_host_sc_reply(info, len);
-  hal_host_sc_reply(&lrc, 1);
-}
-
-/* One command, the whole record: 11.4.4's header and epilogue around the APDU and nothing after it.
- * A longer record means a second block, which is what tells a refusal from a refusal followed by an
- * answer the card was never asked for. */
-static void assert_apdu_bytes(const uint8_t* want, size_t len) {
-  uint8_t got[128];
-
-  TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)(len + 4), (unsigned)hal_host_sc_sent_len(), "one block");
-  TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE((unsigned)sizeof(got), (unsigned)len, "want");
-
-  const size_t sent = hal_host_sc_apdu(got, sizeof(got));
-  TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)len, (unsigned)sent, "apdu length");
-  TEST_ASSERT_EQUAL_MEMORY_MESSAGE(want, got, (unsigned)((len < sent) ? len : sent), "apdu");
-}
-
 static void assert_second_apdu(const uint8_t* want, size_t len) {
   uint8_t got[128];
 
@@ -92,7 +50,7 @@ static void assert_second_apdu(const uint8_t* want, size_t len) {
 
 static void assert_apdu(const char* hex) {
   uint8_t want[128];
-  assert_apdu_bytes(want, test_unhex(hex, want, sizeof(want)));
+  sc_card_assert_apdu(want, test_unhex(hex, want, sizeof(want)));
 }
 
 static void sha256_cat(const uint8_t* a, size_t alen, const uint8_t* b, size_t blen, uint8_t out[32]) {
@@ -108,7 +66,7 @@ static void sha256_cat(const uint8_t* a, size_t alen, const uint8_t* b, size_t b
 void test_select_sends_the_aid_by_file_identifier(void) {
   static const uint8_t aid[9] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01};
 
-  activate();
+  sc_card_activate(&kc.sc);
   hal_host_sc_reply_apdu("9000");
 
   TEST_ASSERT_EQUAL_INT(ERR_OK, keycard_cmd_select(&kc, aid, sizeof(aid)));
@@ -121,7 +79,7 @@ void test_select_sends_the_aid_by_file_identifier(void) {
 void test_select_leaves_a_refusal_to_the_caller(void) {
   static const uint8_t aid[9] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01};
 
-  activate();
+  sc_card_activate(&kc.sc);
   hal_host_sc_reply_apdu("6a82");
 
   TEST_ASSERT_EQUAL_INT(ERR_OK, keycard_cmd_select(&kc, aid, sizeof(aid)));
@@ -134,7 +92,7 @@ void test_pair_carries_the_step_and_the_challenge(void) {
   uint8_t challenge[SHA256_DIGEST_LENGTH];
   memset(challenge, 0xa1, sizeof(challenge));
 
-  activate();
+  sc_card_activate(&kc.sc);
   hal_host_sc_reply_apdu("9000");
 
   TEST_ASSERT_EQUAL_INT(ERR_OK, keycard_cmd_pair(&kc, 0, challenge));
@@ -172,15 +130,15 @@ void test_autopair_completes_against_a_card_that_proves_itself(void) {
   reply[2 * SHA256_DIGEST_LENGTH] = 0x90;
   reply[2 * SHA256_DIGEST_LENGTH + 1] = 0x00;
 
-  activate();
-  card_answer(reply, sizeof(reply), 0);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(reply, sizeof(reply), 0);
 
   uint8_t second[1 + SHA256_DIGEST_LENGTH + 2];
   second[0] = 3;
   memcpy(&second[1], salt, sizeof(salt));
   second[sizeof(second) - 2] = 0x90;
   second[sizeof(second) - 1] = 0x00;
-  card_answer(second, sizeof(second), 1);
+  sc_card_answer(second, sizeof(second), 1);
 
   hal_host_rng_seed(RNG_SEED);
   const app_err_t res = keycard_cmd_autopair(&kc, psk, &pairing);
@@ -218,8 +176,8 @@ void test_a_card_that_cannot_prove_itself_is_not_answered(void) {
   reply[sizeof(reply) - 2] = 0x90;
   reply[sizeof(reply) - 1] = 0x00;
 
-  activate();
-  card_answer(reply, sizeof(reply), 0);
+  sc_card_activate(&kc.sc);
+  sc_card_answer(reply, sizeof(reply), 0);
 
   hal_host_rng_seed(RNG_SEED);
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, keycard_cmd_autopair(&kc, psk, &pairing));
@@ -234,7 +192,7 @@ void test_a_full_pairing_slot_is_not_a_retry(void) {
   static const uint8_t psk[SHA256_DIGEST_LENGTH] = {0x77};
   pairing_t pairing;
 
-  activate();
+  sc_card_activate(&kc.sc);
   hal_host_sc_reply_apdu("6a84");
 
   TEST_ASSERT_EQUAL_INT(ERR_FULL, keycard_cmd_autopair(&kc, psk, &pairing));
@@ -246,7 +204,7 @@ void test_a_short_pairing_answer_is_a_card_failure(void) {
   static const uint8_t psk[SHA256_DIGEST_LENGTH] = {0x77};
   pairing_t pairing;
 
-  activate();
+  sc_card_activate(&kc.sc);
   hal_host_sc_reply_apdu("001122339000");
 
   TEST_ASSERT_EQUAL_INT(ERR_HW, keycard_cmd_autopair(&kc, psk, &pairing));
@@ -262,7 +220,7 @@ void test_a_closed_channel_sends_nothing(void) {
   memset(pin, '1', sizeof(pin));
   memset(path, 0x80, sizeof(path));
 
-  activate();
+  sc_card_activate(&kc.sc);
 
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, keycard_cmd_verify_pin(&kc, pin));
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, keycard_cmd_get_status(&kc));
@@ -281,7 +239,7 @@ void test_the_puk_is_wiped_even_when_the_send_refuses(void) {
   memset(pin, '1', sizeof(pin));
   memset(puk, '9', sizeof(puk));
 
-  activate();
+  sc_card_activate(&kc.sc);
 
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, keycard_cmd_unblock_pin(&kc, pin, puk));
 
@@ -292,7 +250,7 @@ void test_the_puk_is_wiped_even_when_the_send_refuses(void) {
 
 /* securechannel_open dispatches on the version and owes an answer for a value that is neither. */
 void test_an_unknown_channel_version_opens_nothing(void) {
-  activate();
+  sc_card_activate(&kc.sc);
 
   TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, securechannel_open(&kc.ch, &kc.sc, &kc.apdu, (sc_version_t)0x77, NULL));
   TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
