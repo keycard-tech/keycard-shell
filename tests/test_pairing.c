@@ -29,15 +29,13 @@
 #define ASSERT_CLEAN_FLASH() \
   TEST_ASSERT_EQUAL_UINT_MESSAGE(0, hal_host_flash_violations(), hal_host_flash_last_violation())
 
-static uint8_t* scratch;
+static uint8_t scratch_store[FILLER_LEN];
+static uint8_t* scratch = scratch_store;
 static pairing_t card_a;
 static pairing_t card_b;
 static pairing_t unpaired;
 
 void setUp(void) {
-  if (scratch == NULL) {
-    scratch = hal_host_low_mem(FILLER_LEN);
-  }
 
   hal_host_flash_reset();
   hal_host_aes_reset();

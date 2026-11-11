@@ -40,7 +40,8 @@
  * sees the corrupted result the hardware would give rather than a clean overwrite.
  *
  * The array is mapped at the device's own base address because fs.c dereferences flash pointers
- * directly and casts them to uint32_t, so the host has to make that address real and low. ASan cannot
+ * directly and this model reads a device address back out of the pointer it is handed, so the host has
+ * to make that address real and low. ASan cannot
  * see an overrun inside an mmap'd region, which is why the range checks below are here; g_flash_swap,
  * which is where fs.c stages a block before rewriting it, is an ordinary array and ASan does watch it.
  */
@@ -67,36 +68,6 @@ static const hal_flash_data_segment_t segments_swapped[] = {
   { .addr = HAL_FLASH_BLOCK_ADDR(208), .count = 48 },
   { .addr = HAL_FLASH_BLOCK_ADDR(80), .count = 48 },
 };
-
-#define LOW_MEM_BASE 0x10000000UL
-#define LOW_MEM_SIZE 0x40000
-
-static uint8_t* low_mem;
-static size_t low_mem_used;
-
-void* hal_host_low_mem(size_t size) {
-  if (!low_mem) {
-    void* at = mmap((void*)LOW_MEM_BASE, LOW_MEM_SIZE, PROT_READ | PROT_WRITE,
-                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-
-    if (at != (void*)LOW_MEM_BASE) {
-      fprintf(stderr, "hal_host_low_mem: cannot map %u bytes at 0x%08lx\n", (unsigned)LOW_MEM_SIZE,
-              (unsigned long)LOW_MEM_BASE);
-      abort();
-    }
-
-    low_mem = at;
-  }
-
-  if (size > LOW_MEM_SIZE - low_mem_used) {
-    fprintf(stderr, "hal_host_low_mem: %zu bytes requested, %zu left of %u\n", size,
-            LOW_MEM_SIZE - low_mem_used, (unsigned)LOW_MEM_SIZE);
-    abort();
-  }
-
-  low_mem_used += (size + 63) & ~(size_t)63;
-  return low_mem + (low_mem_used - ((size + 63) & ~(size_t)63));
-}
 
 static void flash_init(void) {
   if (flash) {

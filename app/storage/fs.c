@@ -41,7 +41,7 @@ enum fs_iterator_action {
 typedef enum fs_iterator_action (*fs_iterator_cb_t)(void* ctx, fs_entry_t* entry, size_t* to_skip);
 
 static fs_action_t _fs_erase_one(void* ctx, fs_entry_t* entry) {
-  return ((uint32_t) ctx) == ((uint32_t) entry) ? FS_STOP : FS_ACCEPT;
+  return ((uintptr_t) ctx) == ((uintptr_t) entry) ? FS_STOP : FS_ACCEPT;
 }
 
 static uint8_t* _fs_get_page(uint32_t idx) {
@@ -57,7 +57,7 @@ static uint8_t* _fs_get_page(uint32_t idx) {
     idx -= map[off++].count;
   }
 
-  return (uint8_t*) (map[off].addr + (HAL_FLASH_BLOCK_SIZE * idx));
+  return (uint8_t*) (uintptr_t) (map[off].addr + (HAL_FLASH_BLOCK_SIZE * idx));
 }
 
 static enum fs_iterator_action _fs_get_entry(void* ctx, fs_entry_t* entry, size_t* to_skip) {
@@ -72,6 +72,7 @@ static enum fs_iterator_action _fs_get_entry(void* ctx, fs_entry_t* entry, size_
     return FS_ITER_NEXT;
   case FS_ACCEPT:
     find_ctx->found = entry;
+    return FS_ITER_END;
   case FS_STOP:
     return FS_ITER_END;
   }
@@ -108,7 +109,7 @@ static hal_err_t _fs_pad(uint8_t* addr) {
     return HAL_SUCCESS;
   }
 
-  size_t padlen = HAL_FLASH_WORD_SIZE - (((uint32_t) addr) & (HAL_FLASH_WORD_SIZE - 1));
+  size_t padlen = HAL_FLASH_WORD_SIZE - (((uintptr_t) addr) & (HAL_FLASH_WORD_SIZE - 1));
   uint8_t padding[padlen];
 
   for (int i = 0; i < padlen; i++) {
@@ -123,7 +124,7 @@ static enum fs_iterator_action _fs_write_entries(void* ctx, fs_entry_t* entry, s
 
   if (entry->magic == FS_MAGIC_FREE) {
     size_t total_entry_len = (write_ctx->next_entry->len + 4);
-    size_t off = ((uint32_t) entry) & (HAL_FLASH_BLOCK_SIZE - 1);
+    size_t off = ((uintptr_t) entry) & (HAL_FLASH_BLOCK_SIZE - 1);
     if ((HAL_FLASH_BLOCK_SIZE - off) < total_entry_len) {
       _fs_pad(write_ctx->last_write);
       write_ctx->last_write = NULL;
@@ -139,7 +140,7 @@ static enum fs_iterator_action _fs_write_entries(void* ctx, fs_entry_t* entry, s
     write_ctx->total_length -= total_entry_len;
 
     if (write_ctx->total_length == 0) {
-      if (((uint32_t) write_ctx->last_write) & (HAL_FLASH_BLOCK_SIZE - 1)) {
+      if (((uintptr_t) write_ctx->last_write) & (HAL_FLASH_BLOCK_SIZE - 1)) {
         if (_fs_pad(write_ctx->last_write) != HAL_SUCCESS) {
           write_ctx->err = ERR_HW;
         }
@@ -147,7 +148,7 @@ static enum fs_iterator_action _fs_write_entries(void* ctx, fs_entry_t* entry, s
 
       return FS_ITER_END;
     } else {
-      write_ctx->next_entry = (fs_entry_t*) (((uint32_t) write_ctx->next_entry) + total_entry_len);
+      write_ctx->next_entry = (fs_entry_t*) (((uintptr_t) write_ctx->next_entry) + total_entry_len);
       *to_skip = total_entry_len;
       return FS_ITER_SKIP_BYTES;
     }
@@ -188,7 +189,7 @@ static void _fs_commit_block(struct fs_erase_ctx* erase_ctx) {
 
 static enum fs_iterator_action _fs_erase_entries(void* ctx, fs_entry_t* entry, size_t* to_skip) {
   struct fs_erase_ctx* erase_ctx = (struct fs_erase_ctx *) ctx;
-  int block = HAL_FLASH_ADDR_TO_BLOCK((uint32_t)entry);
+  int block = HAL_FLASH_ADDR_TO_BLOCK((uintptr_t)entry);
 
   if (erase_ctx->block != block) {
     _fs_commit_block(erase_ctx);
@@ -293,7 +294,7 @@ app_err_t fs_erase(fs_entry_t* entry) {
   }
 
   struct fs_erase_ctx erase_ctx = { .block = 0, .data = g_flash_swap, .predicate = _fs_erase_one, .ctx = entry, .err = ERR_DATA, .stop = 0, .pending_erase = 0 };
-  _fs_iterate_page((uint8_t*) HAL_FLASH_BLOCK_ADDR(HAL_FLASH_ADDR_TO_BLOCK((uint32_t)entry)), _fs_erase_entries, &erase_ctx);
+  _fs_iterate_page((uint8_t*) HAL_FLASH_BLOCK_ADDR(HAL_FLASH_ADDR_TO_BLOCK((uintptr_t)entry)), _fs_erase_entries, &erase_ctx);
   _fs_commit_block(&erase_ctx);
 
   hal_flash_end_program();
@@ -323,7 +324,7 @@ app_err_t fs_format() {
   app_err_t err = ERR_OK;
 
   for (uint32_t i = 0; i < HAL_FLASH_DATA_BLOCK_COUNT; i++) {
-    if (hal_flash_erase(HAL_FLASH_ADDR_TO_BLOCK((uint32_t) _fs_get_page(i))) != HAL_SUCCESS) {
+    if (hal_flash_erase(HAL_FLASH_ADDR_TO_BLOCK((uintptr_t) _fs_get_page(i))) != HAL_SUCCESS) {
       err = ERR_HW;
     }
   }

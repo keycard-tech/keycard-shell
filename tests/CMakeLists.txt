@@ -33,12 +33,12 @@ add_compile_definitions(
 # builds with -Wall only), so the noise it produces here is silenced rather than chased.
 add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -g)
 
-# The application is written against a 32-bit address space -- fs.c and updater.c cast pointers through
-# uint32_t, and g_mem_heap is handed to fs_write() as an entry list -- so a position-independent test
-# binary puts every buffer the firmware itself dereferences as a pointer above the width those casts
-# keep. Linking the image where a Cortex-M33 would put it is the same decision that maps the flash
-# model at HAL_FLASH_ADDR, and it retires the per-buffer workaround of allocating from
-# hal_host_low_mem() for anything the store is asked to read.
+# The application is written against a 32-bit address space: updater.c still casts pointers through
+# uint32_t, and the flash model recovers a device address from the pointer it is handed, so a
+# position-independent test binary would place every buffer the firmware dereferences as a pointer above
+# the width those casts keep. Linking the image where a Cortex-M33 would put it is the same decision
+# that maps the flash model at HAL_FLASH_ADDR, and it is what lets a test's scratch buffer be an ordinary
+# array -- which ASan watches, and an mmap'd region it does not.
 add_link_options(-no-pie)
 
 if(HOST_TESTS_SANITIZERS)
@@ -270,10 +270,11 @@ add_library(app_storage STATIC
     ${SHELLOS_ROOT}/app/storage/fs.c
 )
 target_include_directories(app_storage PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
-# fs.c turns flash addresses into uint32_t and back, which is what they are on the target. The model
-# maps its array at the device's own base address so those casts round-trip here, and the warning
-# about the narrowing cast goes with the difference in word size.
-target_compile_options(app_storage PRIVATE ${SHELLOS_COMMON_FLAGS} -Wno-pointer-to-int-cast)
+# fs.c converts between flash addresses and pointers through uintptr_t, so nothing narrows here even
+# though an address is 32 bits on the target, and no warning needs silencing. What still depends on
+# the word size is the flash model itself: it maps its array at the device's base address so that the
+# address it reads back out of a pointer is the one it wrote.
+target_compile_options(app_storage PRIVATE ${SHELLOS_COMMON_FLAGS})
 
 # Settings: the store half is the point of the test, and the four menus it hangs off are scripted in
 # host/ui_host.c and host/ui_keycard_host.c. i18n.c and english.c compile as they are, so the string table is the device's own --

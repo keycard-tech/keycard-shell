@@ -72,7 +72,8 @@ static const uint8_t OTHER_PRIV[32] = {
 };
 
 static uint8_t image[IMG_LEN];
-static uint8_t* db;
+static uint8_t db_store[ETH_DB_BODY + 64];
+static uint8_t* db = db_store;
 static command_t* cmd;
 
 /* The firmware's own digest of an image: the area minus the 64 signature bytes, and past the image as
@@ -188,9 +189,6 @@ static bool area_is_erased(void) {
 }
 
 void setUp(void) {
-  if (db == NULL) {
-    db = hal_host_low_mem(ETH_DB_BODY + 64);
-  }
 
   hal_host_flash_reset();
   hal_host_usb_reset();

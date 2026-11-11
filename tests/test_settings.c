@@ -23,12 +23,10 @@
 
 #define MAGIC_OTHER 0x1234
 
-static uint8_t* scratch;
+static uint8_t scratch_store[4096];
+static uint8_t* scratch = scratch_store;
 
 void setUp(void) {
-  if (scratch == NULL) {
-    scratch = hal_host_low_mem(4096);
-  }
 
   hal_host_flash_reset();
   host_ui_reset();

@@ -40,13 +40,11 @@
   TEST_ASSERT_EACH_EQUAL_UINT_MESSAGE(0xff, hal_host_flash_block(b), PAGE, \
                                       hal_host_flash_last_violation())
 
-/* Below 4 GB, because fs.c walks the buffer it is writing with (uint32_t) arithmetic. */
-static uint8_t* blob;
+/* fs.c walks the buffer it is handed, so the end of it has to be something ASan can see. */
+static uint8_t blob_store[3 * PAGE];
+static uint8_t* blob = blob_store;
 
 void setUp(void) {
-  if (blob == NULL) {
-    blob = hal_host_low_mem(3 * PAGE);
-  }
 
   hal_host_flash_reset();
 }
@@ -84,6 +82,21 @@ static fs_action_t by_magic(void* ctx, fs_entry_t* entry) {
 /* The shape a delete takes, as in pairing_erase(): stop at the entry to drop, keep everything else. */
 static fs_action_t drop_by_magic(void* ctx, fs_entry_t* entry) {
   return entry->magic == (uint16_t)(uintptr_t)ctx ? FS_STOP : FS_ACCEPT;
+}
+
+/* Counts every entry it is asked about and ends the scan at the stop_at'th. */
+struct scan {
+  size_t stop_at;
+  size_t asked;
+};
+
+static fs_action_t stop_at_nth(void* ctx, fs_entry_t* entry) {
+  struct scan* s = (struct scan*)ctx;
+
+  (void) entry;
+  s->asked++;
+
+  return s->asked == s->stop_at ? FS_STOP : FS_REJECT;
 }
 
 struct collect {
@@ -175,6 +188,26 @@ static void test_the_first_entry_in_the_log_is_the_one_found(void) {
   struct collect seen = {.magic = MAGIC_A};
   fs_iterate(collect, &seen);
   TEST_ASSERT_EQUAL_size_t(2, seen.count);
+  ASSERT_CLEAN_FLASH();
+}
+
+/* fs_find reads the same three answers, and FS_STOP there ends the walk without naming anything: no
+ * entry, found stays null. Nothing on the device asks for that -- pairing.c and scv2_whitelist.c use one
+ * predicate for both jobs and ask it for FS_ACCEPT when they look and FS_STOP when they erase -- so the
+ * answer is pinned here rather than inherited from the erase path. */
+static void test_a_find_that_is_told_to_stop_finds_nothing(void) {
+  size_t total = blob_append(blob, MAGIC_A, 0x11, 32);
+  total += blob_append(blob + total, MAGIC_A, 0x22, 32);
+  TEST_ASSERT_EQUAL_INT(ERR_OK, fs_write((fs_entry_t*)blob, total));
+
+  struct scan walk = {.stop_at = 1};
+  TEST_ASSERT_NULL(fs_find(stop_at_nth, &walk));
+  TEST_ASSERT_EQUAL_size_t(1, walk.asked);
+
+  /* Ended, not short: asked to stop at the second entry, it is asked about both. */
+  walk = (struct scan){.stop_at = 2};
+  TEST_ASSERT_NULL(fs_find(stop_at_nth, &walk));
+  TEST_ASSERT_EQUAL_size_t(2, walk.asked);
   ASSERT_CLEAN_FLASH();
 }
 
@@ -592,6 +625,7 @@ int main(void) {
   RUN_TEST(test_an_unwritten_store_holds_nothing);
   RUN_TEST(test_a_written_entry_is_found_where_it_was_written);
   RUN_TEST(test_the_first_entry_in_the_log_is_the_one_found);
+  RUN_TEST(test_a_find_that_is_told_to_stop_finds_nothing);
   RUN_TEST(test_entries_that_do_not_fit_move_to_the_next_page);
   RUN_TEST(test_a_block_filled_exactly_leaves_the_next_one_erased);
   RUN_TEST(test_erasing_one_entry_keeps_the_others);

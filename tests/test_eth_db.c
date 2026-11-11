@@ -27,12 +27,10 @@
 #define ASSERT_CLEAN_FLASH() \
   TEST_ASSERT_EQUAL_UINT_MESSAGE(0, hal_host_flash_violations(), hal_host_flash_last_violation())
 
-static uint8_t* blob;
+static uint8_t blob_store[ETH_DB_BODY];
+static uint8_t* blob = blob_store;
 
 void setUp(void) {
-  if (blob == NULL) {
-    blob = hal_host_low_mem(ETH_DB_BODY);
-  }
 
   hal_host_flash_reset();
 }

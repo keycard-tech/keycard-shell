@@ -34,13 +34,11 @@ static uint8_t card_b[SCV2_WHITELIST_PUBKEY_LEN];
 static uint8_t card_c[SCV2_WHITELIST_PUBKEY_LEN];
 static uint8_t stranger[SCV2_WHITELIST_PUBKEY_LEN];
 
-/* Entries handed to fs_write() have to be below 4 GB, which fs.c walks them with uint32_t arithmetic. */
-static uint8_t* scratch;
+/* fs.c walks the buffer it is handed, so the end of it has to be something ASan can see. */
+static uint8_t scratch_store[FILLER_LEN];
+static uint8_t* scratch = scratch_store;
 
 void setUp(void) {
-  if (scratch == NULL) {
-    scratch = hal_host_low_mem(FILLER_LEN);
-  }
 
   hal_host_flash_reset();
 

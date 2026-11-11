@@ -19,11 +19,6 @@ void hal_host_rng_seed(uint64_t seed);
 /* Bytes drawn so far, so a test can assert that a code path consumed randomness at all. */
 size_t hal_host_rng_count(void);
 
-/* Memory below 4 GB, for anything handed to code that casts pointers to uint32_t -- which the device,
- * a 32-bit machine, can do freely and fs.c does for the entry buffer it is writing, not only for the
- * flash addresses. A normal static array on a 64-bit host truncates and the code lands in the weeds.
- * Aborts if the region runs out. It is mmap'd, so ASan has no redzones around what it returns. */
-void* hal_host_low_mem(size_t size);
 
 /* AES, modelled at the hal_aes256_* and hal_aes128_ccm_* boundary in host/hal_aes_host.c, from FIPS-197
  * and SP 800-38C rather than from how app/crypto/aes*.c drives them. A call the model cannot honour (a B0
