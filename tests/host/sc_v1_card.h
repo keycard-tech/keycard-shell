@@ -128,17 +128,10 @@ static inline void v1_card_draws(v1_card_t* c, const uint8_t sc_pub[65],
   v1_command_mac(c, 0x80, 0x11, 0, 0, c->cmd_ct, sizeof(c->cmd_ct), c->cmd_mac);
 }
 
-/* A card's reply under this schedule: the MAC over [length, zeros, ciphertext], then the
- * ciphertext, then a status word. The MAC the card sends is also what both sides chain to, so the
- * card's chain moves here as well. */
-static inline size_t v1_card_reply(v1_card_t* c, const uint8_t iv[AES_BLOCK_SIZE],
-                                   const uint8_t* plain, size_t plain_len, uint8_t* out) {
-  uint8_t padded[256];
-  const size_t ct_len = v1_pad1(plain, plain_len, padded);
-
-  uint8_t ct[256];
-  TEST_ASSERT_TRUE(aes_encrypt_cbc(c->enc_key, iv, padded, ct_len, ct));
-
+/* A card's reply under this schedule, framed around ciphertext already encrypted under the iv the
+ * chain stands on: the MAC over [length, zeros, ciphertext], then the ciphertext, then a status word.
+ * The MAC the card sends is also what both sides chain to, so the card's chain moves here as well. */
+static inline size_t v1_card_reply_ct(v1_card_t* c, const uint8_t* ct, size_t ct_len, uint8_t* out) {
   const size_t len = ct_len + AES_BLOCK_SIZE;
   uint8_t mac_buf[256];
   memset(mac_buf, 0, AES_BLOCK_SIZE);
@@ -156,6 +149,30 @@ static inline size_t v1_card_reply(v1_card_t* c, const uint8_t iv[AES_BLOCK_SIZE
   out[AES_BLOCK_SIZE + ct_len + 1] = 0x00;
 
   return len + 2;
+}
+
+/* The ordinary reply, padded as the schedule wants it. */
+static inline size_t v1_card_reply(v1_card_t* c, const uint8_t iv[AES_BLOCK_SIZE],
+                                   const uint8_t* plain, size_t plain_len, uint8_t* out) {
+  uint8_t padded[256];
+  const size_t ct_len = v1_pad1(plain, plain_len, padded);
+
+  uint8_t ct[256];
+  TEST_ASSERT_TRUE(aes_encrypt_cbc(c->enc_key, iv, padded, ct_len, ct));
+
+  return v1_card_reply_ct(c, ct, ct_len, out);
+}
+
+/* A reply whose plaintext holds no ISO-9797-1 marker to strip. The MAC is honest, so the shell has
+ * nothing to object to there -- what it has to object to is a plaintext length of nothing. */
+static inline size_t v1_card_reply_unpadded(v1_card_t* c, const uint8_t iv[AES_BLOCK_SIZE],
+                                           const uint8_t* plain, size_t plain_len, uint8_t* out) {
+  TEST_ASSERT_EQUAL_UINT(0u, (unsigned)(plain_len % AES_BLOCK_SIZE));
+
+  uint8_t ct[256];
+  TEST_ASSERT_TRUE(aes_encrypt_cbc(c->enc_key, iv, plain, plain_len, ct));
+
+  return v1_card_reply_ct(c, ct, plain_len, out);
 }
 
 /* The APDU the shell will put on the wire for a command of the given header and plaintext, as the

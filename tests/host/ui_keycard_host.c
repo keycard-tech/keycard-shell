@@ -34,6 +34,14 @@ static uint8_t pairing_idx = 1;
 static i18n_str_id_t mnemo_mode = 0;
 static uint32_t mnemo_len = 0;
 static bool mnemo_has_pass = false;
+static const char* script_string;
+static const uint16_t* script_indexes;
+static uint32_t script_index_count;
+static const slip39_shard_t* script_shards;
+static uint8_t script_shard_count;
+static const uint8_t* script_ems;
+static const uint8_t* script_puk_wrong;
+static unsigned puk_prompts;
 
 static void record(const char* name) {
   if (call_count < MAX_CALLS) {
@@ -59,6 +67,14 @@ void host_ui_keycard_reset(void) {
   mnemo_mode = 0;
   mnemo_len = 0;
   mnemo_has_pass = false;
+  script_string = NULL;
+  script_indexes = NULL;
+  script_index_count = 0;
+  script_shards = NULL;
+  script_shard_count = 0;
+  script_ems = NULL;
+  script_puk_wrong = NULL;
+  puk_prompts = 0;
   call_count = 0;
   answer_count = 0;
 }
@@ -89,12 +105,30 @@ void host_ui_script_pin(const uint8_t pin[6]) { memcpy(script_pin, pin, 6); }
 
 void host_ui_script_puk(const uint8_t puk[12]) { memcpy(script_puk, puk, 12); }
 
+/* The first PUK prompt answered with this one and every later one with the scripted PUK, which is
+ * what lets a test watch the retry loop move instead of only its exit. */
+void host_ui_script_wrong_puk(const uint8_t puk[12]) { script_puk_wrong = puk; }
+
 void host_ui_script_pairing(uint8_t idx) { pairing_idx = idx; }
 
 void host_ui_script_mnemonic(i18n_str_id_t mode, uint32_t len, bool has_pass) {
   mnemo_mode = mode;
   mnemo_len = len;
   mnemo_has_pass = has_pass;
+}
+
+void host_ui_script_string(const char* text) { script_string = text; }
+
+void host_ui_script_indexes(const uint16_t* indexes, uint32_t count) {
+  script_indexes = indexes;
+  script_index_count = count;
+}
+
+void host_ui_script_slip39(const slip39_shard_t* shards, uint8_t count,
+                           const uint8_t ems[SLIP39_SEED_STRENGTH]) {
+  script_shards = shards;
+  script_shard_count = count;
+  script_ems = ems;
 }
 
 uint8_t host_ui_wrong_pin_retries(void) { return shown_pin_retries; }
@@ -188,7 +222,9 @@ core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable) {
     shown_puk_retries = (uint8_t)retries;
   }
 
-  memcpy(out, script_puk, sizeof(script_puk));
+  puk_prompts++;
+  memcpy(out, (script_puk_wrong && (puk_prompts == 1)) ? script_puk_wrong : script_puk,
+         sizeof(script_puk));
   return answer_for("ui_read_puk");
 }
 
@@ -223,8 +259,16 @@ core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint
   (void)prompt;
   (void)opts;
 
-  out[0] = '\0';
-  *len = 0;
+  /* The caller's *len is the size it offers, and comes back the size entered. */
+  size_t n = script_string ? strlen(script_string) : 0;
+  if (*len) {
+    if (n > (size_t)(*len - 1)) {
+      n = (size_t)(*len - 1);
+    }
+    memcpy(out, script_string, n);
+    out[n] = '\0';
+  }
+  *len = (uint8_t)n;
   return answer_for("ui_read_string");
 }
 
@@ -232,24 +276,37 @@ core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint
  * Refusing is the honest default here: a test that walks into one should say so explicitly. */
 core_evt_t ui_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len) {
   record("ui_read_bip39");
-  (void)indexes;
-  (void)mnemo_len;
+
+  const uint32_t n = (script_index_count < mnemo_len) ? script_index_count : (uint32_t)mnemo_len;
+  if (script_indexes && n) {
+    memcpy(indexes, script_indexes, n * sizeof(uint16_t));
+  }
   return answer_for("ui_read_bip39");
 }
 
 core_evt_t ui_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN],
                           uint8_t ems[SLIP39_SEED_STRENGTH]) {
   record("ui_read_slip39");
-  (void)shards;
   (void)indexes;
-  (void)ems;
+
+  /* The screen hands back the shards combined into the encrypted master secret, which is what the
+   * caller decrypts; the shards themselves it keeps only for the metadata of the first one. */
+  if (script_shards && script_shard_count) {
+    memcpy(shards, script_shards, script_shard_count * sizeof(slip39_shard_t));
+  }
+  if (script_ems) {
+    memcpy(ems, script_ems, SLIP39_SEED_STRENGTH);
+  }
   return answer_for("ui_read_slip39");
 }
 
 core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
   record("ui_scan_mnemonic");
-  (void)indexes;
-  (void)len;
+
+  if (script_indexes && script_index_count) {
+    memcpy(indexes, script_indexes, script_index_count * sizeof(uint16_t));
+    *len = script_index_count;
+  }
   return answer_for("ui_scan_mnemonic");
 }
 

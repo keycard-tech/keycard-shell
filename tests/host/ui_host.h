@@ -42,10 +42,21 @@ unsigned host_ui_call_total(void);
 void host_ui_answer_call(const char* name, core_evt_t answer);
 void host_ui_script_pin(const uint8_t pin[6]);
 void host_ui_script_puk(const uint8_t puk[12]);
+/* The first PUK prompt answered with this, later ones with the scripted PUK. */
+void host_ui_script_wrong_puk(const uint8_t puk[12]);
 void host_ui_script_pairing(uint8_t idx);
 /* What the mnemonic menu answers: generate or import, how many words, and whether a passphrase is
  * asked for. The length is what tells the shell BIP-39 from SLIP-39. */
 void host_ui_script_mnemonic(i18n_str_id_t mode, uint32_t len, bool has_pass);
+/* What a text field is answered with -- the BIP-39 passphrase, for one. */
+void host_ui_script_string(const char* text);
+/* The word indexes an importer or a QR scan returns, as indexes rather than words: the conversion
+ * belongs to the caller, which has the wordlist's library in its link and the seam does not. */
+void host_ui_script_indexes(const uint16_t* indexes, uint32_t count);
+/* An imported SLIP-39 group: the shards, and the encrypted master secret they combine to -- which
+ * is what the screen hands back, not what any single mnemonic carries. */
+void host_ui_script_slip39(const slip39_shard_t* shards, uint8_t count,
+                           const uint8_t ems[SLIP39_SEED_STRENGTH]);
 uint8_t host_ui_wrong_pin_retries(void);
 uint8_t host_ui_wrong_puk_retries(void);
 

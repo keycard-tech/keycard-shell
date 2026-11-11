@@ -383,6 +383,42 @@ void test_a_reply_that_does_not_mac_ends_the_session(void) {
   TEST_ASSERT_EQUAL_UINT_MESSAGE(sent, hal_host_sc_sent_len(), "a command went out on a dead session");
 }
 
+
+/* A reply that MACs honestly but carries no ISO-9797-1 marker in its plaintext leaves the shell with a
+ * plaintext length of nothing -- a card needs no forgery to arrange that, only a payload with no 0x80
+ * in it. A status word lives inside every seal, so nothing is not a reply, and reading one reads
+ * before the response buffer. */
+void test_a_reply_with_no_padding_marker_is_refused_not_read(void) {
+  handshake_draws(s);
+
+  sc_card_activate(&kc.sc);
+  v1_card_queue_open(s, 0);
+  TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
+
+  uint8_t blank[16] = {0};
+  uint8_t reply[sizeof(blank) + AES_BLOCK_SIZE + 2];
+  const size_t reply_len = v1_card_reply_unpadded(s, s->iv, blank, sizeof(blank), reply);
+
+  hal_host_sc_sent_clear();
+  sc_card_answer(reply, reply_len, 0);
+
+  SC_BUF(pin, 6);
+  memset(pin, '1', 6);
+
+  APDU_RESET(&kc.apdu);
+  APDU_CLA(&kc.apdu) = 0x80;
+  APDU_INS(&kc.apdu) = 0x20;
+  APDU_P1(&kc.apdu) = 0;
+  APDU_P2(&kc.apdu) = 0;
+
+  TEST_ASSERT_EQUAL_INT(ERR_CRYPTO, securechannel_send_apdu(&kc.sc, &kc.ch, &kc.apdu, pin, 6));
+
+  /* Ended the way any failed seal ends it: the chain was never the problem, but the session is. */
+  TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
+  const uint8_t zero[sizeof(kc.ch.v1)] = {0};
+  TEST_ASSERT_EQUAL_MEMORY(zero, &kc.ch.v1, sizeof(kc.ch.v1));
+}
+
 /* What protect_apdu does to the caller's buffer: the plaintext is wiped as part of sealing it, so a
  * PIN does not survive in the caller's stack frame. */
 void test_the_plaintext_is_wiped_as_it_is_sealed(void) {
@@ -503,6 +539,7 @@ int main(void) {
   RUN_TEST(test_a_command_on_a_channel_that_was_never_opened_never_reaches_the_wire);
   RUN_TEST(test_the_chain_moves_with_every_command);
   RUN_TEST(test_a_reply_that_does_not_mac_ends_the_session);
+  RUN_TEST(test_a_reply_with_no_padding_marker_is_refused_not_read);
   RUN_TEST(test_the_plaintext_is_wiped_as_it_is_sealed);
   RUN_TEST(test_pairing_wraps_the_card_secrets_under_a_fresh_ecdh_secret);
   RUN_TEST(test_closing_zeroes_the_session);

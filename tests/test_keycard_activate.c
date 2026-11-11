@@ -3,6 +3,8 @@
 #include "crypto/ecdsa.h"
 #include "crypto/rand.h"
 #include "crypto/bip39.h"
+#include "crypto/hmac.h"
+#include "crypto/slip39.h"
 #include "crypto/secp256k1.h"
 #include "crypto/sha2.h"
 #include "error.h"
@@ -19,6 +21,8 @@
 #include "sc_v2_card.h"
 #include "unity.h"
 #include "ui_host.h"
+#include "vectors/vectors_bip39.h"
+#include "vectors/vectors_slip39.h"
 
 /*
  * keycard_activate is the card's state machine: SELECT, read the application info, pair if the card
@@ -353,6 +357,104 @@ static void card_v2_says_name(void) {
 static void card_v2_says_retries(uint8_t pin_retries, uint8_t puk_retries) {
   uint8_t plain[32];
   card_v2_says(0xf2, 0, NULL, 0, plain, status_plain(plain, pin_retries, puk_retries));
+}
+
+/* ------------------------------------------------------------------ loading a key
+
+   A card with no key of its own is given one, and what it is given depends on how much seed the user
+   arrived with: 64 bytes go in raw, anything shorter becomes a BIP-32 master key first. */
+
+/* The BIP-32 master key, framed the way the card wants it: HMAC-SHA512 under "Bitcoin seed", the two
+ * halves behind their tags. The HMAC itself is vectors_hmac's business; what these tests pin is that a
+ * short seed takes this arm and how the result is framed on the wire. */
+static void key_template(const uint8_t* seed, uint32_t seed_len, uint8_t* out) {
+  uint8_t tmp[64];
+  hmac_sha512((const uint8_t*)"Bitcoin seed", 12, seed, seed_len, tmp);
+
+  out[0] = 0xa1;
+  out[1] = 0x44;
+  out[2] = 0x81;
+  out[3] = 0x20;
+  memcpy(&out[4], tmp, 32);
+  out[36] = 0x82;
+  out[37] = 0x20;
+  memcpy(&out[38], &tmp[32], 32);
+}
+
+/* GENERATE MNEMONIC answered with the card's own entropy, two bytes per word. P1 is the word count
+ * over three, which the model has to predict because it is inside the MAC. */
+static void card_generates(uint8_t words_over_three, const uint8_t* entropy, size_t len) {
+  uint8_t generated[2 * BIP39_MAX_MNEMONIC_LEN + 2];
+  memcpy(generated, entropy, len);
+  generated[len] = 0x90;
+  generated[len + 1] = 0x00;
+
+  card_answer_sealed(0xd2, words_over_three, NULL, 0, generated, len + 2);
+}
+
+/* The card's name, its retries, and a PIN accepted: everything between an open channel and whatever
+ * else the card still needs. */
+static void card_unlocked(const uint8_t pin[KEYCARD_PIN_LEN]) {
+  card_says_name();
+  card_says_retries(3, 16);
+
+  host_ui_script_pin(pin);
+  host_ui_answer_call("ui_read_pin", CORE_EVT_UI_OK);
+  card_says_ok(0x20, 0, pin, KEYCARD_PIN_LEN);
+}
+
+/* A card paired, opened and unlocked, waiting for a key. */
+static void card_waiting_for_a_key(const uint8_t pin[KEYCARD_PIN_LEN]) {
+  card_paired_and_open(0);
+  card_unlocked(pin);
+}
+
+/* The load command the model predicted, on the wire where it said it would be -- P1 3 for a seed, P1 2
+ * for a key template -- and no trace of the secret in the block. */
+static void card_saw_load(uint8_t p1, unsigned block, const uint8_t* secret, size_t secret_len) {
+  uint8_t apdu[256];
+  const size_t len = sc_card_apdu(block, apdu, sizeof(apdu));
+
+  TEST_ASSERT_EQUAL_UINT8(0x80, apdu[0]);
+  TEST_ASSERT_EQUAL_UINT8(0xd0, apdu[1]);
+  TEST_ASSERT_EQUAL_UINT8(p1, apdu[2]);
+  TEST_ASSERT_EQUAL_UINT(5u + sealed_want_len + 1u, (unsigned)len);
+  TEST_ASSERT_EQUAL_MEMORY(sealed_want, apdu + 5, sealed_want_len);
+  TEST_ASSERT_NULL(memmem(apdu, len, secret, secret_len));
+}
+
+/* Words to indexes in the SLIP-39 wordlist, which has its own and no helper of BIP-39's. */
+static uint32_t slip39_words_to_indexes(const char* mnemonic, uint16_t* indexes) {
+  uint32_t n = 0;
+  const char* word = mnemonic;
+
+  while (*word && (n < SLIP39_MNEMO_LEN)) {
+    while (*word == ' ') {
+      word++;
+    }
+
+    const char* end = word;
+    while (*end && (*end != ' ')) {
+      end++;
+    }
+
+    const size_t len = (size_t)(end - word);
+    uint16_t found = 0;
+    bool hit = false;
+    for (size_t i = 0; i < SLIP39_WORDS_COUNT; i++) {
+      if ((strlen(SLIP39_WORDLIST[i]) == len) && (strncmp(SLIP39_WORDLIST[i], word, len) == 0)) {
+        found = (uint16_t)i;
+        hit = true;
+        break;
+      }
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE(hit, "word outside the SLIP-39 wordlist");
+    indexes[n++] = found;
+    word = end;
+  }
+
+  return n;
 }
 
 /* Not every card on the contacts is a Keycard, and the answer to that is a screen and no more
@@ -764,11 +866,7 @@ void test_a_card_with_no_keys_is_given_one(void) {
     entropy[2 * i] = (uint8_t)(i % 8);
     entropy[2 * i + 1] = (uint8_t)(i * 7);
   }
-  uint8_t generated[2 + sizeof(entropy)];
-  memcpy(generated, entropy, sizeof(entropy));
-  generated[sizeof(generated) - 2] = 0x90;
-  generated[sizeof(generated) - 1] = 0x00;
-  card_answer_sealed(0xd2, 4, NULL, 0, generated, sizeof(generated));
+  card_generates(4, entropy, sizeof(entropy));
 
   /* The seed follows: PBKDF2 over the twelve words those indexes spell, with no passphrase. */
   uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
@@ -929,6 +1027,267 @@ void test_a_v4_card_declined_by_the_user_is_not_trusted_and_not_opened(void) {
   TEST_ASSERT_NOT_EQUAL(ERR_OK, scv2_whitelist_check(v2.cert));
 }
 
+/* A SLIP-39 seed is sixteen bytes, which is not something the card loads raw: the shell makes a
+ * BIP-32 master key out of it first. Splitting it into shards draws on the RNG; what comes back out of
+ * the split does not -- it is the first sixteen bytes of SHA-256 over the entropy the card handed back.
+ * GENERATE MNEMONIC carries the word count over three in P1, so twenty words means 6. */
+void test_a_generated_slip39_seed_is_loaded_as_a_key_template(void) {
+  static const uint8_t PIN[KEYCARD_PIN_LEN] = {'1', '2', '3', '4', '5', '6'};
+  card_waiting_for_a_key(PIN);
+
+  host_ui_script_mnemonic(MENU_MNEMO_GENERATE, SLIP39_MNEMO_LEN, false);
+  host_ui_answer_prompt(CORE_EVT_UI_OK);
+  host_ui_answer_call("ui_read_number", CORE_EVT_UI_OK);
+  host_ui_answer_call("ui_backup_mnemonic", CORE_EVT_UI_OK);
+
+  uint8_t entropy[2 * SLIP39_MNEMO_LEN];
+  for (size_t i = 0; i < sizeof(entropy); i++) {
+    entropy[i] = (uint8_t)(i * 31 + 7);
+  }
+  card_generates(SLIP39_MNEMO_LEN / 3, entropy, sizeof(entropy));
+
+  uint8_t digest[SHA256_DIGEST_LENGTH];
+  sha256_Raw(entropy, sizeof(entropy), digest);
+
+  uint8_t tmpl[70];
+  key_template(digest, SLIP39_SEED_STRENGTH, tmpl);
+  card_says_ok(0xd0, 2, tmpl, sizeof(tmpl));
+
+  hal_host_rng_seed(RNG_SEED);
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_no_keys"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_read_number"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_backup_mnemonic"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_read_bip39"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_read_slip39"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_seed_loaded"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_card_transport_error"));
+  TEST_ASSERT_EQUAL_UINT8(1, kc.ch.open);
+
+  /* P1 2 rather than P1 3: a key template, and the seed it was built from nowhere in the block. */
+  card_saw_load(2, 10, digest, SLIP39_SEED_STRENGTH);
+  sc_card_assert_no_apdu(11);
+}
+
+/* A wrong PUK costs a retry and is answered with the count the card chose, and the next attempt goes
+ * out under the same session keys -- the loop that lets a user get it wrong is the same one that has to
+ * stop somewhere, so both ends of it belong in the same test. */
+void test_a_wrong_puk_costs_a_retry_and_the_next_one_goes_out_sealed(void) {
+  card_paired_and_open(APP_INFO_KEY_UID_LEN);
+
+  card_says_name();
+  card_says_retries(0, 2);
+
+  static const uint8_t PIN[KEYCARD_PIN_LEN] = {'7', '7', '7', '7', '7', '7'};
+  static const uint8_t WRONG_PUK[KEYCARD_PUK_LEN] = {'0', '0', '0', '0', '0', '0',
+                                                     '0', '0', '0', '0', '0', '0'};
+  static const uint8_t PUK[KEYCARD_PUK_LEN] = {'9', '8', '7', '6', '5', '4',
+                                               '3', '2', '1', '0', '1', '2'};
+  host_ui_script_pin(PIN);
+  host_ui_script_puk(PUK);
+  host_ui_script_wrong_puk(WRONG_PUK);
+  host_ui_answer_call("ui_prompt_try_puk", CORE_EVT_UI_OK);
+  host_ui_answer_call("ui_read_pin", CORE_EVT_UI_OK);
+  host_ui_answer_call("ui_read_puk", CORE_EVT_UI_OK);
+
+  uint8_t both[KEYCARD_PUK_LEN + KEYCARD_PIN_LEN];
+
+  memcpy(both, WRONG_PUK, sizeof(WRONG_PUK));
+  memcpy(&both[sizeof(WRONG_PUK)], PIN, sizeof(PIN));
+  const uint8_t one_retry_left[2] = {0x63, 0xc1};
+  card_answer_sealed(0x22, 0, both, sizeof(both), one_retry_left, sizeof(one_retry_left));
+
+  memcpy(both, PUK, sizeof(PUK));
+  memcpy(&both[sizeof(PUK)], PIN, sizeof(PIN));
+  card_says_ok(0x22, 0, both, sizeof(both));
+
+  hal_host_rng_seed(RNG_SEED);
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(2, host_ui_call_count("ui_read_puk"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_wrong_puk"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_puk_ok"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_card_transport_error"));
+
+  /* The number shown is the card's, not the one the shell started with. */
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_wrong_puk_retries());
+  TEST_ASSERT_EQUAL_UINT8(1, kc.ch.open);
+
+  /* Ten blocks: the unblocks stand where the VERIFY would have, and the accepted one is the ninth. */
+  sc_card_assert_no_apdu(10);
+
+  uint8_t apdu[256];
+  const size_t len = sc_card_apdu(9, apdu, sizeof(apdu));
+  TEST_ASSERT_EQUAL_UINT8(0x22, apdu[1]);
+  TEST_ASSERT_EQUAL_MEMORY(sealed_want, apdu + 5, sealed_want_len);
+  TEST_ASSERT_NULL(memmem(apdu, len, PIN, sizeof(PIN)));
+  TEST_ASSERT_NULL(memmem(apdu, len, PUK, sizeof(PUK)));
+  TEST_ASSERT_NULL(memmem(apdu, len, WRONG_PUK, sizeof(WRONG_PUK)));
+}
+
+/* A passphrase is part of the seed rather than a hint attached to it: the same twelve words with one
+ * loaded are a different key, and the passphrase itself is asked for out of band and never appears in
+ * a block. */
+void test_a_mnemonic_passphrase_changes_the_seed_the_card_is_loaded_with(void) {
+  static const uint8_t PIN[KEYCARD_PIN_LEN] = {'1', '2', '3', '4', '5', '6'};
+  card_waiting_for_a_key(PIN);
+
+  host_ui_script_mnemonic(MENU_MNEMO_GENERATE, 12, true);
+  host_ui_answer_prompt(CORE_EVT_UI_OK);
+  host_ui_answer_call("ui_backup_mnemonic", CORE_EVT_UI_OK);
+  host_ui_script_string("TREZOR");
+
+  uint8_t entropy[24];
+  for (size_t i = 0; i < 12; i++) {
+    entropy[2 * i] = (uint8_t)(i % 8);
+    entropy[2 * i + 1] = (uint8_t)(i * 7);
+  }
+  card_generates(4, entropy, sizeof(entropy));
+
+  uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
+  for (size_t i = 0; i < 12; i++) {
+    indexes[i] = (uint16_t)((entropy[2 * i] << 8) | entropy[2 * i + 1]);
+  }
+
+  uint8_t seed[64];
+  uint8_t bare[64];
+  mnemonic_indexes_to_seed(indexes, 12, "TREZOR", seed);
+  mnemonic_indexes_to_seed(indexes, 12, "", bare);
+
+  card_says_ok(0xd0, 3, seed, sizeof(seed));
+
+  hal_host_rng_seed(RNG_SEED);
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_read_string"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_seed_loaded"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_card_transport_error"));
+
+  /* What the card was loaded with is the seed that has the passphrase in it, which the block above
+   * pins by matching the model's seal byte for byte. */
+  TEST_ASSERT_TRUE(memcmp(seed, bare, sizeof(seed)) != 0);
+  card_saw_load(3, 10, seed, sizeof(seed));
+
+  uint8_t apdu[256];
+  const size_t len = sc_card_apdu(10, apdu, sizeof(apdu));
+  TEST_ASSERT_NULL(memmem(apdu, len, "TREZOR", 6));
+  sc_card_assert_no_apdu(11);
+}
+
+/* An imported mnemonic, asserted against the published BIP-39 vector: the words the user typed and the
+ * passphrase they were encrypted with make a seed nobody here computed -- the card is handed the seed
+ * the vector prints, and asks for nothing on the way. */
+void test_an_imported_mnemonic_loads_the_seed_its_vector_publishes(void) {
+  static const uint8_t PIN[KEYCARD_PIN_LEN] = {'1', '2', '3', '4', '5', '6'};
+  card_waiting_for_a_key(PIN);
+
+  host_ui_script_mnemonic(MENU_MNEMO_IMPORT, 12, true);
+  host_ui_script_string("TREZOR"); /* the passphrase the published seeds were made with */
+
+  uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
+  uint32_t len = 0;
+  TEST_ASSERT_TRUE(mnemonic_from_string(indexes, &len, BIP39_VECTORS[0].mnemonic));
+  TEST_ASSERT_EQUAL_UINT(12, (unsigned)len);
+  host_ui_script_indexes(indexes, len);
+  host_ui_answer_call("ui_read_bip39", CORE_EVT_UI_OK);
+
+  uint8_t seed[64];
+  TEST_ASSERT_EQUAL_UINT(sizeof(seed), test_unhex(BIP39_VECTORS[0].seed, seed, sizeof(seed)));
+  card_says_ok(0xd0, 3, seed, sizeof(seed));
+
+  hal_host_rng_seed(RNG_SEED);
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_read_bip39"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_scan_mnemonic"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_backup_mnemonic"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_seed_loaded"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_card_transport_error"));
+
+  /* Nine blocks, not ten: nothing was generated, so the load is the ninth. */
+  card_saw_load(3, 9, seed, sizeof(seed));
+  sc_card_assert_no_apdu(10);
+}
+
+/* The third way a mnemonic arrives is scanned, which differs from an import only in where the words
+ * came from: the same reader is skipped, the card is asked for nothing, and the seed is what the words
+ * make with no passphrase -- because none was asked for. */
+void test_a_scanned_mnemonic_loads_its_seed(void) {
+  static const uint8_t PIN[KEYCARD_PIN_LEN] = {'1', '2', '3', '4', '5', '6'};
+  card_waiting_for_a_key(PIN);
+
+  host_ui_script_mnemonic(MENU_MNEMO_SCAN, 0, false);
+
+  uint16_t indexes[BIP39_MAX_MNEMONIC_LEN];
+  uint32_t len = 0;
+  TEST_ASSERT_TRUE(mnemonic_from_string(indexes, &len, BIP39_VECTORS[0].mnemonic));
+  host_ui_script_indexes(indexes, len);
+  host_ui_answer_call("ui_scan_mnemonic", CORE_EVT_UI_OK);
+
+  uint8_t seed[64];
+  mnemonic_indexes_to_seed(indexes, len, "", seed);
+  card_says_ok(0xd0, 3, seed, sizeof(seed));
+
+  hal_host_rng_seed(RNG_SEED);
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_scan_mnemonic"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_read_bip39"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_read_string"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_seed_loaded"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_card_transport_error"));
+
+  card_saw_load(3, 9, seed, sizeof(seed));
+  sc_card_assert_no_apdu(10);
+}
+
+/* An imported SLIP-39 group, from the published vectors: a mnemonic that stands alone, the passphrase
+ * it was encrypted with, and the sixteen-byte master secret it opens to. The screen hands back shards
+ * plus the encrypted master secret they combine to; the card gets the BIP-32 master key of the secret
+ * that comes out the other side. */
+void test_an_imported_slip39_group_loads_a_key_template(void) {
+  static const uint8_t PIN[KEYCARD_PIN_LEN] = {'1', '2', '3', '4', '5', '6'};
+  card_waiting_for_a_key(PIN);
+
+  const slip39_vector_t* vector = &SLIP39_VECTORS[0];
+
+  uint16_t indexes[SLIP39_MNEMO_LEN];
+  TEST_ASSERT_EQUAL_UINT(SLIP39_MNEMO_LEN, slip39_words_to_indexes(vector->mnemonics[0], indexes));
+
+  slip39_shard_t shard;
+  TEST_ASSERT_TRUE(slip39_decode_mnemonic(indexes, SLIP39_MNEMO_LEN, &shard) >= 0);
+
+  uint8_t ems[SLIP39_SEED_STRENGTH];
+  TEST_ASSERT_TRUE(slip39_combine(&shard, 1, ems, sizeof(ems)) >= 0);
+
+  host_ui_script_mnemonic(MENU_MNEMO_IMPORT, SLIP39_MNEMO_LEN, true);
+  host_ui_script_string(SLIP39_PASSPHRASE);
+  host_ui_script_slip39(&shard, 1, ems);
+  host_ui_answer_call("ui_read_slip39", CORE_EVT_UI_OK);
+
+  uint8_t master[SLIP39_SEED_STRENGTH];
+  TEST_ASSERT_EQUAL_UINT(sizeof(master),
+                         test_unhex(vector->master_secret, master, sizeof(master)));
+
+  uint8_t tmpl[70];
+  key_template(master, sizeof(master), tmpl);
+  card_says_ok(0xd0, 2, tmpl, sizeof(tmpl));
+
+  hal_host_rng_seed(RNG_SEED);
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_read_slip39"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_read_bip39"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_backup_mnemonic"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_seed_loaded"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_card_transport_error"));
+
+  /* The master secret the vector publishes, and not a byte of it in the clear. */
+  card_saw_load(2, 9, master, sizeof(master));
+  sc_card_assert_no_apdu(10);
+}
+
 int main(void) {
   UNITY_BEGIN();
 
@@ -942,6 +1301,12 @@ int main(void) {
   RUN_TEST(test_the_puk_unblocks_a_pin_with_no_retries_left);
   RUN_TEST(test_declining_the_puk_resets_the_card_and_starts_over);
   RUN_TEST(test_a_card_with_no_keys_is_given_one);
+  RUN_TEST(test_a_generated_slip39_seed_is_loaded_as_a_key_template);
+  RUN_TEST(test_a_wrong_puk_costs_a_retry_and_the_next_one_goes_out_sealed);
+  RUN_TEST(test_a_mnemonic_passphrase_changes_the_seed_the_card_is_loaded_with);
+  RUN_TEST(test_an_imported_mnemonic_loads_the_seed_its_vector_publishes);
+  RUN_TEST(test_a_scanned_mnemonic_loads_its_seed);
+  RUN_TEST(test_an_imported_slip39_group_loads_a_key_template);
   RUN_TEST(test_a_v4_card_accepted_despite_its_certificate_is_whitelisted);
   RUN_TEST(test_a_v4_card_already_trusted_is_opened_and_unlocked);
   RUN_TEST(test_a_v4_card_declined_by_the_user_is_not_trusted_and_not_opened);

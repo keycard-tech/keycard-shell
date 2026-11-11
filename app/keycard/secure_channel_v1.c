@@ -153,6 +153,9 @@ app_err_t securechannel_v1_decrypt_apdu(secure_channel_v1_t *sc, apdu_t* apdu) {
   }
 
   apdu->lr = unpad_iso9797_m1(data, (apdu->lr - AES_IV_SIZE));
+  if (apdu->lr < 2) {
+    return ERR_CRYPTO;
+  }
 
   memcpy(sc->iv, new_iv, AES_IV_SIZE);
 
