@@ -16,6 +16,7 @@
 #include "sc_card.h"
 #include "sc_host.h"
 #include "sc_v1_card.h"
+#include "sc_v2_card.h"
 #include "unity.h"
 #include "ui_host.h"
 
@@ -50,6 +51,20 @@ static keycard_t kc;
 static v1_card_t model;
 static uint8_t sc_pub[65];
 static unsigned card_seq;
+
+/* A modern applet, for the cases that take the v4 branch: its identity key is the device key the
+ * certificate is built around, which is also what the whitelist holds. */
+static v2_card_t v2;
+
+static const uint8_t V2_ID_PRIV[32] = {0x41, 0x51, 0x61, 0x71, 0x81, 0x91, 0xa1, 0xb1,
+                                       0xc1, 0xd1, 0xe1, 0xf1, 0x02, 0x12, 0x22, 0x32,
+                                       0x42, 0x52, 0x62, 0x72, 0x82, 0x92, 0xa2, 0xb2,
+                                       0xc2, 0xd2, 0xe2, 0xf2, 0x03, 0x13, 0x23, 0x33};
+
+static const uint8_t V2_EPHEM_PRIV[32] = {0x51, 0x61, 0x71, 0x81, 0x91, 0xa1, 0xb1, 0xc1,
+                                          0xd1, 0xe1, 0xf1, 0x02, 0x12, 0x22, 0x32, 0x42,
+                                          0x52, 0x62, 0x72, 0x82, 0x92, 0xa2, 0xb2, 0xc2,
+                                          0xd2, 0xe2, 0xf2, 0x03, 0x13, 0x23, 0x33, 0x43};
 
 void setUp(void) {
   host_ui_reset();
@@ -248,7 +263,6 @@ static void card_paired_and_open(uint8_t key_uid_len) {
 
 static uint8_t sealed_want[256];
 static size_t sealed_want_len;
-
 /* One sealed command, answered the way a card holding the same chain answers it: the model predicts
  * the block the shell will send and encrypts the reply under that command's own MAC, which moves the
  * chain on both sides. want and want_len are where the model wrote its prediction of the request,
@@ -271,21 +285,26 @@ static void card_says_ok(uint8_t ins, uint8_t p1, const uint8_t* cmd, size_t cmd
   card_answer_sealed(ins, p1, cmd, cmd_len, accepted, sizeof(accepted));
 }
 
-/* The card's name, which is the first thing read once the channel is open. */
-static void card_says_name(void) {
+/* The card's name, which is the first thing read once the channel is open. The status word inside
+ * the plaintext is the card's own answer rather than the transport's, so it is written once here and
+ * sealed by whichever channel is answering. */
+static size_t name_plain(uint8_t* plain) {
   static const char name[] = "card";
-  uint8_t plain[32];
   plain[0] = (uint8_t)(0x20 | (sizeof(name) - 1));
   memcpy(&plain[1], name, sizeof(name) - 1);
   plain[sizeof(name)] = 0x90;
   plain[sizeof(name) + 1] = 0x00;
 
-  card_answer_sealed(0xca, 0, NULL, 0, plain, sizeof(name) + 2);
+  return sizeof(name) + 2;
+}
+
+static void card_says_name(void) {
+  uint8_t plain[32];
+  card_answer_sealed(0xca, 0, NULL, 0, plain, name_plain(plain));
 }
 
 /* The application status: how many PIN and PUK retries the card has left, and a key present. */
-static void card_says_retries(uint8_t pin_retries, uint8_t puk_retries) {
-  uint8_t plain[32];
+static size_t status_plain(uint8_t* plain, uint8_t pin_retries, uint8_t puk_retries) {
   plain[0] = 0xa3;
   plain[1] = 0x09;
   plain[2] = 0x02;
@@ -300,7 +319,40 @@ static void card_says_retries(uint8_t pin_retries, uint8_t puk_retries) {
   plain[11] = 0x90;
   plain[12] = 0x00;
 
-  card_answer_sealed(0xf2, 0, NULL, 0, plain, 13);
+  return 13;
+}
+
+static void card_says_retries(uint8_t pin_retries, uint8_t puk_retries) {
+  uint8_t plain[32];
+  card_answer_sealed(0xf2, 0, NULL, 0, plain, status_plain(plain, pin_retries, puk_retries));
+}
+
+/* The same three answers over a v2 channel, where the seal is CCM under a counter rather than a CBC
+ * chain and the outer header never carries a P1 of its own -- but the inner APDU does, so the model
+ * has to be told, exactly as in v1. */
+static void card_v2_says(uint8_t ins, uint8_t p1, const uint8_t* cmd, size_t cmd_len,
+                         const uint8_t* plain, size_t plain_len) {
+  v2_card_expect_command(&v2, ins, p1, 0, cmd, cmd_len, sealed_want, &sealed_want_len);
+
+  uint8_t reply[256];
+  const size_t len = v2_card_reply(&v2, plain, plain_len, reply);
+  card_says(reply, len);
+}
+
+/* A command the card accepts with nothing to say. */
+static void card_v2_says_ok(uint8_t ins, uint8_t p1, const uint8_t* cmd, size_t cmd_len) {
+  const uint8_t accepted[2] = {0x90, 0x00};
+  card_v2_says(ins, p1, cmd, cmd_len, accepted, sizeof(accepted));
+}
+
+static void card_v2_says_name(void) {
+  uint8_t plain[32];
+  card_v2_says(0xca, 0, NULL, 0, plain, name_plain(plain));
+}
+
+static void card_v2_says_retries(uint8_t pin_retries, uint8_t puk_retries) {
+  uint8_t plain[32];
+  card_v2_says(0xf2, 0, NULL, 0, plain, status_plain(plain, pin_retries, puk_retries));
 }
 
 /* Not every card on the contacts is a Keycard, and the answer to that is a screen and no more
@@ -790,6 +842,93 @@ void test_a_v4_card_accepted_despite_its_certificate_is_whitelisted(void) {
   TEST_ASSERT_EQUAL_INT(ERR_OK, scv2_whitelist_check(cert));
 }
 
+/* The other half of that branch: a v4 card whose device key is already in the whitelist is not asked
+ * about again, and the activation runs over the v2 channel to the end. Trust in a device key outlives
+ * the pass that granted it, which is the whole point of the entry -- and what it buys is a card that
+ * opens and unlocks without a word to the user. */
+void test_a_v4_card_already_trusted_is_opened_and_unlocked(void) {
+  card_present();
+
+  v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
+  TEST_ASSERT_EQUAL_INT(ERR_OK, scv2_whitelist_add(v2.cert));
+
+  uint8_t answer[224];
+  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  card_says(answer, len);
+
+  /* A v4 card pairs with nothing, so the handshake is the first and only thing the shell draws: its
+   * salt and its ephemeral key. */
+  hal_host_rng_seed(RNG_SEED);
+  v2_card_draws(&v2);
+
+  v2_card_queue_open(&v2, (uint8_t)card_seq++);
+
+  card_v2_says_name();
+  card_v2_says_retries(3, 16);
+
+  static const uint8_t PIN[KEYCARD_PIN_LEN] = {'7', '8', '9', '0', '1', '2'};
+  host_ui_script_pin(PIN);
+  host_ui_answer_call("ui_read_pin", CORE_EVT_UI_OK);
+
+  card_v2_says_ok(0x20, 0, PIN, sizeof(PIN));
+
+  hal_host_rng_seed(RNG_SEED);
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_keycard_not_genuine"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_secure_channel_ok"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_pin_ok"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_card_transport_error"));
+
+  /* The name and the open flag are only right if every sealed reply opened under keys the model
+   * holds, which is what a v2 channel has to be tested on. */
+  TEST_ASSERT_EQUAL_UINT8(1, kc.ch.open);
+  TEST_ASSERT_EQUAL_STRING("card", kc.name);
+  TEST_ASSERT_EQUAL_UINT(0x0400, (unsigned)kc.app_version);
+
+  /* Five blocks and no sixth: SELECT, the handshake, GET DATA, GET STATUS, VERIFY. */
+  sc_card_assert_no_apdu(5);
+
+  /* The VERIFY went out as a SECURED_APDU around the model's seal, with no PIN in it -- and the seal
+   * is the one the card would open, since the reply above was read under the same counter. */
+  uint8_t apdu[256];
+  const size_t sent_len = sc_card_apdu(4, apdu, sizeof(apdu));
+  TEST_ASSERT_EQUAL_UINT8(0x18, apdu[1]);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)sealed_want_len, apdu[4]);
+  TEST_ASSERT_EQUAL_UINT(sealed_want_len + 1u, sent_len - 5u); /* the seal, then Le */
+  TEST_ASSERT_EQUAL_MEMORY(sealed_want, apdu + 5, sealed_want_len);
+  TEST_ASSERT_NULL(memmem(apdu, sent_len, PIN, sizeof(PIN)));
+}
+
+/* The other answer to the same question. Declining a card the shell cannot verify stops the
+ * activation where it stands -- no handshake, no channel, and above all no whitelist entry, so the
+ * next insertion asks again. That is what keeps a card left in a reader from wearing the user down
+ * into one yes. */
+void test_a_v4_card_declined_by_the_user_is_not_trusted_and_not_opened(void) {
+  card_present();
+
+  v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
+
+  uint8_t answer[224];
+  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  card_says(answer, len);
+
+  host_ui_answer_call("ui_keycard_not_genuine", CORE_EVT_UI_CANCELLED);
+
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_not_genuine"));
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_keycard_secure_channel_ok"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_card_transport_error"));
+  TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
+
+  /* One block and no second: the SELECT, and nothing after it -- the handshake the card was ready to
+   * answer never goes out, so no session is ever established with a device nobody vouched for. */
+  sc_card_assert_no_apdu(1);
+
+  TEST_ASSERT_NOT_EQUAL(ERR_OK, scv2_whitelist_check(v2.cert));
+}
+
 int main(void) {
   UNITY_BEGIN();
 
@@ -804,6 +943,8 @@ int main(void) {
   RUN_TEST(test_declining_the_puk_resets_the_card_and_starts_over);
   RUN_TEST(test_a_card_with_no_keys_is_given_one);
   RUN_TEST(test_a_v4_card_accepted_despite_its_certificate_is_whitelisted);
+  RUN_TEST(test_a_v4_card_already_trusted_is_opened_and_unlocked);
+  RUN_TEST(test_a_v4_card_declined_by_the_user_is_not_trusted_and_not_opened);
 
   return UNITY_END();
 }
