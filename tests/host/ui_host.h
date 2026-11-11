@@ -43,6 +43,9 @@ void host_ui_answer_call(const char* name, core_evt_t answer);
 void host_ui_script_pin(const uint8_t pin[6]);
 void host_ui_script_puk(const uint8_t puk[12]);
 void host_ui_script_pairing(uint8_t idx);
+/* What the mnemonic menu answers: generate or import, how many words, and whether a passphrase is
+ * asked for. The length is what tells the shell BIP-39 from SLIP-39. */
+void host_ui_script_mnemonic(i18n_str_id_t mode, uint32_t len, bool has_pass);
 uint8_t host_ui_wrong_pin_retries(void);
 uint8_t host_ui_wrong_puk_retries(void);
 

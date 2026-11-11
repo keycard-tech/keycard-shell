@@ -17,6 +17,7 @@
 #include "keycard/secure_channel_v1.h"
 #include "sc_card.h"
 #include "sc_host.h"
+#include "sc_v1_card.h"
 #include "unity.h"
 
 /*
@@ -50,6 +51,16 @@ static const uint8_t PAIRING_KEY[SHA256_DIGEST_LENGTH] = {0x40, 0x41, 0x42, 0x43
 static keycard_t kc;
 static uint8_t sc_pub[65];
 
+/* The card, as a second implementation of the schedule computes it. */
+static v1_card_t model;
+static v1_card_t* const s = &model;
+
+/* The handshake's two draws, taken from the seed the module is then re-seeded with. */
+static void handshake_draws(v1_card_t* c) {
+  hal_host_rng_seed(RNG_SEED);
+  v1_card_draws(c, sc_pub, PAIRING_KEY);
+}
+
 void setUp(void) {
   hal_host_sc_reset();
   memset(&kc, 0, sizeof(kc));
@@ -60,162 +71,7 @@ void setUp(void) {
 
 void tearDown(void) {}
 
-/* ISO 9797-1 mechanism 1: 0x80 then zeros to the next block boundary. */
-static size_t pad1(const uint8_t* data, size_t len, uint8_t* out) {
-  const size_t padded = ((len / AES_BLOCK_SIZE) + 1) * AES_BLOCK_SIZE;
-  memcpy(out, data, len);
-  out[len] = 0x80;
-  memset(&out[len + 1], 0, padded - len - 1);
-  return padded;
-}
-
-/* The session keys: SHA-512 over the ECDH x-coordinate, the stored pairing key and the card's
- * nonce, which fills the encryption key and the MAC key in that order. */
-static void session_keys(const uint8_t client_priv[32], const uint8_t card_nonce[SHA256_DIGEST_LENGTH],
-                         uint8_t enc_key[AES_256_KEY_SIZE], uint8_t mac_key[AES_256_KEY_SIZE]) {
-  uint8_t shared[65];
-  TEST_ASSERT_EQUAL_INT(0, ecdh_multiply(&secp256k1, client_priv, sc_pub, shared));
-
-  uint8_t keys[AES_256_KEY_SIZE + AES_256_KEY_SIZE];
-  SHA512_CTX sha512 = {0};
-  sha512_Init(&sha512);
-  sha512_Update(&sha512, &shared[1], SHA256_DIGEST_LENGTH);
-  sha512_Update(&sha512, PAIRING_KEY, SHA256_DIGEST_LENGTH);
-  sha512_Update(&sha512, card_nonce, SHA256_DIGEST_LENGTH);
-  sha512_Final(&sha512, keys);
-
-  memcpy(enc_key, keys, AES_256_KEY_SIZE);
-  memcpy(mac_key, &keys[AES_256_KEY_SIZE], AES_256_KEY_SIZE);
-}
-
-/* The MAC the shell will compute for a command, and therefore the iv its reply must be encrypted
- * under: header and length, then the ciphertext, with the 11 bytes between them zeroed. */
-static void command_mac(const uint8_t mac_key[AES_256_KEY_SIZE], uint8_t cla, uint8_t ins, uint8_t p1,
-                        uint8_t p2, const uint8_t* ciphertext, size_t ct_len, uint8_t mac[AES_BLOCK_SIZE]) {
-  uint8_t buf[256];
-  const size_t len = ct_len + AES_BLOCK_SIZE;
-  TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE((unsigned)sizeof(buf), (unsigned)len, "mac input");
-
-  memset(buf, 0, AES_BLOCK_SIZE);
-  buf[0] = cla;
-  buf[1] = ins;
-  buf[2] = p1;
-  buf[3] = p2;
-  buf[4] = (uint8_t)len;
-  memcpy(&buf[AES_BLOCK_SIZE], ciphertext, ct_len);
-
-  TEST_ASSERT_TRUE(aes_cbc_mac(mac_key, buf, len, mac));
-}
-
-/* A card's reply under this schedule: the MAC over [length, zeros, ciphertext], then the ciphertext,
- * then the status word. */
-static size_t card_reply(const uint8_t enc_key[AES_256_KEY_SIZE], const uint8_t mac_key[AES_256_KEY_SIZE],
-                         const uint8_t iv[AES_BLOCK_SIZE], const uint8_t* plain, size_t plain_len,
-                         uint8_t* out, uint8_t new_iv[AES_BLOCK_SIZE]) {
-  uint8_t padded[256];
-  const size_t ct_len = pad1(plain, plain_len, padded);
-
-  uint8_t ct[256];
-  TEST_ASSERT_TRUE(aes_encrypt_cbc(enc_key, iv, padded, ct_len, ct));
-
-  const size_t len = ct_len + AES_BLOCK_SIZE;
-  uint8_t mac_buf[256];
-  memset(mac_buf, 0, AES_BLOCK_SIZE);
-  mac_buf[0] = (uint8_t)len;
-  memcpy(&mac_buf[AES_BLOCK_SIZE], ct, ct_len);
-
-  uint8_t mac[AES_BLOCK_SIZE];
-  TEST_ASSERT_TRUE(aes_cbc_mac(mac_key, mac_buf, len, mac));
-
-  /* The MAC the card sends is also what both sides chain to next. */
-  memcpy(new_iv, mac, AES_BLOCK_SIZE);
-
-  memcpy(out, mac, AES_BLOCK_SIZE);
-  memcpy(&out[AES_BLOCK_SIZE], ct, ct_len);
-  out[AES_BLOCK_SIZE + ct_len] = 0x90;
-  out[AES_BLOCK_SIZE + ct_len + 1] = 0x00;
-
-  return len + 2;
-}
-
-/* Everything a well-formed card needs to have said by the end of open(), plus what the shell will
- * send, so a test can predict the wire. */
-typedef struct {
-  uint8_t client_priv[32];
-  uint8_t client_pub[65];
-  uint8_t challenge[32];
-  uint8_t card_nonce[SHA256_DIGEST_LENGTH];
-  uint8_t card_iv[AES_IV_SIZE];
-  uint8_t enc_key[AES_256_KEY_SIZE];
-  uint8_t mac_key[AES_256_KEY_SIZE];
-  uint8_t cmd_ct[48];   /* the padded challenge, encrypted under the card's iv */
-  uint8_t cmd_mac[16];  /* and its MAC, which becomes the iv of the reply */
-  uint8_t iv[16];       /* the iv the shell chains to now, once the card has answered */
-} v1_session_t;
-
-/* The APDU the shell will put on the wire for a command of the given plaintext, as the model
- * computes it: MAC of (header, length, zeros, ciphertext) followed by the ciphertext. */
-static void expect_command(const v1_session_t* s, uint8_t ins, const uint8_t* plain, size_t plain_len,
-                           uint8_t* out, size_t* out_len, uint8_t next_iv[16]) {
-  uint8_t padded[256];
-  const size_t ct_len = pad1(plain, plain_len, padded);
-
-  uint8_t ct[256];
-  TEST_ASSERT_TRUE(aes_encrypt_cbc(s->enc_key, s->iv, padded, ct_len, ct));
-
-  const size_t lc = ct_len + AES_BLOCK_SIZE;
-  command_mac(s->mac_key, 0x80, ins, 0, 0, ct, ct_len, out);
-  memcpy(&out[AES_BLOCK_SIZE], ct, ct_len);
-
-  memcpy(next_iv, out, AES_BLOCK_SIZE);
-  *out_len = lc;
-}
-
-static v1_session_t session;
-static v1_session_t* const s = &session;
-
-static void handshake_draws(v1_session_t* s) {
-  hal_host_rng_seed(RNG_SEED);
-  random_buffer(s->client_priv, sizeof(s->client_priv));
-  random_buffer(s->challenge, sizeof(s->challenge));
-
-  TEST_ASSERT_EQUAL_INT(0, ecdsa_get_public_key65(&secp256k1, s->client_priv, s->client_pub));
-
-  memset(s->card_nonce, 0xc0, sizeof(s->card_nonce));
-  memset(s->card_iv, 0x11, sizeof(s->card_iv));
-
-  session_keys(s->client_priv, s->card_nonce, s->enc_key, s->mac_key);
-
-  uint8_t padded[48];
-  pad1(s->challenge, sizeof(s->challenge), padded);
-  TEST_ASSERT_TRUE(aes_encrypt_cbc(s->enc_key, s->card_iv, padded, sizeof(padded), s->cmd_ct));
-  command_mac(s->mac_key, 0x80, 0x11, 0, 0, s->cmd_ct, sizeof(s->cmd_ct), s->cmd_mac);
-}
-
-/* The two blocks a good card answers with: its nonce and iv, then its own 34-byte plaintext
- * (a cryptogram plus a status word) under the chain. */
-static void queue_open_answers(v1_session_t* s) {
-  uint8_t first[SHA256_DIGEST_LENGTH + AES_IV_SIZE + 2];
-  memcpy(first, s->card_nonce, sizeof(s->card_nonce));
-  memcpy(&first[sizeof(s->card_nonce)], s->card_iv, sizeof(s->card_iv));
-  first[sizeof(first) - 2] = 0x90;
-  first[sizeof(first) - 1] = 0x00;
-  sc_card_answer(first, sizeof(first), 0);
-
-  uint8_t rc[32];
-  memset(rc, 0x5a, sizeof(rc));
-  uint8_t plain[34];
-  memcpy(plain, rc, sizeof(rc));
-  plain[32] = 0x90;
-  plain[33] = 0x00;
-
-  uint8_t second[64 + 2];
-  const size_t len =
-      card_reply(s->enc_key, s->mac_key, s->cmd_mac, plain, sizeof(plain), second, s->iv);
-  sc_card_answer(second, len, 1);
-}
-
-static app_err_t open_channel(v1_session_t* s) {
+static app_err_t open_channel(v1_card_t* s) {
   pairing_t pairing;
   memset(&pairing, 0, sizeof(pairing));
   memcpy(pairing.key, PAIRING_KEY, sizeof(PAIRING_KEY));
@@ -233,7 +89,7 @@ void test_open_seals_the_challenge_under_the_derived_session(void) {
   handshake_draws(s);
 
   sc_card_activate(&kc.sc);
-  queue_open_answers(s);
+  v1_card_queue_open(s, 0);
 
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
   TEST_ASSERT_EQUAL_UINT8(1, kc.ch.open);
@@ -277,9 +133,7 @@ void test_a_card_that_cannot_mac_its_reply_is_not_opened(void) {
   plain[33] = 0x00;
 
   uint8_t second[64 + 2];
-  uint8_t ignored_iv[16];
-  const size_t len =
-      card_reply(s->enc_key, s->mac_key, s->cmd_mac, plain, sizeof(plain), second, ignored_iv);
+  const size_t len = v1_card_reply(s, s->cmd_mac, plain, sizeof(plain), second);
   second[3] ^= 0x01; /* the MAC the shell recomputes will not match */
 
   sc_card_activate(&kc.sc);
@@ -350,9 +204,7 @@ void test_the_mutual_authenticate_answer_has_one_length(void) {
   plain[sizeof(plain) - 1] = 0x00;
 
   uint8_t second[64 + 2];
-  uint8_t ignored_iv[16];
-  const size_t len =
-      card_reply(s->enc_key, s->mac_key, s->cmd_mac, plain, sizeof(plain), second, ignored_iv);
+  const size_t len = v1_card_reply(s, s->cmd_mac, plain, sizeof(plain), second);
 
   sc_card_activate(&kc.sc);
   sc_card_answer(first, sizeof(first), 0);
@@ -428,7 +280,7 @@ void test_the_chain_moves_with_every_command(void) {
    * caller's buffer in place, which is what the macro's extra SC_PAD bytes are for. */
 
   sc_card_activate(&kc.sc);
-  queue_open_answers(s); /* leaves the shell chained to the MAC of the card's reply */
+  v1_card_queue_open(s, 0); /* leaves the shell chained to the MAC of the card's reply */
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
 
   SC_BUF(pin, 6);
@@ -445,9 +297,8 @@ void test_the_chain_moves_with_every_command(void) {
   uint8_t reply[66];
   uint8_t apdu[128];
 
-  expect_command(s, 0x20, pin, 6, want, &want_len, next_iv);
-  const size_t reply_len =
-      card_reply(s->enc_key, s->mac_key, next_iv, reply_plain, sizeof(reply_plain), reply, s->iv);
+  v1_card_expect_command(s, 0x20, 0, 0, pin, 6, want, &want_len, next_iv);
+  const size_t reply_len = v1_card_reply(s, next_iv, reply_plain, sizeof(reply_plain), reply);
 
   hal_host_sc_sent_clear();
   sc_card_answer(reply, reply_len, 0); /* the card's third I-block: N(S) is back to 0 */
@@ -469,9 +320,8 @@ void test_the_chain_moves_with_every_command(void) {
 
   /* The same PIN again. The shell's own iv has moved, so what leaves is different -- and the card
    * knows why, because it moved the same way. */
-  expect_command(s, 0x20, pin, 6, want, &want_len, next_iv);
-  const size_t reply2_len =
-      card_reply(s->enc_key, s->mac_key, next_iv, reply_plain, sizeof(reply_plain), reply, s->iv);
+  v1_card_expect_command(s, 0x20, 0, 0, pin, 6, want, &want_len, next_iv);
+  const size_t reply2_len = v1_card_reply(s, next_iv, reply_plain, sizeof(reply_plain), reply);
 
   hal_host_sc_sent_clear();
   sc_card_answer(reply, reply2_len, 1);
@@ -499,7 +349,7 @@ void test_a_reply_that_does_not_mac_ends_the_session(void) {
   handshake_draws(s);
 
   sc_card_activate(&kc.sc);
-  queue_open_answers(s);
+  v1_card_queue_open(s, 0);
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
 
   uint8_t reply[64 + 2];
@@ -507,10 +357,7 @@ void test_a_reply_that_does_not_mac_ends_the_session(void) {
   memset(plain, 0x03, sizeof(plain) - 2);
   plain[sizeof(plain) - 2] = 0x90;
   plain[sizeof(plain) - 1] = 0x00;
-
-  uint8_t ignored_iv[16];
-  const size_t reply_len =
-      card_reply(s->enc_key, s->mac_key, s->iv, plain, sizeof(plain), reply, ignored_iv);
+  const size_t reply_len = v1_card_reply(s, s->iv, plain, sizeof(plain), reply);
   reply[3] ^= 0x01; /* the MAC, not the ciphertext */
 
   hal_host_sc_sent_clear();
@@ -542,7 +389,7 @@ void test_the_plaintext_is_wiped_as_it_is_sealed(void) {
   handshake_draws(s);
 
   sc_card_activate(&kc.sc);
-  queue_open_answers(s);
+  v1_card_queue_open(s, 0);
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
 
   SC_BUF(pin, 6);
@@ -553,9 +400,7 @@ void test_the_plaintext_is_wiped_as_it_is_sealed(void) {
   memset(plain, 0x03, sizeof(plain));
   plain[sizeof(plain) - 2] = 0x90;
   plain[sizeof(plain) - 1] = 0x00;
-  uint8_t ignored_iv[16];
-  const size_t reply_len =
-      card_reply(s->enc_key, s->mac_key, s->iv, plain, sizeof(plain), reply, ignored_iv);
+  const size_t reply_len = v1_card_reply(s, s->iv, plain, sizeof(plain), reply);
   sc_card_answer(reply, reply_len, 0);
 
   APDU_RESET(&kc.apdu);
@@ -599,7 +444,7 @@ void test_pairing_wraps_the_card_secrets_under_a_fresh_ecdh_secret(void) {
     payload[i] = secrets[i] = (uint8_t)i;
   }
   uint8_t plain[48];
-  const size_t padded_len = pad1(secrets, 32, plain);
+  const size_t padded_len = v1_pad1(secrets, 32, plain);
 
   uint8_t ct[48];
   TEST_ASSERT_TRUE(aes_encrypt_cbc(&point[1], iv, plain, padded_len, ct));
@@ -634,7 +479,7 @@ void test_closing_zeroes_the_session(void) {
   handshake_draws(s);
 
   sc_card_activate(&kc.sc);
-  queue_open_answers(s);
+  v1_card_queue_open(s, 0);
   TEST_ASSERT_EQUAL_INT(ERR_OK, open_channel(s));
 
   TEST_ASSERT_EQUAL_MEMORY(s->enc_key, kc.ch.v1.enc_key, sizeof(s->enc_key));

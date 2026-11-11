@@ -31,6 +31,9 @@ static uint8_t script_pin[6] = {'1', '2', '3', '4', '5', '6'};
 static uint8_t script_puk[12] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2'};
 static uint8_t shown_pin_retries, shown_puk_retries;
 static uint8_t pairing_idx = 1;
+static i18n_str_id_t mnemo_mode = 0;
+static uint32_t mnemo_len = 0;
+static bool mnemo_has_pass = false;
 
 static void record(const char* name) {
   if (call_count < MAX_CALLS) {
@@ -53,6 +56,9 @@ void host_ui_keycard_reset(void) {
   memset(answers, 0, sizeof(answers));
   shown_pin_retries = 0;
   shown_puk_retries = 0;
+  mnemo_mode = 0;
+  mnemo_len = 0;
+  mnemo_has_pass = false;
   call_count = 0;
   answer_count = 0;
 }
@@ -84,6 +90,12 @@ void host_ui_script_pin(const uint8_t pin[6]) { memcpy(script_pin, pin, 6); }
 void host_ui_script_puk(const uint8_t puk[12]) { memcpy(script_puk, puk, 12); }
 
 void host_ui_script_pairing(uint8_t idx) { pairing_idx = idx; }
+
+void host_ui_script_mnemonic(i18n_str_id_t mode, uint32_t len, bool has_pass) {
+  mnemo_mode = mode;
+  mnemo_len = len;
+  mnemo_has_pass = has_pass;
+}
 
 uint8_t host_ui_wrong_pin_retries(void) { return shown_pin_retries; }
 
@@ -243,9 +255,9 @@ core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
 
 i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
   record("ui_read_mnemonic_len");
-  (void)len;
-  (void)has_pass;
-  return 0;
+  *len = mnemo_len;
+  *has_pass = mnemo_has_pass;
+  return mnemo_mode;
 }
 
 core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist,

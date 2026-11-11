@@ -22,7 +22,13 @@ static struct {
   uint32_t timeout;
 } seen;
 
+/* LSTR() reads the translated strings through a pointer the firmware sets at boot, so a test that
+ * walks a path handing one to the ui faults on a null dereference until it is pointed at a table.
+ * English is what `core/settings.c` installs and what the suite already links, so it is what the seam
+ * installs too -- the wording a test sees is the device's, whether or not it asserts on it. */
 void host_ui_reset(void) {
+  i18n_set_strings(i18n_english_strings);
+
   memset(&answer, 0, sizeof(answer));
   memset(&seen, 0, sizeof(seen));
 

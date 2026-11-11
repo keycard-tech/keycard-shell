@@ -12,6 +12,7 @@
 #include "keycard/keycard_cmdset.h"
 #include "keycard/secure_channel.h"
 #include "sc_card.h"
+#include "sc_v1_card.h"
 #include "sc_host.h"
 #include "unity.h"
 
@@ -51,14 +52,6 @@ static void assert_second_apdu(const uint8_t* want, size_t len) {
 static void assert_apdu(const char* hex) {
   uint8_t want[128];
   sc_card_assert_apdu(want, test_unhex(hex, want, sizeof(want)));
-}
-
-static void sha256_cat(const uint8_t* a, size_t alen, const uint8_t* b, size_t blen, uint8_t out[32]) {
-  SHA256_CTX sha256 = {0};
-  sha256_Init(&sha256);
-  sha256_Update(&sha256, a, alen);
-  sha256_Update(&sha256, b, blen);
-  sha256_Final(&sha256, out);
 }
 
 /* SELECT by file identifier, the first command of every activation. The 04 in P1 is what makes it a
@@ -125,7 +118,7 @@ void test_autopair_completes_against_a_card_that_proves_itself(void) {
 
   memset(card_challenge, 0xcd, sizeof(card_challenge));
   memset(salt, 0xab, sizeof(salt));
-  sha256_cat(psk, sizeof(psk), challenge, sizeof(challenge), reply);
+  v1_sha256_cat(psk, sizeof(psk), challenge, sizeof(challenge), reply);
   memcpy(&reply[SHA256_DIGEST_LENGTH], card_challenge, SHA256_DIGEST_LENGTH);
   reply[2 * SHA256_DIGEST_LENGTH] = 0x90;
   reply[2 * SHA256_DIGEST_LENGTH + 1] = 0x00;
@@ -144,7 +137,7 @@ void test_autopair_completes_against_a_card_that_proves_itself(void) {
   const app_err_t res = keycard_cmd_autopair(&kc, psk, &pairing);
   TEST_ASSERT_EQUAL_INT(ERR_OK, res);
 
-  sha256_cat(psk, sizeof(psk), card_challenge, sizeof(card_challenge), our_cryptogram);
+  v1_sha256_cat(psk, sizeof(psk), card_challenge, sizeof(card_challenge), our_cryptogram);
   want_apdu[0] = 0x80;
   want_apdu[1] = 0x12;
   want_apdu[2] = 1;
@@ -158,7 +151,7 @@ void test_autopair_completes_against_a_card_that_proves_itself(void) {
   assert_second_apdu(want_apdu, sizeof(want_apdu));
 
   TEST_ASSERT_EQUAL_UINT8(3, pairing.idx);
-  sha256_cat(psk, sizeof(psk), salt, sizeof(salt), expected_key);
+  v1_sha256_cat(psk, sizeof(psk), salt, sizeof(salt), expected_key);
   TEST_ASSERT_EQUAL_MEMORY(expected_key, pairing.key, SHA256_DIGEST_LENGTH);
 }
 
