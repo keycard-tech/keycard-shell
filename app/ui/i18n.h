@@ -356,6 +356,11 @@ typedef enum {
   OPENPGP_SIGN_APPROVE_TITLE,
   MENU_OPENPGP,
 
+  // Experimental Kohaku research
+  MENU_KOHAKU_RESEARCH,
+  MENU_RAILGUN_DIAGNOSTICS,
+  RAILGUN_DIAGNOSTICS_INFO,
+
   INVALID_STR = 0xffff
 } i18n_str_id_t;
 

@@ -8,6 +8,7 @@
 #include "pwr.h"
 #include "usb/usb.h"
 #include "crypto/util.h"
+#include "ui/dialog.h"
 
 static inline void core_action_run(i18n_str_id_t menu) {
   switch(menu) {
@@ -18,6 +19,13 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_OPENPGP:
     core_openpgp_run();
     break;
+#ifndef BITCOIN_ONLY
+  case MENU_RAILGUN_DIAGNOSTICS:
+    ui_prompt(LSTR(MENU_RAILGUN_DIAGNOSTICS),
+              LSTR(RAILGUN_DIAGNOSTICS_INFO),
+              UI_INFO_CANCELLABLE);
+    break;
+#endif
   case MENU_CONNECT:
     core_connect_wallet();
     break;
