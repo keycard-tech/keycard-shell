@@ -177,6 +177,9 @@ set(APP_SOURCES
     app/crypto/memzero.c
     app/crypto/nist256p1.c
     app/crypto/pbkdf2.c
+    app/crypto/railgun_babyjubjub.c
+    app/crypto/railgun_blake512.c
+    app/crypto/railgun_poseidon_t6.c
     app/crypto/rand.c
     app/crypto/rfc6979.c
     app/crypto/ripemd160.c
