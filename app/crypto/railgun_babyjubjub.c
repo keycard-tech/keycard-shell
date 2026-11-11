@@ -182,12 +182,14 @@ static hal_err_t projective_to_affine(
   return HAL_SUCCESS;
 }
 
-hal_err_t railgun_babyjubjub_public_mul(
+hal_err_t railgun_babyjubjub_public_mul_with_checkpoint(
     const uint8_t x[32],
     const uint8_t y[32],
     const uint8_t scalar[32],
     uint8_t out_x[32],
-    uint8_t out_y[32]) {
+    uint8_t out_y[32],
+    bool (*checkpoint)(void*),
+    void* context) {
   babyjub_point_t base, result;
   babyjub_projective_t accumulator, point, next;
   int valid;
@@ -224,6 +226,10 @@ hal_err_t railgun_babyjubjub_public_mul(
   bn_one(&accumulator.z);
 
   for (unsigned i = 0; i < 32; i++) {
+    if (checkpoint && !checkpoint(context)) {
+      return HAL_FAIL;
+    }
+
     for (int bit = 7; bit >= 0; bit--) {
       unsigned set = (scalar[i] >> bit) & 1u;
 
@@ -263,3 +269,13 @@ hal_err_t railgun_babyjubjub_public_mul(
 }
 
 #undef CHECK_OP
+
+hal_err_t railgun_babyjubjub_public_mul(
+    const uint8_t x[32],
+    const uint8_t y[32],
+    const uint8_t scalar[32],
+    uint8_t out_x[32],
+    uint8_t out_y[32]) {
+  return railgun_babyjubjub_public_mul_with_checkpoint(
+      x, y, scalar, out_x, out_y, NULL, NULL);
+}

@@ -61,8 +61,9 @@ static hal_err_t sbox5(uint8_t value[32]) {
   return HAL_SUCCESS;
 }
 
-hal_err_t railgun_poseidon_t6_hash(
-    const uint8_t inputs[5][32], uint8_t out[32]) {
+hal_err_t railgun_poseidon_t6_hash_with_checkpoint(
+    const uint8_t inputs[5][32], uint8_t out[32],
+    bool (*checkpoint)(void*), void* context) {
   if (inputs == NULL || out == NULL) {
     return HAL_FAIL;
   }
@@ -76,6 +77,9 @@ hal_err_t railgun_poseidon_t6_hash(
   }
 
   for (unsigned round = 0; round < POSEIDON_T6_ROUNDS; round++) {
+    if (checkpoint && !checkpoint(context)) {
+      return HAL_FAIL;
+    }
     for (unsigned i = 0; i < POSEIDON_T6_WIDTH; i++) {
       if (add_into(state[i], poseidon_t6_rc[round][i]) != HAL_SUCCESS) {
         return HAL_FAIL;
@@ -110,4 +114,10 @@ hal_err_t railgun_poseidon_t6_hash(
 
   memcpy(out, state[0], 32);
   return HAL_SUCCESS;
+}
+
+hal_err_t railgun_poseidon_t6_hash(
+    const uint8_t inputs[5][32], uint8_t out[32]) {
+  return railgun_poseidon_t6_hash_with_checkpoint(
+      inputs, out, NULL, NULL);
 }

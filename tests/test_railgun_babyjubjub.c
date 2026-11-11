@@ -193,6 +193,12 @@ static void assert_point(
   TEST_ASSERT_TRUE(on_curve(actual));
 }
 
+static bool reject_checkpoint(void* context) {
+  unsigned* calls = context;
+  ++*calls;
+  return false;
+}
+
 void setUp(void) {
   from_hex(FIELD_FR, &field);
   bn_read_uint32(168700, &curve_a);
@@ -884,6 +890,23 @@ static void test_firmware_public_mul_rejects_invalid(void) {
           NULL, y, scalar, out_x, out_y));
 }
 
+static void test_diagnostic_checkpoint_abort(void) {
+  uint8_t x[32], y[32];
+  uint8_t scalar[32] = {0};
+  uint8_t out_x[32], out_y[32];
+  unsigned calls = 0;
+
+  TEST_ASSERT_EQUAL_UINT(32, test_unhex(BASE_X, x, 32));
+  TEST_ASSERT_EQUAL_UINT(32, test_unhex(BASE_Y, y, 32));
+  scalar[31] = 2;
+
+  TEST_ASSERT_EQUAL_INT(
+      HAL_FAIL, railgun_babyjubjub_public_mul_with_checkpoint(
+          x, y, scalar, out_x, out_y,
+          reject_checkpoint, &calls));
+  TEST_ASSERT_EQUAL_UINT(1, calls);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_base_point_is_on_curve);
@@ -899,5 +922,6 @@ int main(void) {
   RUN_TEST(test_synthetic_eddsa_poseidon_signatures);
   RUN_TEST(test_firmware_public_mul_vectors);
   RUN_TEST(test_firmware_public_mul_rejects_invalid);
+  RUN_TEST(test_diagnostic_checkpoint_abort);
   return UNITY_END();
 }

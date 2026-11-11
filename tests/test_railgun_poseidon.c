@@ -21,6 +21,12 @@
 #define DOUBLE_Y \
   "01666cafbf0a30da8b9ebeaf848a1da067a892296f1043188e1705402b6d6853"
 
+static bool reject_checkpoint(void* context) {
+  unsigned* calls = context;
+  ++*calls;
+  return false;
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -150,6 +156,17 @@ static void test_poseidon_rejects_null_arguments(void) {
       HAL_FAIL, railgun_poseidon_t6_hash(inputs, NULL));
 }
 
+static void test_diagnostic_checkpoint_abort(void) {
+  uint8_t inputs[5][32] = {{0}};
+  uint8_t output[32];
+  unsigned calls = 0;
+
+  TEST_ASSERT_EQUAL_INT(
+      HAL_FAIL, railgun_poseidon_t6_hash_with_checkpoint(
+          inputs, output, reject_checkpoint, &calls));
+  TEST_ASSERT_EQUAL_UINT(1, calls);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_upstream_t6_known_answer);
@@ -158,5 +175,6 @@ int main(void) {
   RUN_TEST(test_signing_challenge_message_one);
   RUN_TEST(test_poseidon_field_reduction);
   RUN_TEST(test_poseidon_rejects_null_arguments);
+  RUN_TEST(test_diagnostic_checkpoint_abort);
   return UNITY_END();
 }

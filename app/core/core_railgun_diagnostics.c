@@ -43,6 +43,25 @@ static const uint8_t full_width_y[32] = {
     0x26, 0x24, 0x39, 0x3f, 0xad, 0x9b, 0x71, 0xc0, 0x4b, 0x3b, 0x14, 0xd8, 0xac, 0x45, 0x20, 0x2d, 0xbb, 0x4e, 0xaf, 0xf4, 0xc2, 0xd1, 0x35, 0x0c, 0x94, 0x53, 0xfc, 0x08, 0xd1, 0x86, 0x51, 0xfe
 };
 
+typedef struct {
+  TickType_t started;
+  TickType_t limit;
+  bool expired;
+} diagnostic_budget_t;
+
+/* Soft deadline: checked between rounds or scalar bytes. */
+static bool diagnostic_checkpoint(void* context) {
+  diagnostic_budget_t* budget = context;
+
+  if ((TickType_t)(xTaskGetTickCount() - budget->started)
+      >= budget->limit) {
+    budget->expired = true;
+    return false;
+  }
+
+  return true;
+}
+
 static uint32_t elapsed_ms(TickType_t start) {
   TickType_t elapsed = xTaskGetTickCount() - start;
   return (uint32_t) elapsed * portTICK_PERIOD_MS;
@@ -153,12 +172,19 @@ void core_railgun_diagnostics_run(void) {
   }
 
   start = xTaskGetTickCount();
+  diagnostic_budget_t poseidon_budget = {
+      start, pdMS_TO_TICKS(120000), false
+  };
 
-  passed = railgun_poseidon_t6_hash(inputs, hash) == HAL_SUCCESS &&
+  passed = railgun_poseidon_t6_hash_with_checkpoint(
+      inputs, hash, diagnostic_checkpoint, &poseidon_budget)
+      == HAL_SUCCESS &&
            memcmp(hash, expected_poseidon, 32) == 0;
 
   ms = elapsed_ms(start);
-  show_result("Poseidon t6", passed, ms);
+  show_result(
+      poseidon_budget.expired ? "Poseidon timeout" : "Poseidon t6",
+      passed, ms);
 
   if (!passed) {
     show_stack_headroom();
@@ -172,9 +198,13 @@ void core_railgun_diagnostics_run(void) {
   scalar[31] = 2;
 
   start = xTaskGetTickCount();
+  diagnostic_budget_t small_budget = {
+      start, pdMS_TO_TICKS(30000), false
+  };
 
-  passed = railgun_babyjubjub_public_mul(
-      base_x, base_y, scalar, out_x, out_y) == HAL_SUCCESS;
+  passed = railgun_babyjubjub_public_mul_with_checkpoint(
+      base_x, base_y, scalar, out_x, out_y,
+      diagnostic_checkpoint, &small_budget) == HAL_SUCCESS;
 
   if (passed) {
     passed = memcmp(out_x, double_x, 32) == 0 &&
@@ -182,7 +212,9 @@ void core_railgun_diagnostics_run(void) {
   }
 
   ms = elapsed_ms(start);
-  show_result("BabyJubjub x2", passed, ms);
+  show_result(
+      small_budget.expired ? "BabyJubjub timeout" : "BabyJubjub x2",
+      passed, ms);
 
   if (!passed ||
       ui_prompt(LSTR(MENU_RAILGUN_DIAGNOSTICS),
@@ -193,10 +225,14 @@ void core_railgun_diagnostics_run(void) {
   }
 
   start = xTaskGetTickCount();
+  diagnostic_budget_t full_budget = {
+      start, pdMS_TO_TICKS(180000), false
+  };
 
-  passed = railgun_babyjubjub_public_mul(
+  passed = railgun_babyjubjub_public_mul_with_checkpoint(
       base_x, base_y, full_width_scalar,
-      out_x, out_y) == HAL_SUCCESS;
+      out_x, out_y, diagnostic_checkpoint,
+      &full_budget) == HAL_SUCCESS;
 
   if (passed) {
     passed = memcmp(out_x, full_width_x, 32) == 0 &&
@@ -204,7 +240,9 @@ void core_railgun_diagnostics_run(void) {
   }
 
   ms = elapsed_ms(start);
-  show_result("BabyJubjub full", passed, ms);
+  show_result(
+      full_budget.expired ? "Full-width timeout" : "BabyJubjub full",
+      passed, ms);
   show_stack_headroom();
 }
 
