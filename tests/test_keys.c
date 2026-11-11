@@ -81,17 +81,16 @@ static void test_the_database_key_is_the_key_the_release_was_signed_with(void) {
   TEST_ASSERT_EQUAL_INT_MESSAGE(0, ecdsa_verify(&secp256k1, key, signature, digest),
                                 "the shipped database does not verify under the shipped key");
 
-  /* The failure is the key's doing and not the shape of the call: one bit of the digest, and a key that
-   * is one byte off, both refuse it. */
+  /* The failure is the key's doing and not the shape of the call: one bit of the digest, and another
+   * anchor of the same curve and the same encoding -- so a refusal cannot be blamed on a malformed
+   * point -- both refuse it. */
   digest[0] ^= 0x01;
   TEST_ASSERT_EQUAL_INT(1, ecdsa_verify(&secp256k1, key, signature, digest));
   digest[0] ^= 0x01;
 
-  const uint8_t wrong_key[33] = {
-    0x03, 0xc0, 0x45, 0xd1, 0x51, 0xd2, 0xdd, 0x7f, 0x58, 0x93, 0x5f, 0x70, 0x77, 0x72, 0x93, 0xbf, 0x35,
-    0xbd, 0xe9, 0x42, 0xba, 0xa4, 0xa9, 0xf4, 0xc4, 0x5b, 0x6e, 0x58, 0xd6, 0xdb, 0x70, 0x00, 0x46,
-  };
-  TEST_ASSERT_EQUAL_INT(1, ecdsa_verify(&secp256k1, wrong_key, signature, digest));
+  const uint8_t* other_anchor;
+  TEST_ASSERT_EQUAL_INT(ERR_OK, key_read_public(KEYCARD_CA_KEY, &other_anchor));
+  TEST_ASSERT_EQUAL_INT(1, ecdsa_verify(&secp256k1, other_anchor, signature, digest));
 }
 
 static void test_the_firmware_key_is_read_where_the_header_lands(void) {

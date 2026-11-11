@@ -12,11 +12,11 @@
 #include "vectors/vectors_eth_db.h"
 
 /*
- * eth_db.c is the store's heaviest consumer: the token database arrives as one blob of ~1650 entries
- * and is installed by a single fs_write(), crossing thirteen flash blocks in one call. Its four
- * lookups and one updater are everything the device does with what it kept, and the corpus is the
- * release the Shell actually ships, with each row confirmed against the upstream chain and token
- * lists the release was generated from -- see vectors/vectors_eth_db.h.
+ * eth_db.c is the store's heaviest consumer: the token database arrives as one blob of mixed entries
+ * and is installed by a single fs_write(), spanning many flash blocks in one call. Its four lookups
+ * and one updater are everything the device does with what it kept, and the corpus is the release the
+ * Shell actually ships, with each row confirmed against the upstream chain and token lists the release
+ * was generated from -- see vectors/vectors_eth_db.h.
  *
  * Two shapes here are easy to get wrong and are pinned on purpose. eth_full_db_rewrite() erases every
  * database entry before writing the new one, and reads the erase's answer as ERR_DATA because its

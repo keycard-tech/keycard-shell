@@ -18,6 +18,7 @@ Run from anywhere; requires network unless the sources are already in tests/vect
 import base64
 import hashlib
 import hmac
+import io
 import itertools
 import textwrap
 import json
@@ -90,7 +91,8 @@ SOURCES = {
     "bc_output_desc.md": "https://raw.githubusercontent.com/BlockchainCommons/Research/master/papers/bcr-2020-010-output-desc.md",
     "bc_account.md": "https://raw.githubusercontent.com/BlockchainCommons/Research/master/papers/bcr-2020-015-account.md",
     "bc_bytewords.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/src/bc-bytewords.c",
-    "shell_db_20260915.zip": "https://shell.keycard.tech/uploads/20260915/20260915.zip",
+    "shell_db_20261111.zip": "https://github.com/keycard-tech/keycard-eth-db/releases/download/20261111/db-20261111-reproduction.zip",
+    "shell_db_20261111.bin": "https://github.com/keycard-tech/keycard-eth-db/releases/download/20261111/shelldb-20261111.bin",
     "bc_bytewords_test.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/test/test.c",
     "erc-4527.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-4527.md",
     "cbor_tags.xhtml": "https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml",
@@ -99,13 +101,17 @@ SOURCES = {
 }
 
 
-def fetch(name: str) -> str:
+def fetch_bytes(name: str) -> bytes:
     path = CACHE / name
     if not path.exists():
         CACHE.mkdir(parents=True, exist_ok=True)
         print(f"fetch {SOURCES[name]}")
         path.write_bytes(urllib.request.urlopen(SOURCES[name]).read())
-    return path.read_text(encoding="utf-8", errors="replace")
+    return path.read_bytes()
+
+
+def fetch(name: str) -> str:
+    return fetch_bytes(name).decode("utf-8", errors="replace")
 
 
 def provenance(name: str) -> str:
@@ -11088,26 +11094,22 @@ def multisig_derive_vectors() -> str:
 
 # ----------------------------------------------------------------- shell token db
 #
-# The published Shell database is the only corpus with the shape eth_db.c really parses: one chain of
-# ~1650 mixed entries handed to a single fs_write(), crossing thirteen flash blocks. Each release zip
-# also carries the upstream lists it was generated from (docs/shell-db.md), and every row below is
-# confirmed against chain.json / erc20.json there, so a lookup is pinned to what chainid.network and
-# tokens.uniswap.org say rather than to what the C parser read back.
+# The published Shell database is the only corpus with the shape eth_db.c really parses: one long chain
+# of mixed entries handed to a single fs_write(), spanning many flash blocks. Each release publishes the
+# upstream lists the blob was generated from (chain.json, erc20.json, abi.json) alongside it, and every
+# row below is confirmed against them, so a lookup is pinned to what chainid.network and tokens.uniswap.org
+# say rather than to what the C parser read back.
 
-SHELL_DB = "shell_db_20260915.zip"
-SHELL_DB_VERSION = 20260915
+SHELL_DB = "shell_db_20261111.zip"
+SHELL_DB_SIGNED = "shell_db_20261111.bin"
+SHELL_DB_VERSION = 20261111
 DB_SIG_LEN = 64
 DB_NET_LEN = 24
 DB_MAGICS = {0x4532: "version", 0x4348: "chain", 0x3020: "erc20", 0x4142: "abi"}
 
 
 def db_read_zip(name: str) -> dict[str, bytes]:
-    path = CACHE / name
-    if not path.exists():
-        CACHE.mkdir(parents=True, exist_ok=True)
-        print(f"fetch {SOURCES[name]}")
-        path.write_bytes(urllib.request.urlopen(SOURCES[name]).read())
-    with zipfile.ZipFile(path) as z:
+    with zipfile.ZipFile(io.BytesIO(fetch_bytes(name))) as z:
         return {n: z.read(n) for n in z.namelist()}
 
 
@@ -11222,8 +11224,8 @@ def eth_db_vectors() -> str:
  *     and eth_db.c never sees the bytes.
  *   - ABI entries one by one. To eth_db.c they are selector blobs classified by magic when erasing;
  *     what the store has to carry is their count.
- *   - delta updates. No release on https://shell.keycard.tech/update/db-version-history is one, and
- *     eth_db_update() answers ERR_UNSUPPORTED to anything that is not a full database.
+ *   - delta updates. No published release is one, and eth_db_update() answers ERR_UNSUPPORTED to
+ *     anything that is not a full database.
  */
 
 #include <stdint.h>
@@ -11549,12 +11551,15 @@ static const aes_cbc_kat_t AES_CBC_MAC_KAT[] = {{
 def keys_vectors() -> str:
     """The one trust anchor in keys.c that an outside artifact can settle: the database verification
     key must be the key the released database was signed with."""
-    blob = db_read_zip(SHELL_DB)["db.bin"]
+    blob = fetch_bytes(SHELL_DB_SIGNED)
     _, _, _, _, body_len = db_parse(blob)
 
     body, signature = blob[:body_len], blob[body_len:]
     if len(signature) != 64:
-        sys.exit(f"{SHELL_DB}: expected a 64-byte signature after the body, found {len(signature)}")
+        sys.exit(f"{SHELL_DB_SIGNED}: expected a 64-byte signature after the body, found {len(signature)}")
+
+    if db_read_zip(SHELL_DB)["db.bin"][:body_len] != body:
+        sys.exit(f"{SHELL_DB}: the reproduction db.bin is not the body the production key signed")
 
     return f"""#ifndef VECTORS_KEYS_H
 #define VECTORS_KEYS_H
@@ -11566,13 +11571,17 @@ def keys_vectors() -> str:
  * external thing that can say whether it is the right one: the release artifact, signed. A test verifies
  * the release signature with the key keys.c hands back -- so a swapped or mistyped key fails the release,
  * not just a self-consistent fixture.
+ *
+ * The same blob ships twice in a release: the asset here carries the production signature, the
+ * reproduction zip carries db.bin signed with a throwaway key so the build is reproducible. Only the
+ * signature differs, and generate.py refuses to emit this header when the two bodies diverge.
  */
 
 #define DB_RELEASE_BODY_SHA256 "{hexs(hashlib.sha256(body).digest())}"
 #define DB_RELEASE_SIGNATURE "{hexs(signature)}"
 
 #endif
-""".replace("{shelldb}", provenance(SHELL_DB))
+""".replace("{shelldb}", provenance(SHELL_DB_SIGNED))
 
 
 # ------------------------------------------------------------------- multisig
