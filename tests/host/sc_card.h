@@ -6,6 +6,7 @@
 
 #include "hal_host.h"
 #include "iso7816/smartcard.h"
+#include "keycard/application_info.h"
 #include "sc_host.h"
 #include "unity.h"
 
@@ -77,6 +78,105 @@ static inline void sc_card_assert_apdu(const uint8_t* want, size_t len) {
   const size_t sent = hal_host_sc_apdu(got, sizeof(got));
   TEST_ASSERT_EQUAL_UINT_MESSAGE((unsigned)len, (unsigned)sent, "apdu length");
   TEST_ASSERT_EQUAL_MEMORY_MESSAGE(want, got, (unsigned)((len < sent) ? len : sent), "apdu");
+}
+
+/* ------------------------------------------------------------------ what a card answers
+
+   Replies in the applet's own wire format. Every suite that drives a card needs the same handful --
+   what SELECT returns, what the two status commands return, the name -- so they are written once
+   here. The trailing 90 00 of each is the T=1 status word, which belongs to no TLV. */
+
+#define SC_CARD_NAME "card" /* what a test then asserts the shell read */
+
+/* A card switched on: the ATR, and the answer to the S(IFS) the shell sends back to it. This only
+ * queues the two; sc_card_activate() below runs the module over them. */
+static inline void sc_card_present(void) {
+  hal_host_sc_reply_hex(SC_CARD_ATR);
+  hal_host_sc_reply_hex(SC_CARD_IFS_ANSWER);
+}
+
+/* What a v4 applet answers SELECT with: its version, an initialised status, a key uid (whose length
+ * is what reports a card that carries a key), the capabilities, and the device certificate. The
+ * certificate's first 33 bytes are the identity key on its own, which is what a CA signs -- the rest
+ * is that signature and the recovery id to read the CA out of it. */
+static inline size_t sc_card_app_info_v4(uint8_t* out, size_t max, uint16_t version, const uint8_t* cert) {
+  uint8_t inner[192];
+  size_t n = 0;
+
+  TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE((unsigned)sizeof(inner),
+                                         (unsigned)(4 + 3 + 2 + APP_INFO_KEY_UID_LEN + 3 + 2 +
+                                                    APP_INFO_CERT_SIZE),
+                                         "inner tlv");
+
+  inner[n++] = 0x02;
+  inner[n++] = 2;
+  inner[n++] = (uint8_t)(version >> 8);
+  inner[n++] = (uint8_t)version;
+
+  inner[n++] = 0x8c;
+  inner[n++] = 1;
+  inner[n++] = APP_STATUS_INITIALIZED;
+
+  inner[n++] = 0x8e;
+  inner[n++] = APP_INFO_KEY_UID_LEN;
+  memset(&inner[n], 0x5a, APP_INFO_KEY_UID_LEN);
+  n += APP_INFO_KEY_UID_LEN;
+
+  inner[n++] = 0x8d;
+  inner[n++] = 1;
+  inner[n++] = 0x00;
+
+  inner[n++] = 0x8a;
+  inner[n++] = APP_INFO_CERT_SIZE;
+  memcpy(&inner[n], cert, APP_INFO_CERT_SIZE);
+  n += APP_INFO_CERT_SIZE;
+
+  /* A template this long needs the two-octet form of the length, which is what a real applet sends
+   * and what the reader accepts. */
+  const size_t hdr = (n >= 0x80) ? 3 : 2;
+  TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE((unsigned)max, (unsigned)(n + hdr + 2), "out");
+
+  size_t o = 0;
+  out[o++] = 0xa4;
+  if (hdr == 3) {
+    out[o++] = 0x81;
+  }
+  out[o++] = (uint8_t)n;
+  memcpy(&out[o], inner, n);
+  o += n;
+
+  out[o++] = 0x90;
+  out[o++] = 0x00;
+  return o;
+}
+
+/* The application status: how many PIN and PUK retries the card has left, and a key present. */
+static inline size_t sc_card_status_plain(uint8_t* plain, uint8_t pin_retries, uint8_t puk_retries) {
+  plain[0] = 0xa3;
+  plain[1] = 0x09;
+  plain[2] = 0x02;
+  plain[3] = 0x01;
+  plain[4] = pin_retries;
+  plain[5] = 0x02;
+  plain[6] = 0x01;
+  plain[7] = puk_retries;
+  plain[8] = 0x01;
+  plain[9] = 0x01;
+  plain[10] = 0x01;
+  plain[11] = 0x90;
+  plain[12] = 0x00;
+
+  return 13;
+}
+
+/* The card's name as the shell reads it: a length under the 0x20 flag, then the bytes. */
+static inline size_t sc_card_name_plain(uint8_t* plain) {
+  plain[0] = (uint8_t)(0x20 | (sizeof(SC_CARD_NAME) - 1));
+  memcpy(&plain[1], SC_CARD_NAME, sizeof(SC_CARD_NAME) - 1);
+  plain[sizeof(SC_CARD_NAME)] = 0x90;
+  plain[sizeof(SC_CARD_NAME) + 1] = 0x00;
+
+  return sizeof(SC_CARD_NAME) + 2;
 }
 
 #endif

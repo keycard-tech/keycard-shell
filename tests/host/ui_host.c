@@ -33,6 +33,54 @@ static struct {
 } answers[MAX_ANSWERS];
 static unsigned answer_count;
 
+/* What the user was shown, in order, whichever file of the seam answers that prompt. A test asks about
+ * a prompt by its ui_ name and must not have to know which file implements it -- the same reason the
+ * answers above are keyed by name. The progress bar's reading rides along, being the one argument a
+ * test reads back. */
+#define MAX_CALLS 64
+
+static struct {
+  const char* name;
+  uint8_t progress;
+} calls[MAX_CALLS];
+static unsigned call_count;
+
+void host_ui_record(const char* name) {
+  if (call_count >= MAX_CALLS) {
+    return;
+  }
+
+  calls[call_count].name = name;
+  calls[call_count].progress = 0;
+  call_count++;
+}
+
+void host_ui_record_progress(const char* name, uint8_t progress) {
+  host_ui_record(name);
+
+  if (call_count > 0) {
+    calls[call_count - 1].progress = progress;
+  }
+}
+
+unsigned host_ui_calls(void) { return call_count; }
+
+unsigned host_ui_call_count(const char* name) {
+  unsigned n = 0;
+
+  for (unsigned i = 0; i < call_count; i++) {
+    if (strcmp(calls[i].name, name) == 0) {
+      n++;
+    }
+  }
+
+  return n;
+}
+
+const char* host_ui_call_at(unsigned i) { return (i < call_count) ? calls[i].name : ""; }
+
+uint8_t host_ui_progress_at(unsigned i) { return (i < call_count) ? calls[i].progress : 0; }
+
 void host_ui_answer_call(const char* name, core_evt_t answer) {
   if (answer_count < MAX_ANSWERS) {
     answers[answer_count].name = name;
@@ -63,8 +111,10 @@ void host_ui_reset(void) {
   memset(&seen, 0, sizeof(seen));
   answer_count = 0;
 
+  memset(calls, 0, sizeof(calls));
+  call_count = 0;
+
   host_ui_keycard_reset();
-  host_ui_display_reset();
 
   answer.menu_answer = CORE_EVT_UI_CANCELLED;
   answer.prompt_answer = CORE_EVT_UI_CANCELLED;

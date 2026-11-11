@@ -204,6 +204,7 @@ static void usb_dev_std_req(usb_setup_packet_t* packet) {
     usb_ep0_ack();
     break;
   default:
+    usb_stall_ep0();
     break;
   }
 }
@@ -225,12 +226,21 @@ static void usb_if_std_req(usb_setup_packet_t* packet) {
     usb_get_descriptor(packet->desc_type, packet->desc_idx, packet->len);
     break;
   case USB_REQ_GET_INTERFACE:
-    hal_usb_send(0x80, &if_id, 1);
+    if (packet->idx != 0) {
+      usb_stall_ep0();
+    } else {
+      hal_usb_send(0x80, &if_id, 1);
+    }
     break;
   case USB_REQ_SET_INTERFACE:
-    usb_stall_ep0();
+    if ((packet->idx != 0) || (packet->val != 0)) {
+      usb_stall_ep0();
+    } else {
+      usb_ep0_ack();
+    }
     break;
   default:
+    usb_stall_ep0();
     break;
   }
 }
@@ -268,17 +278,24 @@ static void usb_ep_std_req(usb_setup_packet_t* packet) {
     usb_get_status(hal_usb_get_stall(packet->idx));
     break;
   case USB_REQ_CLEAR_FEATURE:
-    if (packet->val == USB_EP_HALT) {
+    if (packet->val != USB_EP_HALT) {
+      usb_stall_ep0();
+    } else {
       hal_usb_set_stall(packet->idx, 0);
     }
     break;
   case USB_REQ_SET_FEATURE:
-    hal_usb_set_stall(packet->idx, 1);
+    if (packet->val != USB_EP_HALT) {
+      usb_stall_ep0();
+    } else {
+      hal_usb_set_stall(packet->idx, 1);
+    }
     break;
   case USB_REQ_SYNCH_FRAME:
-    hal_usb_set_stall(packet->idx, 1);
+    usb_stall_ep0();
     break;
   default:
+    usb_stall_ep0();
     break;
   }
 }
@@ -288,9 +305,8 @@ static void usb_dev_req(usb_setup_packet_t* packet) {
   case USB_REQUEST_STD:
     usb_dev_std_req(packet);
     break;
-  case USB_REQUEST_CLASS:
-  case USB_REQUEST_VEND:
   default:
+    usb_stall_ep0();
     break;
   }
 }
@@ -303,8 +319,8 @@ static void usb_if_req(usb_setup_packet_t* packet) {
   case USB_REQUEST_CLASS:
     usb_if_class_req(packet);
     break;
-  case USB_REQUEST_VEND:
   default:
+    usb_stall_ep0();
     break;
   }
 }
@@ -314,9 +330,8 @@ static void usb_ep_req(usb_setup_packet_t* packet) {
   case USB_REQUEST_STD:
     usb_ep_std_req(packet);
     break;
-  case USB_REQUEST_CLASS:
-  case USB_REQUEST_VEND:
   default:
+    usb_stall_ep0();
     break;
   }
 }

@@ -163,69 +163,12 @@ static size_t app_info_v3(uint8_t* out, size_t max, uint16_t version, uint8_t ke
 
 /* A card in the reader, answering the negotiation. keycard_activate switches it on itself, so the
  * test only queues what the activation reads rather than performing it. */
-static void card_present(void) {
-  hal_host_sc_reply_hex(SC_CARD_ATR);
-  hal_host_sc_reply_hex(SC_CARD_IFS_ANSWER);
-}
-
 /* The prefix every test past this point needs: a card selected, paired for the first time, and a
  * channel opened against it. The model is left holding the session keys and the chain, and card_seq
  * has walked the six blocks the handshake costs. The key uid's length is what tells the shell whether
  * the card carries a key, so 0 asks for a card that needs one loaded. */
-/* What a v4 applet answers SELECT with: its version, an initialised status, a key, the
- * capabilities and the device certificate. The certificate is what the shell tries to verify against
- * the embedded CA, and its first bytes are the device's own public key. */
-static size_t app_info_v4(uint8_t* out, size_t max, uint16_t version, const uint8_t* cert) {
-  uint8_t inner[192];
-  size_t n = 0;
-
-  TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE((unsigned)sizeof(inner),
-                                         (unsigned)(4 + 3 + 2 + APP_INFO_KEY_UID_LEN + 3 + 2 +
-                                                    APP_INFO_CERT_SIZE),
-                                         "inner tlv");
-
-  inner[n++] = 0x02;
-  inner[n++] = 2;
-  inner[n++] = (uint8_t)(version >> 8);
-  inner[n++] = (uint8_t)version;
-
-  inner[n++] = 0x8c;
-  inner[n++] = 1;
-  inner[n++] = APP_STATUS_INITIALIZED;
-
-  inner[n++] = 0x8e;
-  inner[n++] = APP_INFO_KEY_UID_LEN;
-  memset(&inner[n], 0x5a, APP_INFO_KEY_UID_LEN);
-  n += APP_INFO_KEY_UID_LEN;
-
-  inner[n++] = 0x8d;
-  inner[n++] = 1;
-  inner[n++] = 0x00;
-
-  inner[n++] = 0x8a;
-  inner[n++] = APP_INFO_CERT_SIZE;
-  memcpy(&inner[n], cert, APP_INFO_CERT_SIZE);
-  n += APP_INFO_CERT_SIZE;
-
-  const size_t hdr = (n >= 0x80) ? 3 : 2;
-  TEST_ASSERT_LESS_OR_EQUAL_UINT_MESSAGE((unsigned)max, (unsigned)(n + hdr + 2), "out");
-
-  size_t o = 0;
-  out[o++] = 0xa4;
-  if (hdr == 3) {
-    out[o++] = 0x81;
-  }
-  out[o++] = (uint8_t)n;
-  memcpy(&out[o], inner, n);
-  o += n;
-
-  out[o++] = 0x90;
-  out[o++] = 0x00;
-  return o;
-}
-
 static void card_paired_and_open(uint8_t key_uid_len) {
-  card_present();
+  sc_card_present();
 
   /* Three draws go by before the channel is up: the identify challenge, the pairing challenge and
    * the ephemeral key of the handshake. One stream, taken in the order the module takes them. */
@@ -306,43 +249,14 @@ static void card_says_ok(uint8_t ins, uint8_t p1, const uint8_t* cmd, size_t cmd
 /* The card's name, which is the first thing read once the channel is open. The status word inside
  * the plaintext is the card's own answer rather than the transport's, so it is written once here and
  * sealed by whichever channel is answering. */
-static size_t name_plain(uint8_t* plain) {
-  static const char name[] = "card";
-  plain[0] = (uint8_t)(0x20 | (sizeof(name) - 1));
-  memcpy(&plain[1], name, sizeof(name) - 1);
-  plain[sizeof(name)] = 0x90;
-  plain[sizeof(name) + 1] = 0x00;
-
-  return sizeof(name) + 2;
-}
-
 static void card_says_name(void) {
   uint8_t plain[32];
-  card_answer_sealed(0xca, 0, NULL, 0, plain, name_plain(plain));
-}
-
-/* The application status: how many PIN and PUK retries the card has left, and a key present. */
-static size_t status_plain(uint8_t* plain, uint8_t pin_retries, uint8_t puk_retries) {
-  plain[0] = 0xa3;
-  plain[1] = 0x09;
-  plain[2] = 0x02;
-  plain[3] = 0x01;
-  plain[4] = pin_retries;
-  plain[5] = 0x02;
-  plain[6] = 0x01;
-  plain[7] = puk_retries;
-  plain[8] = 0x01;
-  plain[9] = 0x01;
-  plain[10] = 0x01;
-  plain[11] = 0x90;
-  plain[12] = 0x00;
-
-  return 13;
+  card_answer_sealed(0xca, 0, NULL, 0, plain, sc_card_name_plain(plain));
 }
 
 static void card_says_retries(uint8_t pin_retries, uint8_t puk_retries) {
   uint8_t plain[32];
-  card_answer_sealed(0xf2, 0, NULL, 0, plain, status_plain(plain, pin_retries, puk_retries));
+  card_answer_sealed(0xf2, 0, NULL, 0, plain, sc_card_status_plain(plain, pin_retries, puk_retries));
 }
 
 /* The same three answers over a v2 channel, where the seal is CCM under a counter rather than a CBC
@@ -365,12 +279,12 @@ static void card_v2_says_ok(uint8_t ins, uint8_t p1, const uint8_t* cmd, size_t 
 
 static void card_v2_says_name(void) {
   uint8_t plain[32];
-  card_v2_says(0xca, 0, NULL, 0, plain, name_plain(plain));
+  card_v2_says(0xca, 0, NULL, 0, plain, sc_card_name_plain(plain));
 }
 
 static void card_v2_says_retries(uint8_t pin_retries, uint8_t puk_retries) {
   uint8_t plain[32];
-  card_v2_says(0xf2, 0, NULL, 0, plain, status_plain(plain, pin_retries, puk_retries));
+  card_v2_says(0xf2, 0, NULL, 0, plain, sc_card_status_plain(plain, pin_retries, puk_retries));
 }
 
 /* ------------------------------------------------------------------ loading a key
@@ -474,7 +388,7 @@ static uint32_t slip39_words_to_indexes(const char* mnemonic, uint16_t* indexes)
 /* Not every card on the contacts is a Keycard, and the answer to that is a screen and no more
  * exchanges -- the shell does not go on pairing with whatever answered. */
 void test_a_card_that_is_not_keycard_is_said_so(void) {
-  card_present();
+  sc_card_present();
   card_says_status(0x6a82);
 
   keycard_activate(&kc);
@@ -496,7 +410,7 @@ void test_a_card_that_is_not_keycard_is_said_so(void) {
 /* An application info that does not parse is the same refusal: the card is not the one the shell
  * expected, whatever it said. */
 void test_an_application_info_that_cannot_be_read_is_said_so(void) {
-  card_present();
+  sc_card_present();
 
   const uint8_t garbage[] = {0xde, 0xad, 0xbe, 0xef, 0x90, 0x00};
   card_says(garbage, sizeof(garbage));
@@ -511,7 +425,7 @@ void test_an_application_info_that_cannot_be_read_is_said_so(void) {
 /* A card older than the shell's minimum is refused on the version, before any pairing is written:
  * an old applet would be given a channel it cannot speak. */
 void test_a_card_older_than_the_shell_is_said_so(void) {
-  card_present();
+  sc_card_present();
 
   uint8_t info[160];
   const size_t len = app_info_v3(info, sizeof(info), 0x0300, APP_INFO_KEY_UID_LEN);
@@ -540,7 +454,7 @@ void test_a_card_older_than_the_shell_is_said_so(void) {
  * mend a refusal. The card is told so, and the pass is not repeated -- while a *stale* pairing still
  * gets its re-pair, which is how a card reset or paired elsewhere comes back. */
 void test_a_channel_refused_on_a_fresh_pairing_is_not_asked_again(void) {
-  card_present();
+  sc_card_present();
 
   /* The two draws the pass makes before the channel: the identify challenge and the pairing
    * challenge, both of which the card's answers have to be computed over. */
@@ -616,7 +530,7 @@ void test_a_channel_refused_on_a_fresh_pairing_is_not_asked_again(void) {
  * replacing, so this one does get its second pass. It is the pairing agreed to in the pass itself
  * that is not, and the test above is that one. */
 void test_a_stale_pairing_is_erased_and_the_card_asked_again(void) {
-  card_present();
+  sc_card_present();
 
   /* A pairing in the store, for this card. */
   pairing_t stored;
@@ -698,7 +612,7 @@ void test_a_card_is_paired_opened_and_unlocked(void) {
   /* The channel is left open and the card is what the shell read it to be, which is only true if
    * every sealed reply opened under the keys the model holds. */
   TEST_ASSERT_EQUAL_UINT8(1, kc.ch.open);
-  TEST_ASSERT_EQUAL_STRING("card", kc.name);
+  TEST_ASSERT_EQUAL_STRING(SC_CARD_NAME, kc.name);
   TEST_ASSERT_EQUAL_UINT(0x0302, (unsigned)kc.app_version);
 
   /* Nine blocks and no tenth: SELECT, IDENTIFY, PAIR twice, the key exchange and its mutual half,
@@ -922,7 +836,7 @@ void test_a_card_with_no_keys_is_given_one(void) {
  * case below, nothing written to the whitelist -- the trust was in the shell all along, which is why
  * a card nobody vouched for cannot borrow it. */
 void test_a_v4_card_the_embedded_ca_vouches_for_is_opened_without_a_word_to_the_user(void) {
-  card_present();
+  sc_card_present();
 
   v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
   v2_card_cert_sign(&v2, SC_V2_CA_PRIV);
@@ -932,7 +846,7 @@ void test_a_v4_card_the_embedded_ca_vouches_for_is_opened_without_a_word_to_the_
   host_key_set(KEYCARD_CA_KEY, ca);
 
   uint8_t answer[224];
-  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  const size_t len = sc_card_app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
   card_says(answer, len);
 
   hal_host_rng_seed(RNG_SEED);
@@ -966,7 +880,7 @@ void test_a_v4_card_the_embedded_ca_vouches_for_is_opened_without_a_word_to_the_
  * signature is sound and the recovery succeeds -- it is the key that comes back that the shell refuses,
  * which is the difference between checking who signed and merely checking that someone did. */
 void test_a_v4_card_whose_certificate_another_ca_signed_is_asked_about(void) {
-  card_present();
+  sc_card_present();
 
   v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
   v2_card_cert_sign(&v2, OTHER_CA_PRIV);
@@ -976,7 +890,7 @@ void test_a_v4_card_whose_certificate_another_ca_signed_is_asked_about(void) {
   host_key_set(KEYCARD_CA_KEY, ca);
 
   uint8_t answer[224];
-  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  const size_t len = sc_card_app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
   card_says(answer, len);
 
   host_ui_answer_call("ui_keycard_not_genuine", CORE_EVT_UI_CANCELLED);
@@ -992,7 +906,7 @@ void test_a_v4_card_whose_certificate_another_ca_signed_is_asked_about(void) {
  * anything about a key: the signature is over the first 33 bytes, so a card presenting someone else's
  * key with someone's valid signature is refused rather than believed. */
 void test_a_v4_card_whose_certificate_changed_after_the_ca_signed_it_is_asked_about(void) {
-  card_present();
+  sc_card_present();
 
   v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
   v2_card_cert_sign(&v2, SC_V2_CA_PRIV);
@@ -1003,7 +917,7 @@ void test_a_v4_card_whose_certificate_changed_after_the_ca_signed_it_is_asked_ab
   host_key_set(KEYCARD_CA_KEY, ca);
 
   uint8_t answer[224];
-  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  const size_t len = sc_card_app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
   card_says(answer, len);
 
   host_ui_answer_call("ui_keycard_not_genuine", CORE_EVT_UI_CANCELLED);
@@ -1020,7 +934,7 @@ void test_a_v4_card_whose_certificate_changed_after_the_ca_signed_it_is_asked_ab
  * so the same card is not asked about again. The channel it opens is another matter, and this card
  * gets no further than the refusal. */
 void test_a_v4_card_accepted_despite_its_certificate_is_whitelisted(void) {
-  card_present();
+  sc_card_present();
 
   /* Not a certificate the embedded CA signed, and not a public key either -- the point is only that
    * verification fails and the user is asked. */
@@ -1028,7 +942,7 @@ void test_a_v4_card_accepted_despite_its_certificate_is_whitelisted(void) {
   memset(cert, 0xa1, sizeof(cert));
 
   uint8_t answer[192];
-  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, cert);
+  const size_t len = sc_card_app_info_v4(answer, sizeof(answer), 0x0400, cert);
   card_says(answer, len);
 
   host_ui_answer_call("ui_keycard_not_genuine", CORE_EVT_UI_OK);
@@ -1057,13 +971,13 @@ void test_a_v4_card_accepted_despite_its_certificate_is_whitelisted(void) {
  * the pass that granted it, which is the whole point of the entry -- and what it buys is a card that
  * opens and unlocks without a word to the user. */
 void test_a_v4_card_already_trusted_is_opened_and_unlocked(void) {
-  card_present();
+  sc_card_present();
 
   v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
   TEST_ASSERT_EQUAL_INT(ERR_OK, scv2_whitelist_add(v2.cert));
 
   uint8_t answer[224];
-  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  const size_t len = sc_card_app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
   card_says(answer, len);
 
   /* A v4 card pairs with nothing, so the handshake is the first and only thing the shell draws: its
@@ -1093,7 +1007,7 @@ void test_a_v4_card_already_trusted_is_opened_and_unlocked(void) {
   /* The name and the open flag are only right if every sealed reply opened under keys the model
    * holds, which is what a v2 channel has to be tested on. */
   TEST_ASSERT_EQUAL_UINT8(1, kc.ch.open);
-  TEST_ASSERT_EQUAL_STRING("card", kc.name);
+  TEST_ASSERT_EQUAL_STRING(SC_CARD_NAME, kc.name);
   TEST_ASSERT_EQUAL_UINT(0x0400, (unsigned)kc.app_version);
 
   /* Five blocks and no sixth: SELECT, the handshake, GET DATA, GET STATUS, VERIFY. */
@@ -1115,12 +1029,12 @@ void test_a_v4_card_already_trusted_is_opened_and_unlocked(void) {
  * next insertion asks again. That is what keeps a card left in a reader from wearing the user down
  * into one yes. */
 void test_a_v4_card_declined_by_the_user_is_not_trusted_and_not_opened(void) {
-  card_present();
+  sc_card_present();
 
   v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
 
   uint8_t answer[224];
-  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  const size_t len = sc_card_app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
   card_says(answer, len);
 
   host_ui_answer_call("ui_keycard_not_genuine", CORE_EVT_UI_CANCELLED);

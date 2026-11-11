@@ -15,11 +15,6 @@
  * the caller does with its own buffer is the thing under test.
  */
 
-#define MAX_CALLS 64
-
-static const char* calls[MAX_CALLS];
-static unsigned call_count;
-
 static uint8_t script_pin[6] = {'1', '2', '3', '4', '5', '6'};
 static uint8_t script_puk[12] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2'};
 static uint8_t shown_pin_retries, shown_puk_retries;
@@ -36,14 +31,7 @@ static const uint8_t* script_ems;
 static const uint8_t* script_puk_wrong;
 static unsigned puk_prompts;
 
-static void record(const char* name) {
-  if (call_count < MAX_CALLS) {
-    calls[call_count++] = name;
-  }
-}
-
 void host_ui_keycard_reset(void) {
-  memset(calls, 0, sizeof(calls));
   shown_pin_retries = 0;
   shown_puk_retries = 0;
   mnemo_mode = 0;
@@ -57,23 +45,7 @@ void host_ui_keycard_reset(void) {
   script_ems = NULL;
   script_puk_wrong = NULL;
   puk_prompts = 0;
-  call_count = 0;
 }
-
-unsigned host_ui_call_count(const char* name) {
-  unsigned n = 0;
-  for (unsigned i = 0; i < call_count; i++) {
-    if (strcmp(calls[i], name) == 0) {
-      n++;
-    }
-  }
-
-  return n;
-}
-
-const char* host_ui_call_at(unsigned i) { return (i < call_count) ? calls[i] : ""; }
-
-unsigned host_ui_call_total(void) { return call_count; }
 
 void host_ui_script_pin(const uint8_t pin[6]) { memcpy(script_pin, pin, 6); }
 
@@ -111,7 +83,7 @@ uint8_t host_ui_wrong_puk_retries(void) { return shown_puk_retries; }
 
 /* Nothing to answer, so the call itself is the whole of it. */
 #define NOTICE(__FN__) \
-  void __FN__(void) { record(#__FN__); }
+  void __FN__(void) { host_ui_record(#__FN__); }
 
 NOTICE(ui_card_accepted)
 NOTICE(ui_card_activation_error)
@@ -132,52 +104,52 @@ NOTICE(ui_keycard_secure_channel_ok)
 NOTICE(ui_keycard_wrong_card)
 NOTICE(ui_seed_loaded)
 
-void ui_keycard_init_ok(bool has_duress) { record("ui_keycard_init_ok"); (void)has_duress; }
+void ui_keycard_init_ok(bool has_duress) { host_ui_record("ui_keycard_init_ok"); (void)has_duress; }
 
 void ui_keycard_paired(bool default_pass) {
-  record("ui_keycard_paired");
+  host_ui_record("ui_keycard_paired");
   (void)default_pass;
 }
 
 void ui_keycard_wrong_pin(uint8_t retries) {
-  record("ui_keycard_wrong_pin");
+  host_ui_record("ui_keycard_wrong_pin");
   shown_pin_retries = retries;
 }
 
 void ui_keycard_wrong_puk(uint8_t retries) {
-  record("ui_keycard_wrong_puk");
+  host_ui_record("ui_keycard_wrong_puk");
   shown_puk_retries = retries;
 }
 
 core_evt_t ui_confirm_factory_reset(void) {
-  record("ui_confirm_factory_reset");
+  host_ui_record("ui_confirm_factory_reset");
   return host_ui_answer_for("ui_confirm_factory_reset");
 }
 
 core_evt_t ui_keycard_no_pairing_slots(void) {
-  record("ui_keycard_no_pairing_slots");
+  host_ui_record("ui_keycard_no_pairing_slots");
   return host_ui_answer_for("ui_keycard_no_pairing_slots");
 }
 
 core_evt_t ui_keycard_not_genuine(void) {
-  record("ui_keycard_not_genuine");
+  host_ui_record("ui_keycard_not_genuine");
   return host_ui_answer_for("ui_keycard_not_genuine");
 }
 
 core_evt_t ui_keycard_pairing_failed(const char* card_name, bool default_pass) {
-  record("ui_keycard_pairing_failed");
+  host_ui_record("ui_keycard_pairing_failed");
   (void)card_name;
   (void)default_pass;
   return host_ui_answer_for("ui_keycard_pairing_failed");
 }
 
 core_evt_t ui_prompt_try_puk(void) {
-  record("ui_prompt_try_puk");
+  host_ui_record("ui_prompt_try_puk");
   return host_ui_answer_for("ui_prompt_try_puk");
 }
 
 core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
-  record("ui_read_pin");
+  host_ui_record("ui_read_pin");
   (void)dismissable;
 
   if (retries >= 0) {
@@ -189,7 +161,7 @@ core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
 }
 
 core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable) {
-  record("ui_read_puk");
+  host_ui_record("ui_read_puk");
   (void)dismissable;
 
   if (retries >= 0) {
@@ -203,14 +175,14 @@ core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable) {
 }
 
 core_evt_t ui_read_duress_pin(uint8_t* out) {
-  record("ui_read_duress_pin");
+  host_ui_record("ui_read_duress_pin");
 
   memcpy(out, "000000", 6);
   return host_ui_answer_for("ui_read_duress_pin");
 }
 
 core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t* len) {
-  record("ui_read_pairing");
+  host_ui_record("ui_read_pairing");
 
   pairing[0] = pairing_idx;
   *len = 1;
@@ -218,7 +190,7 @@ core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t* len) {
 }
 
 core_evt_t ui_read_number(const char* title, uint32_t min, uint32_t max, uint32_t* num, bool show_max) {
-  record("ui_read_number");
+  host_ui_record("ui_read_number");
   (void)title;
   (void)show_max;
 
@@ -228,7 +200,7 @@ core_evt_t ui_read_number(const char* title, uint32_t min, uint32_t max, uint32_
 
 core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint8_t* len,
                           ui_read_string_opt_t opts) {
-  record("ui_read_string");
+  host_ui_record("ui_read_string");
   (void)title;
   (void)prompt;
   (void)opts;
@@ -249,7 +221,7 @@ core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint
 /* The mnemonic and SLIP-39 readers belong to a key being loaded, which is a scenario of its own.
  * Refusing is the honest default here: a test that walks into one should say so explicitly. */
 core_evt_t ui_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_len) {
-  record("ui_read_bip39");
+  host_ui_record("ui_read_bip39");
 
   const uint32_t n = (script_index_count < mnemo_len) ? script_index_count : (uint32_t)mnemo_len;
   if (script_indexes && n) {
@@ -260,7 +232,7 @@ core_evt_t ui_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_
 
 core_evt_t ui_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN],
                           uint8_t ems[SLIP39_SEED_STRENGTH]) {
-  record("ui_read_slip39");
+  host_ui_record("ui_read_slip39");
   (void)indexes;
 
   /* The screen hands back the shards combined into the encrypted master secret, which is what the
@@ -275,7 +247,7 @@ core_evt_t ui_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t in
 }
 
 core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
-  record("ui_scan_mnemonic");
+  host_ui_record("ui_scan_mnemonic");
 
   if (script_indexes && script_index_count) {
     memcpy(indexes, script_indexes, script_index_count * sizeof(uint16_t));
@@ -285,7 +257,7 @@ core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
 }
 
 i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
-  record("ui_read_mnemonic_len");
+  host_ui_record("ui_read_mnemonic_len");
   *len = mnemo_len;
   *has_pass = mnemo_has_pass;
   return mnemo_mode;
@@ -293,7 +265,7 @@ i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
 
 core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len, const char* const* wordlist,
                               size_t wordcount, bool prompt_confirm) {
-  record("ui_backup_mnemonic");
+  host_ui_record("ui_backup_mnemonic");
   (void)indexes;
   (void)len;
   (void)wordlist;

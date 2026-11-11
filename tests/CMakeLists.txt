@@ -423,6 +423,7 @@ shellos_test(secure_channel_v2 LIBS app_keycard_cmdset app_iso7816 app_aes app_c
 shellos_test(secure_channel_v1 LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(keycard_activate LIBS app_keycard app_keycard_cmdset app_settings ui_seam app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(updater LIBS app_core app_keycard app_keycard_cmdset app_settings ui_seam app_iso7816 app_aes app_crypto app_util app_keys app_pairing app_storage app_multisig app_bitcoin app_ethereum app_ur zcbor)
+shellos_test(core_export LIBS app_core app_keycard app_keycard_cmdset app_settings ui_seam app_iso7816 app_aes app_crypto app_util app_keys app_pairing app_storage app_multisig app_bitcoin app_ethereum app_ur zcbor)
 shellos_test(core_usb LIBS app_core app_keycard app_keycard_cmdset app_settings ui_seam app_iso7816 app_aes app_crypto app_util app_keys app_pairing app_storage app_multisig app_bitcoin app_ethereum app_ur zcbor)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 

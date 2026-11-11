@@ -228,7 +228,7 @@ static void test_a_signed_firmware_upgrade_switches_the_bank_and_reboots(void) {
   TEST_ASSERT_EQUAL_UINT(0, hal_host_flash_violations());
 
   /* One progress reading per segment, and the last of them says it is done. */
-  TEST_ASSERT_EQUAL_UINT(100, host_ui_display_progress_at(host_ui_display_calls() - 1));
+  TEST_ASSERT_EQUAL_UINT(100, host_ui_progress_at(host_ui_calls() - 1));
 }
 
 /* The erase that opens an upgrade, and the programming that follows, are both the device's own. */
@@ -352,8 +352,8 @@ static void test_the_progress_bar_follows_the_bytes_received(void) {
 
   upload(INS_FW_UPGRADE, image, IMG_LEN);
 
-  const unsigned first = host_ui_display_progress_at(0);
-  const unsigned mid = host_ui_display_progress_at(1);
+  const unsigned first = host_ui_progress_at(0);
+  const unsigned mid = host_ui_progress_at(1);
 
   /* 240 of 656, then 480 of 656 -- integers, and rising. */
   TEST_ASSERT_EQUAL_UINT((SEG_LEN * 100) / IMG_LEN, first);

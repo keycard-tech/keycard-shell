@@ -18,45 +18,10 @@
  * path and a test that needs bytes to arrive has to script them, which nothing asks for yet.
  */
 
-#define DISPLAY_CALLS 64
-
-static struct {
-  const char* fn;
-  uint8_t progress;
-} calls[DISPLAY_CALLS];
-static unsigned count;
-
-static void record(const char* fn) {
-  if (count >= DISPLAY_CALLS) {
-    return;
-  }
-
-  calls[count].fn = fn;
-  count++;
-}
-
-void host_ui_display_reset(void) {
-  memset(calls, 0, sizeof(calls));
-  count = 0;
-}
-
-unsigned host_ui_display_calls(void) {
-  return count;
-}
-
-const char* host_ui_display_call(unsigned i) {
-  return (i < count) ? calls[i].fn : "";
-}
-
-/* The progress bar's readings, oldest first: the fractions an upgrade reported, in order. */
-uint8_t host_ui_display_progress_at(unsigned i) {
-  return (i < count) ? calls[i].progress : 0;
-}
-
 core_evt_t ui_qrscan(ur_type_t type, void* out) {
   (void)type;
   (void)out;
-  record("ui_qrscan");
+  host_ui_record("ui_qrscan");
   return host_ui_answer_for("ui_qrscan");
 }
 
@@ -65,27 +30,27 @@ core_evt_t ui_qrscan_tx(ur_type_t* type, void* out) {
   if (type) {
     *type = 0;
   }
-  record("ui_qrscan_tx");
+  host_ui_record("ui_qrscan_tx");
   return host_ui_answer_for("ui_qrscan_tx");
 }
 
 core_evt_t ui_display_eth_tx(const uint8_t* address, const txContent_t* tx) {
   (void)address;
   (void)tx;
-  record("ui_display_eth_tx");
+  host_ui_record("ui_display_eth_tx");
   return host_ui_answer_for("ui_display_eth_tx");
 }
 
 core_evt_t ui_display_btc_tx(const btc_tx_ctx_t* tx) {
   (void)tx;
-  record("ui_display_btc_tx");
+  host_ui_record("ui_display_btc_tx");
   return host_ui_answer_for("ui_display_btc_tx");
 }
 
 core_evt_t ui_display_eip712(const uint8_t* address, const eip712_ctx_t* eip712) {
   (void)address;
   (void)eip712;
-  record("ui_display_eip712");
+  host_ui_record("ui_display_eip712");
   return host_ui_answer_for("ui_display_eip712");
 }
 
@@ -95,7 +60,7 @@ core_evt_t ui_display_msg(addr_type_t addr_type, const uint8_t* address, const u
   (void)address;
   (void)msg;
   (void)len;
-  record("ui_display_msg");
+  host_ui_record("ui_display_msg");
   return host_ui_answer_for("ui_display_msg");
 }
 
@@ -104,7 +69,7 @@ core_evt_t ui_display_ur_qr(const char* title, const uint8_t* data, uint32_t len
   (void)data;
   (void)len;
   (void)type;
-  record("ui_display_ur_qr");
+  host_ui_record("ui_display_ur_qr");
   return host_ui_answer_for("ui_display_ur_qr");
 }
 
@@ -114,7 +79,7 @@ core_evt_t ui_display_address_qr(const char* title, const char* address, uint32_
   if (index) {
     *index = 0;
   }
-  record("ui_display_address_qr");
+  host_ui_record("ui_display_address_qr");
   return host_ui_answer_for("ui_display_address_qr");
 }
 
@@ -122,7 +87,7 @@ core_evt_t ui_display_msg_qr(const char* title, const char* msg, const char* lab
   (void)title;
   (void)msg;
   (void)label;
-  record("ui_display_msg_qr");
+  host_ui_record("ui_display_msg_qr");
   return host_ui_answer_for("ui_display_msg_qr");
 }
 
@@ -135,12 +100,12 @@ core_evt_t ui_verify_address(ui_verify_match_fn_t match, void* ctx, uint32_t fir
   if (found) {
     *found = false;
   }
-  record("ui_verify_address");
+  host_ui_record("ui_verify_address");
   return host_ui_answer_for("ui_verify_address");
 }
 
 core_evt_t ui_confirm_export_key(void) {
-  record("ui_confirm_export_key");
+  host_ui_record("ui_confirm_export_key");
   return host_ui_answer_for("ui_confirm_export_key");
 }
 
@@ -148,7 +113,7 @@ core_evt_t ui_device_auth(uint32_t first_auth, uint32_t auth_time, uint32_t auth
   (void)first_auth;
   (void)auth_time;
   (void)auth_count;
-  record("ui_device_auth");
+  host_ui_record("ui_device_auth");
   return host_ui_answer_for("ui_device_auth");
 }
 
@@ -157,7 +122,7 @@ core_evt_t ui_devinfo(const char* fw_ver, const char* app_ver, const char* db_ve
   (void)app_ver;
   (void)db_ver;
   (void)sn;
-  record("ui_devinfo");
+  host_ui_record("ui_devinfo");
   return host_ui_answer_for("ui_devinfo");
 }
 
@@ -165,7 +130,7 @@ core_evt_t ui_read_mnemonic_verify(uint32_t* len) {
   if (len) {
     *len = 0;
   }
-  record("ui_read_mnemonic_verify");
+  host_ui_record("ui_read_mnemonic_verify");
   return host_ui_answer_for("ui_read_mnemonic_verify");
 }
 
@@ -174,14 +139,11 @@ core_evt_t ui_read_number_direct(const char* title, uint32_t* num) {
   if (num) {
     *num = 0;
   }
-  record("ui_read_number_direct");
+  host_ui_record("ui_read_number_direct");
   return host_ui_answer_for("ui_read_number_direct");
 }
 
 void ui_update_progress(const char* title, uint8_t progress) {
   (void)title;
-  if (count < DISPLAY_CALLS) {
-    record("ui_update_progress");
-    calls[count - 1].progress = progress;
-  }
+  host_ui_record_progress("ui_update_progress", progress);
 }

@@ -34,7 +34,14 @@ static struct {
 } sent[USB_SENT_MAX];
 static unsigned sent_count;
 
-static uint8_t stall[16]; /* indexed by endpoint number: 0x81 and 0x01 are the same endpoint */
+/* The peripheral keeps a halt per endpoint *address*, so 0x81 and 0x01 are the two halves of endpoint
+ * 1 and are tracked apart -- a test that wants to know the report channel was left alone needs to see
+ * that. */
+static uint8_t stall[32];
+
+static unsigned stall_index(uint8_t epaddr) {
+  return ((epaddr & 0x80) ? 16u : 0u) | (epaddr & 0x0fu);
+}
 static uint8_t device_address;
 
 void hal_host_usb_reset(void) {
@@ -89,7 +96,7 @@ void hal_host_usb_sent_clear(void) {
 }
 
 uint8_t hal_host_usb_stall(uint8_t epaddr) {
-  return stall[epaddr & 0x0f];
+  return stall[stall_index(epaddr)];
 }
 
 uint8_t hal_host_usb_device_address(void) {
@@ -133,12 +140,12 @@ hal_err_t hal_usb_next_recv(uint8_t epaddr, uint8_t* data, size_t len) {
 }
 
 hal_err_t hal_usb_set_stall(uint8_t epaddr, uint8_t s) {
-  stall[epaddr & 0x0f] = s;
+  stall[stall_index(epaddr)] = s;
   return HAL_SUCCESS;
 }
 
 uint8_t hal_usb_get_stall(uint8_t epaddr) {
-  return stall[epaddr & 0x0f];
+  return stall[stall_index(epaddr)];
 }
 
 hal_err_t hal_usb_set_address(uint8_t addr) {

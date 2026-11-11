@@ -38,7 +38,6 @@ unsigned host_ui_reboot_calls(void);
  * few that wait for the user answer what is scripted here -- CORE_EVT_UI_CANCELLED otherwise. */
 unsigned host_ui_call_count(const char* name);
 const char* host_ui_call_at(unsigned i);
-unsigned host_ui_call_total(void);
 void host_ui_answer_call(const char* name, core_evt_t answer);
 /* What the seam hands back for a named call: what was scripted, or a refusal. The seam files consult
  * it; a test scripts with host_ui_answer_call(). */
@@ -65,12 +64,13 @@ uint8_t host_ui_wrong_puk_retries(void);
 
 void host_ui_keycard_reset(void);
 
-/* The screens and confirmations a USB command shows: the order they appeared in, and the progress a
- * bar reported. Every one of them is answered through host_ui_answer_call() by its ui_ name. */
-void host_ui_display_reset(void);
-unsigned host_ui_display_calls(void);
-const char* host_ui_display_call(unsigned i);
-uint8_t host_ui_display_progress_at(unsigned i);
+/* The call log above, shared by every file of the seam. `host_ui_record` is what a seam function calls
+ * on its way to `host_ui_answer_for`; `host_ui_record_progress` is the progress bar, whose reading a
+ * test reads back with `host_ui_progress_at`, oldest first. */
+void host_ui_record(const char* name);
+void host_ui_record_progress(const char* name, uint8_t progress);
+unsigned host_ui_calls(void);
+uint8_t host_ui_progress_at(unsigned i);
 
 i18n_str_id_t host_ui_menu_marked(void);
 uint8_t host_ui_pwm_dutycycle(void);
