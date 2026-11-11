@@ -3,6 +3,9 @@
 
 #include "core/core_kohaku_key_batch.h"
 #include "crypto/ecdsa.h"
+#include "crypto/aes.h"
+#include "crypto/hkdf.h"
+#include "crypto/sha2.h"
 #include "crypto/memzero.h"
 #include "crypto/privacy_pools_v1.h"
 #include "crypto/secp256k1.h"
@@ -33,6 +36,8 @@ app_err_t core_privacy_pools_v1_derive_at(
     keycard_t* kc, const char* path,
     size_t len, uint8_t out[32]) {
   TEST_ASSERT_EQUAL_PTR(&card, kc);
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_paged_text_calls());
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_prompt_calls());
   derive_calls++;
 
   // Synthetic test root, never a hardware secret.
@@ -76,6 +81,7 @@ void setUp(void) {
   card.ch.open = true;
   memset(request, 0, sizeof(request));
 
+  hal_host_aes_reset();
   host_ui_reset();
   host_ui_answer_prompt(CORE_EVT_UI_OK);
   hal_host_rng_seed(0x1122334455667788ULL);
@@ -172,6 +178,98 @@ static void test_closed_secure_channel_never_derives(void) {
   TEST_ASSERT_EQUAL_UINT(0, display_calls);
 }
 
+
+static void test_encrypted_round_trip(void) {
+  TEST_ASSERT_EQUAL_INT(ERR_OK,
+      core_kohaku_key_run_batch(&card, request, request_len));
+  uint8_t host_private[32] = {0}, shared[65], salt[32], key[16];
+  uint8_t plaintext[65], expected[32], root[32], ciphertext[73];
+  host_private[31] = 1;
+  TEST_ASSERT_EQUAL_INT(0, ecdh_multiply(&secp256k1,
+      host_private, vector_response + 21, shared));
+  static const uint8_t salt_domain[] = "kohaku-key/v4-qr-derive-v1/salt";
+  static const uint8_t key_domain[] = "kohaku-key/v4-qr-derive-v1/aes128-ccm";
+  SHA256_CTX hash;
+  sha256_Init(&hash);
+  sha256_Update(&hash, salt_domain, sizeof(salt_domain));
+  sha256_Update(&hash, request, request_len);
+  sha256_Update(&hash, vector_response + 21, 65);
+  sha256_Update(&hash, vector_response + 86, 13);
+  sha256_Final(&hash, salt);
+  TEST_ASSERT_EQUAL_INT(0, hkdf_sha256(salt, 32, shared + 1, 32,
+      key_domain, sizeof(key_domain) - 1, key, 16));
+  memcpy(ciphertext, vector_response + 99, sizeof(ciphertext));
+  TEST_ASSERT_TRUE(aes128_ccm_decrypt(key, vector_response + 86,
+      ciphertext, sizeof(ciphertext), plaintext));
+  TEST_ASSERT_EQUAL_UINT8(2, plaintext[0]);
+  memset(root, 0x42, sizeof(root));
+  for (size_t i = 0; i < 2; i++) {
+    TEST_ASSERT_EQUAL_INT(ERR_OK, privacy_pools_v1_derive_at(
+        root, paths[i], strlen(paths[i]), expected));
+    TEST_ASSERT_EQUAL_MEMORY(expected, plaintext + 1 + i * 32, 32);
+  }
+  ciphertext[0] ^= 1;
+  TEST_ASSERT_FALSE(aes128_ccm_decrypt(key, vector_response + 86,
+      ciphertext, sizeof(ciphertext), plaintext));
+  ciphertext[0] ^= 1;
+  ciphertext[72] ^= 1;
+  TEST_ASSERT_FALSE(aes128_ccm_decrypt(key, vector_response + 86,
+      ciphertext, sizeof(ciphertext), plaintext));
+  memzero(host_private, sizeof(host_private));
+  memzero(shared, sizeof(shared));
+  memzero(key, sizeof(key));
+  memzero(root, sizeof(root));
+  memzero(expected, sizeof(expected));
+  memzero(plaintext, sizeof(plaintext));
+}
+
+static void assert_rejected(app_err_t expected, size_t len) {
+  TEST_ASSERT_EQUAL_INT(expected, core_kohaku_key_run_batch(&card, request, len));
+  TEST_ASSERT_EQUAL_UINT(0, derive_calls);
+  TEST_ASSERT_EQUAL_UINT(0, display_calls);
+}
+
+static void test_bad_lengths_and_counts(void) {
+  for (size_t len = 0; len < request_len; len++) assert_rejected(ERR_DATA, len);
+  assert_rejected(ERR_DATA, request_len + 1);
+  assert_rejected(ERR_DATA, sizeof(request) + 1);
+  request[86] = 0;
+  assert_rejected(ERR_DATA, request_len);
+  request[86] = 3;
+  assert_rejected(ERR_DATA, request_len);
+  request[86] = 2;
+  request[87] = 255;
+  assert_rejected(ERR_DATA, request_len);
+  request[87] = 0;
+  assert_rejected(ERR_DATA, request_len);
+}
+
+static void test_duplicate_paths(void) {
+  memcpy(request + 89 + strlen(paths[0]), paths[0], strlen(paths[0]));
+  assert_rejected(ERR_DATA, request_len);
+}
+
+static void test_rng_failure(void) {
+  hal_host_rng_refuse_next();
+  assert_rejected(ERR_CRYPTO, request_len);
+}
+
+static void review_then_cancel(const char* text, uint32_t len) {
+  (void)len;
+  TEST_ASSERT_NOT_NULL(strstr(text, "Verify host key fingerprint:"));
+  TEST_ASSERT_NOT_NULL(strstr(text, "salt: m/28784'/1'/0'/1'/17'/0'"));
+  TEST_ASSERT_NOT_NULL(strstr(text, "nullifier: m/28784'/1'/0'/0'/17'/0'"));
+  TEST_ASSERT_EQUAL_UINT(0, derive_calls);
+  host_ui_answer_prompt(CORE_EVT_UI_CANCELLED);
+}
+
+static void test_final_confirmation_cancel(void) {
+  host_ui_set_paged_text_observer(review_then_cancel);
+  assert_rejected(ERR_CANCEL, request_len);
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_paged_text_calls());
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_prompt_calls());
+}
+
 static void print_hex(const uint8_t* value, size_t len) {
   for (size_t i = 0; i < len; i++) {
     printf("%02x", value[i]);
@@ -182,6 +280,11 @@ static void print_hex(const uint8_t* value, size_t len) {
 int main(int argc, char** argv) {
   UNITY_BEGIN();
   RUN_TEST(test_batch_encrypts_two_credentials);
+  RUN_TEST(test_encrypted_round_trip);
+  RUN_TEST(test_bad_lengths_and_counts);
+  RUN_TEST(test_duplicate_paths);
+  RUN_TEST(test_rng_failure);
+  RUN_TEST(test_final_confirmation_cancel);
   RUN_TEST(test_cancel_never_derives);
   RUN_TEST(test_invalid_path_never_derives);
   RUN_TEST(test_invalid_public_key_never_derives);

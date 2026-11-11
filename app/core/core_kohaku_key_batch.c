@@ -25,6 +25,7 @@
 typedef struct {
   const uint8_t* value;
   size_t len;
+  uint32_t secret_type;
 } batch_path_t;
 
 static bool valid_index(
@@ -61,7 +62,7 @@ static bool valid_index(
 }
 
 static bool valid_export_path(
-    const uint8_t* path, size_t len) {
+    const uint8_t* path, size_t len, uint32_t* secret_type) {
   static const char PREFIX[] = "m/28784'/1'/";
 
   if (len == 0 || len > PATH_MAX ||
@@ -77,7 +78,10 @@ static bool valid_export_path(
     if (!valid_index(path, len, &pos, &index))
       return false;
 
-    if (i == 1 && index > 2) return false;
+    if (i == 1) {
+      if (index > 2) return false;
+      *secret_type = index;
+    }
 
     if (i != 3) {
       if (pos >= len || path[pos++] != '/')
@@ -113,7 +117,8 @@ static bool parse_request(
     size_t path_len = request[pos++];
 
     if (path_len == 0 || path_len > len - pos ||
-        !valid_export_path(request + pos, path_len))
+        !valid_export_path(request + pos, path_len,
+                           &paths[i].secret_type))
       return false;
 
     paths[i].value = request + pos;
@@ -174,7 +179,7 @@ app_err_t core_kohaku_key_run_batch(
   base16_encode(digest, fingerprint, 8);
 
   static const char FINGERPRINT_LABEL[] =
-      "Verify Mac fingerprint:\n";
+      "Verify host key fingerprint:\n";
   static const char PATH_LABEL[] =
       "\nPrivate credentials requested:\n";
 
@@ -198,11 +203,18 @@ app_err_t core_kohaku_key_run_batch(
   used += sizeof(PATH_LABEL) - 1;
 
   for (size_t i = 0; i < count; i++) {
-    if (paths[i].len >= sizeof(review) - used) {
+    static const char* const ROLES[] = {
+        "nullifier: ", "salt: ", "ephemeral signer: "};
+    const char* role = ROLES[paths[i].secret_type];
+    size_t role_len = strlen(role);
+
+    if (role_len + paths[i].len >= sizeof(review) - used) {
       status = ERR_DATA;
       goto cleanup;
     }
 
+    memcpy(review + used, role, role_len);
+    used += role_len;
     memcpy(review + used, paths[i].value,
            paths[i].len);
     used += paths[i].len;
@@ -218,7 +230,7 @@ app_err_t core_kohaku_key_run_batch(
 
   if (ui_prompt(
           LSTR(MENU_PRIVACY_POOLS_V1),
-          "Export these private credentials to the verified Mac?",
+          "Export these private credentials to this host?",
           UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
     status = ERR_CANCEL;
     goto cleanup;

@@ -109,11 +109,12 @@ core_evt_t ui_prompt(const char* title, const char* msg, ui_info_opt_t opts) {
 core_evt_t ui_display_paged_text(
     const char* title, const char* text, uint32_t len) {
   (void)title;
+  core_evt_t review_answer = answer.prompt_answer;
   if (paged_text_observer != NULL) {
     paged_text_observer(text, len);
   }
   seen.paged_text++;
-  return answer.prompt_answer;
+  return review_answer;
 }
 
 core_evt_t ui_settings_brightness(uint8_t* brightness) {
