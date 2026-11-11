@@ -40,6 +40,9 @@ unsigned host_ui_call_count(const char* name);
 const char* host_ui_call_at(unsigned i);
 unsigned host_ui_call_total(void);
 void host_ui_answer_call(const char* name, core_evt_t answer);
+/* What the seam hands back for a named call: what was scripted, or a refusal. The seam files consult
+ * it; a test scripts with host_ui_answer_call(). */
+core_evt_t host_ui_answer_for(const char* name);
 void host_ui_script_pin(const uint8_t pin[6]);
 void host_ui_script_puk(const uint8_t puk[12]);
 /* The first PUK prompt answered with this, later ones with the scripted PUK. */
@@ -61,6 +64,13 @@ uint8_t host_ui_wrong_pin_retries(void);
 uint8_t host_ui_wrong_puk_retries(void);
 
 void host_ui_keycard_reset(void);
+
+/* The screens and confirmations a USB command shows: the order they appeared in, and the progress a
+ * bar reported. Every one of them is answered through host_ui_answer_call() by its ui_ name. */
+void host_ui_display_reset(void);
+unsigned host_ui_display_calls(void);
+const char* host_ui_display_call(unsigned i);
+uint8_t host_ui_display_progress_at(unsigned i);
 
 i18n_str_id_t host_ui_menu_marked(void);
 uint8_t host_ui_pwm_dutycycle(void);

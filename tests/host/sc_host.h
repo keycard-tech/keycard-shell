@@ -20,6 +20,15 @@ void hal_host_sc_reply(const uint8_t* bytes, size_t len);
 void hal_host_sc_reply_hex(const char* hex);
 size_t hal_host_sc_unread(void);
 
+/* The task notifications, by the index the waiter blocks on: CORE_EVENT_IDX,
+ * SMARTCARD_TASK_NOTIFICATION_IDX, UI_NOTIFICATION_IDX. An answer is one wait's worth; without one,
+ * the wait falls back to what hal_host_sc_notify_value() scripted, which is what the card suites were
+ * written against. hal_host_notify_timeouts() makes an index time out instead, so that a command
+ * needing more data is dispatched one segment at a time. */
+void hal_host_notify_answer(uint32_t index, uint32_t value);
+void hal_host_notify_timeouts(uint32_t index, bool on);
+unsigned hal_host_notify_waits(uint32_t index);
+
 void hal_host_sc_fail_read_after(unsigned n);
 void hal_host_sc_fail_notify_after(unsigned n);
 void hal_host_sc_notify_value(uint32_t value);

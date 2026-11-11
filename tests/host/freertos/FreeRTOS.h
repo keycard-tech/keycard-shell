@@ -16,4 +16,9 @@ typedef uint32_t TickType_t;
 
 #define pdMS_TO_TICKS(ms) ((TickType_t)(ms))
 
+/* app_tasks.h declares every task handle the firmware posts notifications to, and app/ui/ui_internal.h
+ * posts one through a helper that takes the handle as an argument. No handle is ever created here, so
+ * nothing may be done with one but pass it along. */
+typedef void* TaskHandle_t;
+
 #endif

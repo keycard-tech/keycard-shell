@@ -22,6 +22,36 @@ static struct {
   uint32_t timeout;
 } seen;
 
+#define MAX_ANSWERS 8
+
+/* Answers by the name of the call, shared by every file of the seam so that a test never has to know
+ * which of them implements the prompt it is answering. A name scripted twice keeps the first answer.
+ */
+static struct {
+  const char* name;
+  core_evt_t answer;
+} answers[MAX_ANSWERS];
+static unsigned answer_count;
+
+void host_ui_answer_call(const char* name, core_evt_t answer) {
+  if (answer_count < MAX_ANSWERS) {
+    answers[answer_count].name = name;
+    answers[answer_count++].answer = answer;
+  }
+}
+
+/* What the user was asked to decide. Whatever is not scripted is a refusal, so a test that forgot to
+ * say who pressed the button gets a user who declined. */
+core_evt_t host_ui_answer_for(const char* name) {
+  for (unsigned i = 0; i < answer_count; i++) {
+    if (strcmp(answers[i].name, name) == 0) {
+      return answers[i].answer;
+    }
+  }
+
+  return CORE_EVT_UI_CANCELLED;
+}
+
 /* LSTR() reads the translated strings through a pointer the firmware sets at boot, so a test that
  * walks a path handing one to the ui faults on a null dereference until it is pointed at a table.
  * English is what `core/settings.c` installs and what the suite already links, so it is what the seam
@@ -31,8 +61,10 @@ void host_ui_reset(void) {
 
   memset(&answer, 0, sizeof(answer));
   memset(&seen, 0, sizeof(seen));
+  answer_count = 0;
 
   host_ui_keycard_reset();
+  host_ui_display_reset();
 
   answer.menu_answer = CORE_EVT_UI_CANCELLED;
   answer.prompt_answer = CORE_EVT_UI_CANCELLED;
@@ -159,3 +191,4 @@ uint32_t host_ui_inactivity_timeout(void) { return seen.timeout; }
 const menu_t menu_autooff = { .len = 0 };
 const menu_t menu_onoff = { .len = 0 };
 const menu_t menu_showhide = { .len = 0 };
+const menu_t menu_connect = { .len = 0 };

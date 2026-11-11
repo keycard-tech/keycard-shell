@@ -1,8 +1,10 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "hal.h"
 #include "hal_host.h"
+#include "pwr.h"
 
 /*
  * Host implementation of the hal_ interface. Only what a test actually needs is here; a
@@ -60,3 +62,35 @@ PKA_ABSENT_MOD(mul_r2, (const uint8_t a[BN_SIZE], const uint8_t mod[BN_SIZE], ui
 PKA_ABSENT_MOD(mul_mont, (const uint8_t a[BN_SIZE], const uint8_t b[BN_SIZE],
                           const uint8_t mod[BN_SIZE], uint8_t r[BN_SIZE]))
 PKA_ABSENT_MOD(mul, (const uint8_t a[BN_SIZE], const uint8_t b[BN_SIZE], uint8_t r[BN_SIZE]))
+
+/* The device serial. Fixed, because a reply that carries it is only checkable against a known value;
+ * hal_host_device_uid_set() is for the rare test that needs two devices to differ. */
+static uint8_t device_uid[HAL_DEVICE_UID_LEN] = {
+  0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+  0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10
+};
+
+void hal_host_device_uid_set(const uint8_t uid[HAL_DEVICE_UID_LEN]) {
+  memcpy(device_uid, uid, HAL_DEVICE_UID_LEN);
+}
+
+hal_err_t hal_device_uid(uint8_t out[HAL_DEVICE_UID_LEN]) {
+  memcpy(out, device_uid, HAL_DEVICE_UID_LEN);
+  return HAL_SUCCESS;
+}
+
+/* Counted, not performed: a firmware upgrade's whole promise to the other bank is that it asks for the
+ * switch and then reboots, so both halves have to be observable. */
+static unsigned reboots;
+
+unsigned hal_host_reboots(void) {
+  return reboots;
+}
+
+void hal_host_reboots_clear(void) {
+  reboots = 0;
+}
+
+void pwr_reboot(void) {
+  reboots++;
+}

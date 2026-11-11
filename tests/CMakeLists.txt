@@ -33,6 +33,14 @@ add_compile_definitions(
 # builds with -Wall only), so the noise it produces here is silenced rather than chased.
 add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -g)
 
+# The application is written against a 32-bit address space -- fs.c and updater.c cast pointers through
+# uint32_t, and g_mem_heap is handed to fs_write() as an entry list -- so a position-independent test
+# binary puts every buffer the firmware itself dereferences as a pointer above the width those casts
+# keep. Linking the image where a Cortex-M33 would put it is the same decision that maps the flash
+# model at HAL_FLASH_ADDR, and it retires the per-buffer workaround of allocating from
+# hal_host_low_mem() for anything the store is asked to read.
+add_link_options(-no-pie)
+
 if(HOST_TESTS_SANITIZERS)
   add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer
                       -fsanitize-address-use-after-scope -fno-sanitize-recover=all)
@@ -55,12 +63,16 @@ add_library(test_framework STATIC
     host/hal_host.c
     host/hal_pka_host.c
     host/host_data.c
+    host/keys_host.c
     host/sc_host.c
+    host/usb_host.c
 )
 target_include_directories(test_framework PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/host
+    ${CMAKE_CURRENT_SOURCE_DIR}/host/freertos
     ${SHELLOS_ROOT}/app
+    ${SHELLOS_ROOT}/zcbor
 )
 target_link_libraries(test_framework PUBLIC unity)
 
@@ -82,7 +94,7 @@ add_library(app_crypto STATIC
     ${SHELLOS_ROOT}/app/crypto/base58.c
     ${SHELLOS_ROOT}/app/crypto/bignum.c
     ${SHELLOS_ROOT}/app/crypto/script.c
-  ${SHELLOS_ROOT}/app/crypto/bip39.c
+    ${SHELLOS_ROOT}/app/crypto/bip39.c
     ${SHELLOS_ROOT}/app/crypto/bip39_english.c
     ${SHELLOS_ROOT}/app/crypto/crc32.c
     ${SHELLOS_ROOT}/app/crypto/ecdsa.c
@@ -274,11 +286,37 @@ add_library(app_settings STATIC
 target_include_directories(app_settings PUBLIC ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_settings PRIVATE ${SHELLOS_COMMON_FLAGS})
 
+# The dispatcher. A USB command arrives as an APDU header and a length and leaves as segments, and
+# everything between is routing: which handler an instruction selects, what a refusal costs, how a reply
+# longer than the wire is paged. That is worth compiling rather than stubbing, and command.c is what
+# makes the framing concrete -- the two only mean anything together. core_btc.c and core_eth.c come along
+# because the table names them, and updater.c because an upgrade is a command like any other.
+add_library(app_core STATIC
+    ${SHELLOS_ROOT}/app/core/core.c
+    ${SHELLOS_ROOT}/app/core/core_btc.c
+    ${SHELLOS_ROOT}/app/core/core_eth.c
+    ${SHELLOS_ROOT}/app/core/updater.c
+    ${SHELLOS_ROOT}/app/keycard/command.c
+    ${SHELLOS_ROOT}/app/usb/usb.c
+)
+target_include_directories(app_core PUBLIC
+    ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host
+    ${CMAKE_CURRENT_SOURCE_DIR}/host/freertos)
+target_compile_options(app_core PRIVATE ${SHELLOS_COMMON_FLAGS})
+# updater.c locates the other bank's copy of this image's version bytes by casting &FW_VERSION to the
+# address width the device has, which on a 64-bit host is a narrowing cast rather than what it says.
+# core_eth.c tests a transaction type against MIN_TX_TYPE, which is 0, so -Wextra calls the half of the
+# comparison always true -- true on the device too, where the flag is not used.
+target_compile_options(app_core PRIVATE -Wno-pointer-to-int-cast -Wno-type-limits)
+target_link_libraries(app_core PUBLIC app_btc_sig)
+
 add_library(ui_seam STATIC
     host/ui_host.c
     # The notices and prompts keycard.c shows while it activates a card, recorded by name and answered
     # from a script. One library with the menus above, because host_ui_reset() resets both.
     host/ui_keycard_host.c
+    # The screens and confirmations a USB command shows, same convention and same reset.
+    host/ui_display_host.c
 )
 target_include_directories(ui_seam PUBLIC
     ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
@@ -384,6 +422,8 @@ shellos_test(keycard_cmdset LIBS app_keycard_cmdset app_iso7816 app_aes app_cryp
 shellos_test(secure_channel_v2 LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(secure_channel_v1 LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(keycard_activate LIBS app_keycard app_keycard_cmdset app_settings ui_seam app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
+shellos_test(updater LIBS app_core app_keycard app_keycard_cmdset app_settings ui_seam app_iso7816 app_aes app_crypto app_util app_keys app_pairing app_storage app_multisig app_bitcoin app_ethereum app_ur zcbor)
+shellos_test(core_usb LIBS app_core app_keycard app_keycard_cmdset app_settings ui_seam app_iso7816 app_aes app_crypto app_util app_keys app_pairing app_storage app_multisig app_bitcoin app_ethereum app_ur zcbor)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)

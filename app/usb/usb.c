@@ -9,7 +9,7 @@ static uint8_t _usb_packet[HAL_USB_MPS];
 static uint8_t _apdu_channel[2];
 static uint8_t _usb_send_busy = false;
 
-APP_ALIGNED(const static uint8_t kpro_hid_report_desc[27], 4) = {
+APP_ALIGNED(static const uint8_t kpro_hid_report_desc[27], 4) = {
   0x06, 0x00, 0xff,  // Usage Page (Vendor Defined 0xff00)
   0x09, 0x01,        // Usage (0x01)
   0xa1, 0x01,        // Collection (Application)
@@ -25,7 +25,7 @@ APP_ALIGNED(const static uint8_t kpro_hid_report_desc[27], 4) = {
   0xc0,              // End Collection
 };
 
-APP_ALIGNED(const static usb_dev_desc_t kpro_dev_desc, 4) = {
+APP_ALIGNED(static const usb_dev_desc_t kpro_dev_desc, 4) = {
     .len = 18,
     .type = 0x01, // Device descriptor
     .usb_version = 0x0200, // USB 2.0
@@ -42,7 +42,7 @@ APP_ALIGNED(const static usb_dev_desc_t kpro_dev_desc, 4) = {
     .config_count = 1
 };
 
-APP_ALIGNED(const static usb_hid_inout_desc_t kpro_conf_desc, 4) = {
+APP_ALIGNED(static const usb_hid_inout_desc_t kpro_conf_desc, 4) = {
     .confd = {
         .len = 9,
         .type = 0x02, // Config descriptor

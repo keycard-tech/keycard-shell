@@ -25,6 +25,26 @@ static unsigned wait_calls;
 static unsigned fail_notify_after = SCRIPT_OFF;
 static uint32_t notify_value = HAL_SUCCESS;
 
+/* Answers by the index a task waits on. Three tasks block on the same kernel primitive -- the
+ * smartcard at SMARTCARD_TASK_NOTIFICATION_IDX, the core at CORE_EVENT_IDX, the ui at
+ * UI_NOTIFICATION_IDX -- and a test that walks a card exchange inside a command that also blocks in
+ * core_wait_event() has to say which one it is feeding. */
+#define NOTIFY_SLOTS 8
+static struct {
+  uint32_t index;
+  uint32_t value;
+  bool pending;
+} notify[NOTIFY_SLOTS];
+
+#define NOTIFY_TRACKED 4
+struct wait_entry {
+  uint32_t index;
+  bool times_out;
+  unsigned waits;
+};
+static struct wait_entry wait_script[NOTIFY_TRACKED];
+static unsigned wait_script_count;
+
 static uint32_t timeouts[TIMEOUTS_MAX];
 static unsigned timeout_count;
 static uint32_t blocklen;
@@ -58,6 +78,10 @@ void hal_host_sc_reset(void) {
   wait_calls = 0;
   fail_notify_after = SCRIPT_OFF;
   notify_value = HAL_SUCCESS;
+
+  memset(notify, 0, sizeof(notify));
+  memset(wait_script, 0, sizeof(wait_script));
+  wait_script_count = 0;
 
   memset(timeouts, 0, sizeof(timeouts));
   timeout_count = 0;
@@ -150,6 +174,52 @@ void hal_host_sc_fail_notify_after(unsigned n) {
 
 void hal_host_sc_notify_value(uint32_t value) {
   notify_value = value;
+}
+
+static struct wait_entry* wait_slot(uint32_t index) {
+  for (unsigned i = 0; i < wait_script_count; i++) {
+    if (wait_script[i].index == index) {
+      return &wait_script[i];
+    }
+  }
+
+  if (wait_script_count >= NOTIFY_TRACKED) {
+    return NULL;
+  }
+
+  wait_script[wait_script_count].index = index;
+  return &wait_script[wait_script_count++];
+}
+
+void hal_host_notify_answer(uint32_t index, uint32_t value) {
+  for (unsigned i = 0; i < NOTIFY_SLOTS; i++) {
+    if (!notify[i].pending) {
+      notify[i].index = index;
+      notify[i].value = value;
+      notify[i].pending = true;
+      return;
+    }
+  }
+}
+
+/* Waits on this index time out rather than falling back to the answer scripted for whichever task
+ * asked, which is what lets a segmented command be driven one dispatch at a time. */
+void hal_host_notify_timeouts(uint32_t index, bool on) {
+  struct wait_entry* slot = wait_slot(index);
+
+  if (slot != NULL) {
+    slot->times_out = on;
+  }
+}
+
+unsigned hal_host_notify_waits(uint32_t index) {
+  for (unsigned i = 0; i < wait_script_count; i++) {
+    if (wait_script[i].index == index) {
+      return wait_script[i].waits;
+    }
+  }
+
+  return 0;
 }
 
 void hal_host_sc_refuse_send(unsigned n) {
@@ -370,6 +440,27 @@ BaseType_t xTaskNotifyWaitIndexed(uint32_t index_to_wait_on, uint32_t bits_to_cl
                                   uint32_t bits_to_clear_on_exit, uint32_t* notification_value,
                                   TickType_t ticks_to_wait) {
   wait_calls++;
+
+  struct wait_entry* script = wait_slot(index_to_wait_on);
+  if (script != NULL) {
+    script->waits++;
+  }
+
+  for (unsigned i = 0; i < NOTIFY_SLOTS; i++) {
+    if (notify[i].pending && (notify[i].index == index_to_wait_on)) {
+      notify[i].pending = false;
+
+      if (notification_value != NULL) {
+        *notification_value = notify[i].value;
+      }
+
+      return pdPASS;
+    }
+  }
+
+  if ((script != NULL) && script->times_out) {
+    return pdFAIL;
+  }
 
   if (wait_calls > fail_notify_after) {
     return pdFAIL;

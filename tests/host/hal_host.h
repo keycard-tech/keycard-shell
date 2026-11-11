@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "hal.h" /* HAL_DEVICE_UID_LEN, HAL_USB_MPS */
 
 /*
  * Controls for the host implementation of the hal_ interface. Tests that reach a function
@@ -92,5 +93,25 @@ void hal_host_flash_refuse_unlock(bool refuse);
 
 /* Whether the code asked to boot the other bank. The reset is not modelled. */
 bool hal_host_flash_switch_requested(void);
+
+/* The USB HID function as a wire. hal_host_usb_out() queues a report the host sends, which
+ * hal_usb_next_recv hands out one at a time; hal_host_usb_sent_at() reads back what hal_usb_send was
+ * called with, oldest first. Enumeration is not modelled: a test calls hal_usb_data_out_cb() the way
+ * the peripheral interrupt would. */
+void hal_host_usb_reset(void);
+void hal_host_usb_out(uint8_t epaddr, const uint8_t* data, size_t len);
+unsigned hal_host_usb_send_calls(void);
+size_t hal_host_usb_sent_at(unsigned n, uint8_t* buf, size_t maxlen);
+uint8_t hal_host_usb_sent_epaddr(unsigned n);
+void hal_host_usb_sent_clear(void);
+uint8_t hal_host_usb_stall(uint8_t epaddr);
+uint8_t hal_host_usb_device_address(void);
+
+/* The device serial, which is otherwise a fixed sixteen bytes. */
+void hal_host_device_uid_set(const uint8_t uid[HAL_DEVICE_UID_LEN]);
+
+/* Reboots asked for. They are counted, not performed. */
+unsigned hal_host_reboots(void);
+void hal_host_reboots_clear(void);
 
 #endif

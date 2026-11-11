@@ -16,16 +16,9 @@
  */
 
 #define MAX_CALLS 64
-#define MAX_ANSWERS 8
 
 static const char* calls[MAX_CALLS];
 static unsigned call_count;
-
-static struct {
-  const char* name;
-  core_evt_t answer;
-} answers[MAX_ANSWERS];
-static unsigned answer_count;
 
 static uint8_t script_pin[6] = {'1', '2', '3', '4', '5', '6'};
 static uint8_t script_puk[12] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2'};
@@ -49,19 +42,8 @@ static void record(const char* name) {
   }
 }
 
-static core_evt_t answer_for(const char* name) {
-  for (unsigned i = 0; i < answer_count; i++) {
-    if (strcmp(answers[i].name, name) == 0) {
-      return answers[i].answer;
-    }
-  }
-
-  return CORE_EVT_UI_CANCELLED;
-}
-
 void host_ui_keycard_reset(void) {
   memset(calls, 0, sizeof(calls));
-  memset(answers, 0, sizeof(answers));
   shown_pin_retries = 0;
   shown_puk_retries = 0;
   mnemo_mode = 0;
@@ -76,7 +58,6 @@ void host_ui_keycard_reset(void) {
   script_puk_wrong = NULL;
   puk_prompts = 0;
   call_count = 0;
-  answer_count = 0;
 }
 
 unsigned host_ui_call_count(const char* name) {
@@ -93,13 +74,6 @@ unsigned host_ui_call_count(const char* name) {
 const char* host_ui_call_at(unsigned i) { return (i < call_count) ? calls[i] : ""; }
 
 unsigned host_ui_call_total(void) { return call_count; }
-
-void host_ui_answer_call(const char* name, core_evt_t answer) {
-  if (answer_count < MAX_ANSWERS) {
-    answers[answer_count].name = name;
-    answers[answer_count++].answer = answer;
-  }
-}
 
 void host_ui_script_pin(const uint8_t pin[6]) { memcpy(script_pin, pin, 6); }
 
@@ -177,29 +151,29 @@ void ui_keycard_wrong_puk(uint8_t retries) {
 
 core_evt_t ui_confirm_factory_reset(void) {
   record("ui_confirm_factory_reset");
-  return answer_for("ui_confirm_factory_reset");
+  return host_ui_answer_for("ui_confirm_factory_reset");
 }
 
 core_evt_t ui_keycard_no_pairing_slots(void) {
   record("ui_keycard_no_pairing_slots");
-  return answer_for("ui_keycard_no_pairing_slots");
+  return host_ui_answer_for("ui_keycard_no_pairing_slots");
 }
 
 core_evt_t ui_keycard_not_genuine(void) {
   record("ui_keycard_not_genuine");
-  return answer_for("ui_keycard_not_genuine");
+  return host_ui_answer_for("ui_keycard_not_genuine");
 }
 
 core_evt_t ui_keycard_pairing_failed(const char* card_name, bool default_pass) {
   record("ui_keycard_pairing_failed");
   (void)card_name;
   (void)default_pass;
-  return answer_for("ui_keycard_pairing_failed");
+  return host_ui_answer_for("ui_keycard_pairing_failed");
 }
 
 core_evt_t ui_prompt_try_puk(void) {
   record("ui_prompt_try_puk");
-  return answer_for("ui_prompt_try_puk");
+  return host_ui_answer_for("ui_prompt_try_puk");
 }
 
 core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
@@ -211,7 +185,7 @@ core_evt_t ui_read_pin(uint8_t* out, int8_t retries, uint8_t dismissable) {
   }
 
   memcpy(out, script_pin, sizeof(script_pin));
-  return answer_for("ui_read_pin");
+  return host_ui_answer_for("ui_read_pin");
 }
 
 core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable) {
@@ -225,14 +199,14 @@ core_evt_t ui_read_puk(uint8_t* out, int8_t retries, uint8_t dismissable) {
   puk_prompts++;
   memcpy(out, (script_puk_wrong && (puk_prompts == 1)) ? script_puk_wrong : script_puk,
          sizeof(script_puk));
-  return answer_for("ui_read_puk");
+  return host_ui_answer_for("ui_read_puk");
 }
 
 core_evt_t ui_read_duress_pin(uint8_t* out) {
   record("ui_read_duress_pin");
 
   memcpy(out, "000000", 6);
-  return answer_for("ui_read_duress_pin");
+  return host_ui_answer_for("ui_read_duress_pin");
 }
 
 core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t* len) {
@@ -240,7 +214,7 @@ core_evt_t ui_read_pairing(uint8_t* pairing, uint8_t* len) {
 
   pairing[0] = pairing_idx;
   *len = 1;
-  return answer_for("ui_read_pairing");
+  return host_ui_answer_for("ui_read_pairing");
 }
 
 core_evt_t ui_read_number(const char* title, uint32_t min, uint32_t max, uint32_t* num, bool show_max) {
@@ -249,7 +223,7 @@ core_evt_t ui_read_number(const char* title, uint32_t min, uint32_t max, uint32_
   (void)show_max;
 
   *num = min;
-  return answer_for("ui_read_number");
+  return host_ui_answer_for("ui_read_number");
 }
 
 core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint8_t* len,
@@ -269,7 +243,7 @@ core_evt_t ui_read_string(const char* title, const char* prompt, char* out, uint
     out[n] = '\0';
   }
   *len = (uint8_t)n;
-  return answer_for("ui_read_string");
+  return host_ui_answer_for("ui_read_string");
 }
 
 /* The mnemonic and SLIP-39 readers belong to a key being loaded, which is a scenario of its own.
@@ -281,7 +255,7 @@ core_evt_t ui_read_bip39(uint16_t indexes[BIP39_MAX_MNEMONIC_LEN], size_t mnemo_
   if (script_indexes && n) {
     memcpy(indexes, script_indexes, n * sizeof(uint16_t));
   }
-  return answer_for("ui_read_bip39");
+  return host_ui_answer_for("ui_read_bip39");
 }
 
 core_evt_t ui_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t indexes[SLIP39_MNEMO_LEN],
@@ -297,7 +271,7 @@ core_evt_t ui_read_slip39(slip39_shard_t shards[SLIP39_MAX_MEMBERS], uint16_t in
   if (script_ems) {
     memcpy(ems, script_ems, SLIP39_SEED_STRENGTH);
   }
-  return answer_for("ui_read_slip39");
+  return host_ui_answer_for("ui_read_slip39");
 }
 
 core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
@@ -307,7 +281,7 @@ core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len) {
     memcpy(indexes, script_indexes, script_index_count * sizeof(uint16_t));
     *len = script_index_count;
   }
-  return answer_for("ui_scan_mnemonic");
+  return host_ui_answer_for("ui_scan_mnemonic");
 }
 
 i18n_str_id_t ui_read_mnemonic_len(uint32_t* len, bool* has_pass) {
@@ -325,5 +299,5 @@ core_evt_t ui_backup_mnemonic(uint16_t* indexes, uint32_t len, const char* const
   (void)wordlist;
   (void)wordcount;
   (void)prompt_confirm;
-  return answer_for("ui_backup_mnemonic");
+  return host_ui_answer_for("ui_backup_mnemonic");
 }

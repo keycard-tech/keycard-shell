@@ -224,8 +224,7 @@ static inline uint8_t updater_progress() {
 }
 
 static app_err_t updater_confirm_fw_upgrade() {
-  uint32_t ver_off = ((uint32_t ) FW_VERSION) - HAL_FLASH_FW_START_ADDR;
-  uint8_t* ver_buf = (uint8_t*)(HAL_FLASH_FW_UPGRADE_AREA + ver_off);
+  uint8_t* ver_buf = (uint8_t*)HAL_FLASH_FW_UPGRADE_AREA + HAL_FW_HEADER_OFFSET + SIG_LEN;
 
   // don't consider beta when checking version
   uint32_t current_ver = ((uint32_t) FW_VERSION[0] << 24) | ((uint32_t) FW_VERSION[1] << 16) | ((uint32_t) FW_VERSION[2] << 8) | 0;
