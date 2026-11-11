@@ -44,7 +44,6 @@ This repo contains everything needed to build a Keycard Shell.
 * `deployment`: git-ignored folder containing the signing keys and build results
 * `freertos`: we use FreeRTOS as our task scheduler.
 * `hardware`: everything hardware related. From schematics up to case designs.
-* `json`: example json files for abi, token and chain db. These files are unused.
 * `stm32`: all platform-specific code for the STM32H5 MCU. It also contains the project file for STM32CubeIDE needed to build the firmware.
 * `test`: the tests firmware we run in the factory on each unit to check it has been properly assembled.
 * `tools`: some tools used during the build process or during development.
@@ -52,7 +51,7 @@ This repo contains everything needed to build a Keycard Shell.
 
 ### Building the firmware
 
-The Keycard Shell firmware build system uses CMake for the main firmware compilation and Python tools for post-processing (signing, image creation, database generation).
+The Keycard Shell firmware build system uses CMake for the main firmware compilation and Python tools for post-processing (signing, image creation).
 
 #### Getting the Code
 

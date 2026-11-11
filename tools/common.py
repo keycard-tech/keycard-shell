@@ -7,7 +7,6 @@ from secp256k1Crypto import PrivateKey
 OBJCOPY = os.environ.get("OBJCOPY", "arm-none-eabi-objcopy")
 
 PAGE_SIZE = 8192
-WORD_SIZE = 16
 
 BANK_PAGE_COUNT = 128
 BANK_SIZE = BANK_PAGE_COUNT * PAGE_SIZE
@@ -40,9 +39,4 @@ def hash_firmware(fw):
     h = hashlib.sha256()
     h.update(fw[:FW_IV_SIZE])
     h.update(fw[FW_IV_SIZE+SIG_SIZE:])
-    return h.digest()
-
-def hash_db(db):
-    h = hashlib.sha256()
-    h.update(db[:-64])
     return h.digest()
