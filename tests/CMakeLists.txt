@@ -306,11 +306,7 @@ target_include_directories(app_core PUBLIC
     ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host
     ${CMAKE_CURRENT_SOURCE_DIR}/host/freertos)
 target_compile_options(app_core PRIVATE ${SHELLOS_COMMON_FLAGS})
-# core_eth.c tests a transaction type against MIN_TX_TYPE, which is 0, so -Wextra calls the half of the
-# comparison always true -- true on the device too, where the flag is not used. Nothing here narrows a
-# pointer any more: fs.c and updater.c convert through uintptr_t, so that warning is not silenced and
-# has nothing to say.
-target_compile_options(app_core PRIVATE -Wno-type-limits)
+
 target_link_libraries(app_core PUBLIC app_btc_sig)
 
 add_library(ui_seam STATIC

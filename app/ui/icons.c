@@ -19,7 +19,7 @@ typedef struct {
   uint16_t base_color;
 } composite_icon_desc_t;
 
-const static composite_icon_desc_t NAV_ICONS[] = {
+static const composite_icon_desc_t NAV_ICONS[] = {
     {.base = NAV_CIRCLE_FULL, .top = 0, .attr = ICON_ATTR_NOTOP, .base_color = TH_COLOR_ACCENT},
     {.base = NAV_CIRCLE_EMPTY, .top = SYM_DOT, .attr = ICON_ATTR_STROKED, .base_color = TH_COLOR_ACCENT},
     {.base = NAV_CIRCLE_EMPTY, .top = SYM_CANCEL, .attr = (ICON_ATTR_STROKED | ICON_ATTR_INHERIT_FG), .base_color = 0},
@@ -32,7 +32,7 @@ const static composite_icon_desc_t NAV_ICONS[] = {
     {.base = NAV_CIRCLE_FULL_SMALL, .top = 0, .attr = ICON_ATTR_NOTOP, .base_color = TH_COLOR_DISABLED},
 };
 
-const static uint16_t INFO_ICONS[] = { TH_COLOR_SUCCESS, TH_COLOR_ERROR, TH_COLOR_FG, TH_COLOR_ERROR };
+static const uint16_t INFO_ICONS[] = { TH_COLOR_SUCCESS, TH_COLOR_ERROR, TH_COLOR_FG, TH_COLOR_ERROR };
 
 app_err_t icon_draw(const screen_text_ctx_t* ctx, icon_t icon) {
   screen_text_ctx_t c_ctx;

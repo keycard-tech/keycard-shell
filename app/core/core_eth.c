@@ -76,7 +76,7 @@ static app_err_t core_eth_process_tx(const uint8_t* data, uint32_t len, uint8_t 
 
     initTx(&g_core.data.eth_tx.ctx, &g_core.hash_ctx, &g_core.data.eth_tx.content);
 
-    if (txType >= MIN_TX_TYPE && txType <= MAX_TX_TYPE) {
+    if (txType <= MAX_TX_TYPE) {
       // Enumerate through all supported txTypes here...
       if (txType == EIP2930 || txType == EIP1559) {
         keccak_Update(&g_core.hash_ctx, data, 1);

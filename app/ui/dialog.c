@@ -137,7 +137,7 @@ app_err_t dialog_title_colors(const char* title, uint16_t bg, uint16_t fg) {
   screen_area_t area = { 0, 0, SCREEN_WIDTH, TH_TITLE_HEIGHT };
   screen_fill_area(&area, bg);
 
-  screen_text_ctx_t ctx = { TH_FONT_TITLE, fg, bg, TH_TITLE_LEFT_MARGIN, TH_TITLE_TOP_MARGIN };
+  screen_text_ctx_t ctx = { .font = TH_FONT_TITLE, .fg = fg, .bg = bg, .x = TH_TITLE_LEFT_MARGIN, .y = TH_TITLE_TOP_MARGIN };
   screen_draw_string(&ctx, title);
 
   ctx.x = TH_TITLE_ICON_LEFT_MARGIN;
@@ -156,7 +156,7 @@ app_err_t dialog_update_battery() {
   screen_area_t area = { TH_TITLE_ICON_LEFT_MARGIN, 0, (SCREEN_WIDTH - TH_TITLE_ICON_LEFT_MARGIN), TH_TITLE_HEIGHT };
   screen_fill_area(&area, g_ui_ctx.title_bg);
 
-  screen_text_ctx_t ctx = { TH_FONT_TITLE, 0, g_ui_ctx.title_bg, TH_TITLE_ICON_LEFT_MARGIN, TH_TITLE_ICON_TOP_MARGIN };
+  screen_text_ctx_t ctx = { .font = TH_FONT_TITLE, .fg = 0, .bg = g_ui_ctx.title_bg, .x = TH_TITLE_ICON_LEFT_MARGIN, .y = TH_TITLE_ICON_TOP_MARGIN };
   return icon_draw_battery_indicator(&ctx, g_ui_ctx.battery);
 }
 

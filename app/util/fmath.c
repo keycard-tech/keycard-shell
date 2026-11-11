@@ -12,6 +12,10 @@
 #include "common.h"
 #include <float.h>
 
+#undef M_PI
+#undef M_PI_2
+#undef M_PI_4
+
 #define M_PI    3.14159265f
 #define M_PI_2  1.57079632f
 #define M_PI_4  0.78539816f
@@ -25,27 +29,27 @@ const float __atanf_lut[4] = {
 
 #if (__ARM_ARCH < 7)
 #include <math.h>
-float APP_ALWAYS_INLINE fast_sqrtf(float x)
+APP_ALWAYS_INLINE float fast_sqrtf(float x)
 {
     return sqrtf(x);
 }
 
-int APP_ALWAYS_INLINE fast_floorf(float x)
+APP_ALWAYS_INLINE int fast_floorf(float x)
 {
     return floorf(x);
 }
 
-int APP_ALWAYS_INLINE fast_ceilf(float x)
+APP_ALWAYS_INLINE int fast_ceilf(float x)
 {
     return ceilf(x);
 }
 
-float APP_ALWAYS_INLINE fast_fabsf(float x)
+APP_ALWAYS_INLINE float fast_fabsf(float x)
 {
     return fabsf(x);
 }
 #else
-float APP_ALWAYS_INLINE fast_sqrtf(float x)
+APP_ALWAYS_INLINE float fast_sqrtf(float x)
 {
     asm volatile (
             "vsqrt.f32  %[r], %[x]\n"
@@ -54,7 +58,7 @@ float APP_ALWAYS_INLINE fast_sqrtf(float x)
     return x;
 }
 
-int APP_ALWAYS_INLINE fast_floorf(float x)
+APP_ALWAYS_INLINE int fast_floorf(float x)
 {
     int i;
     asm volatile (
@@ -64,7 +68,7 @@ int APP_ALWAYS_INLINE fast_floorf(float x)
     return i;
 }
 
-int APP_ALWAYS_INLINE fast_ceilf(float x)
+APP_ALWAYS_INLINE int fast_ceilf(float x)
 {
     int i;
     asm volatile (
@@ -74,7 +78,7 @@ int APP_ALWAYS_INLINE fast_ceilf(float x)
     return i;
 }
 
-float APP_ALWAYS_INLINE fast_fabsf(float x)
+APP_ALWAYS_INLINE float fast_fabsf(float x)
 {
     asm volatile (
             "vabs.f32  %[r], %[x]\n"

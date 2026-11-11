@@ -34,6 +34,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fdata-sections")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
+set_source_files_properties(${APP_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wextra;-Wno-unused-parameter;-Wno-sign-compare")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffast-math")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-usage")
 
