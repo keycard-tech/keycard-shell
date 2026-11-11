@@ -2,6 +2,8 @@
 #include <string.h>
 
 #include "crypto/bignum.h"
+#include "crypto/railgun_blake512.h"
+#include "crypto/railgun_poseidon_t6.h"
 #include "hal.h"
 #include "framework/test_util.h"
 #include "unity.h"
@@ -546,6 +548,249 @@ static void test_full_width_rejects_invalid_base(void) {
       public_mul_256(&invalid, scalar, &result));
 }
 
+
+/*
+ * Native-only synthetic EdDSA-Poseidon compatibility test.
+ *
+ * The scalar arithmetic below is deliberately simple and variable-time.
+ * It MUST NOT be used for real spending keys or firmware signing.
+ *
+ * Uses the established Kohaku [1u8; 32] reference fixture.
+ */
+static const uint8_t railgun_subgroup_order[32] = {
+    0x06, 0x0c, 0x89, 0xce, 0x5c, 0x26, 0x34, 0x05,
+    0x37, 0x0a, 0x08, 0xb6, 0xd0, 0x30, 0x2b, 0x0b,
+    0xab, 0x3e, 0xed, 0xb8, 0x39, 0x20, 0xee, 0x0a,
+    0x67, 0x72, 0x97, 0xdc, 0x39, 0x21, 0x26, 0xf1
+};
+
+/* All values here are 32-byte unsigned, big-endian integers. */
+static void subgroup_subtract_order(uint8_t value[32]) {
+  unsigned borrow = 0;
+
+  for (int i = 31; i >= 0; i--) {
+    unsigned a = value[i];
+    unsigned b = (unsigned)railgun_subgroup_order[i] + borrow;
+
+    value[i] = (uint8_t)(a - b);
+    borrow = a < b;
+  }
+}
+
+/* Double a reduced scalar and append one bit. */
+static void subgroup_shift_bit(uint8_t value[32], unsigned bit) {
+  unsigned carry = bit;
+
+  for (int i = 31; i >= 0; i--) {
+    unsigned next = ((unsigned)value[i] << 1) | carry;
+    value[i] = (uint8_t)next;
+    carry = next >> 8;
+  }
+
+  /* Since the subgroup order is 251 bits, carry cannot overflow. */
+  if (memcmp(value, railgun_subgroup_order, 32) >= 0) {
+    subgroup_subtract_order(value);
+  }
+}
+
+static void subgroup_add(
+    uint8_t accumulator[32], const uint8_t other[32]) {
+  unsigned carry = 0;
+
+  for (int i = 31; i >= 0; i--) {
+    unsigned sum = (unsigned)accumulator[i] + other[i] + carry;
+    accumulator[i] = (uint8_t)sum;
+    carry = sum >> 8;
+  }
+
+  /* Both operands are reduced, so the sum fits in 252 bits. */
+  if (memcmp(accumulator, railgun_subgroup_order, 32) >= 0) {
+    subgroup_subtract_order(accumulator);
+  }
+}
+
+/* Reduce an arbitrary little-endian byte sequence modulo subgroup order. */
+static void subgroup_reduce_le(
+    const uint8_t *input, size_t length, uint8_t out[32]) {
+  memset(out, 0, 32);
+
+  for (size_t i = length; i > 0; i--) {
+    for (int bit = 7; bit >= 0; bit--) {
+      subgroup_shift_bit(out, (input[i - 1] >> bit) & 1u);
+    }
+  }
+}
+
+/* Reduce an arbitrary big-endian byte sequence modulo subgroup order. */
+static void subgroup_reduce_be(
+    const uint8_t *input, size_t length, uint8_t out[32]) {
+  memset(out, 0, 32);
+
+  for (size_t i = 0; i < length; i++) {
+    for (int bit = 7; bit >= 0; bit--) {
+      subgroup_shift_bit(out, (input[i] >> bit) & 1u);
+    }
+  }
+}
+
+/* Public test reference: out = factor * reduced_value mod subgroup order. */
+static void subgroup_multiply(
+    const uint8_t factor[32],
+    const uint8_t reduced_value[32],
+    uint8_t out[32]) {
+  memset(out, 0, 32);
+
+  for (unsigned i = 0; i < 32; i++) {
+    for (int bit = 7; bit >= 0; bit--) {
+      subgroup_shift_bit(out, 0);
+
+      if ((factor[i] >> bit) & 1u) {
+        subgroup_add(out, reduced_value);
+      }
+    }
+  }
+}
+
+static void assert_bytes_hex(
+    const uint8_t *actual, size_t length, const char *expected_hex) {
+  uint8_t expected[64];
+
+  TEST_ASSERT_TRUE(length <= sizeof(expected));
+  TEST_ASSERT_EQUAL_UINT(
+      length, test_unhex(expected_hex, expected, length));
+  TEST_ASSERT_EQUAL_MEMORY(expected, actual, length);
+}
+
+static void test_synthetic_eddsa_poseidon_signatures(void) {
+  static const struct {
+    uint32_t message;
+    const char *nonce;
+    const char *r8_x;
+    const char *r8_y;
+    const char *s;
+  } vectors[] = {
+    {
+      0,
+      "031dd101d9c07a84285b4273a397aa286f406d30d7fce36fd3925ab93380abdb",
+      "25a426befdcc7918713ea23d9b3f0d87ad843362145d7b92d4cd3f166ad6c8bd",
+      "241f9a479cf221163eda6eb3772d36f8b398d9f5d13b5ef3e9223215d57ca2b8",
+      "013e339699730c7ab62db7474775b241673c3f9c7f4433388f9d33a5dccb1cc1"
+    },
+    {
+      1,
+      "00df4db54e41e4fc50b13c0e02e0c1414a763b5e0529678277027051579fe8b4",
+      "14a052afd7879fe4bf9aea3cb3cf354f75dd677b15103bf401920efe292d00e0",
+      "03c3fdc3bb383e8c5f80b41dc3ce512dc8ae33c9e53be80fd1a352232c39e45a",
+      "056c836eb5ac9dd0ce2b39a6322d5046403e359742560d5560a7607b83cfa247"
+    },
+    {
+      12345,
+      "0159d924c64d7d42dd0936b68b0948a90a820da1888185125671de372e766215",
+      "24ccbdfb612d47b4c41b440eb927f21f34e341f89215932b053ec2b19dc84ce6",
+      "171a92a4562a9a063a5d510623bb0537ffba3fb04aa1a16bcc83ea5e881d0651",
+      "0496dc182e4598073e8b7d0dd09d555e2e2eddfb99d5af763cf65dac7ec0d944"
+    }
+  };
+
+  /* Existing public synthetic fixture, not a real spending key. */
+  uint8_t synthetic_key[32];
+  uint8_t key_digest[64];
+  uint8_t pruned[32];
+  uint8_t scalar_key_be[32];
+  uint8_t pruned_be[32];
+  uint8_t reduced_pruned[32];
+  uint8_t public_x[32], public_y[32];
+  babyjub_point_t base, public_key;
+
+  memset(synthetic_key, 1, sizeof(synthetic_key));
+  TEST_ASSERT_TRUE(railgun_blake512(
+      synthetic_key, sizeof(synthetic_key), key_digest));
+
+  memcpy(pruned, key_digest, sizeof(pruned));
+  pruned[0] &= 0xf8u;
+  pruned[31] &= 0x7fu;
+  pruned[31] |= 0x40u;
+
+  /* scalar_key = little_endian(pruned) >> 3. */
+  for (unsigned i = 0; i < 32; i++) {
+    scalar_key_be[31 - i] = (uint8_t)(
+        (pruned[i] >> 3) |
+        (i + 1 < 32 ? ((unsigned)pruned[i + 1] << 5) : 0));
+    pruned_be[31 - i] = pruned[i];
+  }
+
+  assert_bytes_hex(
+      scalar_key_be, 32,
+      "0ba9f4de43d3c912590c6ab4f8e7f3c0c0229e25c7dd052203b928fcdc87dfba");
+
+  subgroup_reduce_be(pruned_be, 32, reduced_pruned);
+
+  load_point(&base, BASE_X, BASE_Y);
+  TEST_ASSERT_TRUE(public_mul_256(&base, scalar_key_be, &public_key));
+
+  bn_write_be(&public_key.x, public_x);
+  bn_write_be(&public_key.y, public_y);
+
+  assert_bytes_hex(
+      public_x, 32,
+      "234056d968baf183fe8d237d496d1c04188220cd33e8f8d14df9b84479736b20");
+  assert_bytes_hex(
+      public_y, 32,
+      "2624393fad9b71c04b3b14d8ac45202dbb4eaff4c2d1350c9453fc08d18651fe");
+
+  for (size_t i = 0;
+       i < sizeof(vectors) / sizeof(vectors[0]); i++) {
+    uint8_t nonce_input[64] = {0};
+    uint8_t nonce_digest[64];
+    uint8_t nonce[32];
+    uint8_t r8_x[32], r8_y[32];
+    uint8_t inputs[5][32] = {{0}};
+    uint8_t challenge[32];
+    uint8_t s[32];
+    babyjub_point_t r8;
+    uint32_t message = vectors[i].message;
+
+    /* nonce_input = key_hash[32..64] || message_le_32 */
+    memcpy(nonce_input, key_digest + 32, 32);
+    nonce_input[32] = (uint8_t)message;
+    nonce_input[33] = (uint8_t)(message >> 8);
+    nonce_input[34] = (uint8_t)(message >> 16);
+    nonce_input[35] = (uint8_t)(message >> 24);
+
+    TEST_ASSERT_TRUE(railgun_blake512(
+        nonce_input, sizeof(nonce_input), nonce_digest));
+
+    subgroup_reduce_le(nonce_digest, 64, nonce);
+    assert_bytes_hex(nonce, 32, vectors[i].nonce);
+
+    TEST_ASSERT_TRUE(public_mul_256(&base, nonce, &r8));
+    bn_write_be(&r8.x, r8_x);
+    bn_write_be(&r8.y, r8_y);
+
+    assert_bytes_hex(r8_x, 32, vectors[i].r8_x);
+    assert_bytes_hex(r8_y, 32, vectors[i].r8_y);
+
+    /* hm = Poseidon(R8.x, R8.y, A.x, A.y, message). */
+    memcpy(inputs[0], r8_x, 32);
+    memcpy(inputs[1], r8_y, 32);
+    memcpy(inputs[2], public_x, 32);
+    memcpy(inputs[3], public_y, 32);
+    inputs[4][28] = (uint8_t)(message >> 24);
+    inputs[4][29] = (uint8_t)(message >> 16);
+    inputs[4][30] = (uint8_t)(message >> 8);
+    inputs[4][31] = (uint8_t)message;
+
+    TEST_ASSERT_EQUAL_INT(
+        HAL_SUCCESS, railgun_poseidon_t6_hash(inputs, challenge));
+
+    /* S = (r + hm * (scalar_key << 3)) mod subgroup order. */
+    subgroup_multiply(challenge, reduced_pruned, s);
+    subgroup_add(s, nonce);
+
+    assert_bytes_hex(s, 32, vectors[i].s);
+  }
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_base_point_is_on_curve);
@@ -558,5 +803,6 @@ int main(void) {
   RUN_TEST(test_public_scalar_rejects_invalid_point);
   RUN_TEST(test_full_width_scalar_vectors);
   RUN_TEST(test_full_width_rejects_invalid_base);
+  RUN_TEST(test_synthetic_eddsa_poseidon_signatures);
   return UNITY_END();
 }

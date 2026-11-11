@@ -401,6 +401,9 @@ shellos_test(fuzz LIBS app_btc_sig app_keycard app_bitcoin app_ethereum app_cryp
 set_tests_properties(fuzz PROPERTIES TIMEOUT 120)
 shellos_test(bignum LIBS app_crypto)
 shellos_test(railgun_babyjubjub LIBS app_crypto)
+target_sources(test_railgun_babyjubjub PRIVATE
+    ${SHELLOS_ROOT}/app/crypto/railgun_blake512.c
+    ${SHELLOS_ROOT}/app/crypto/railgun_poseidon_t6.c)
 shellos_test(railgun_poseidon LIBS app_crypto)
 target_sources(test_railgun_poseidon PRIVATE
     ${SHELLOS_ROOT}/app/crypto/railgun_poseidon_t6.c)
