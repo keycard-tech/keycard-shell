@@ -256,6 +256,97 @@ static void test_reject_off_curve_coordinates(void) {
   TEST_ASSERT_FALSE(on_curve(&invalid));
 }
 
+
+/*
+ * Test-only public scalar multiplication.
+ * Variable-time double-and-add; NEVER use for secret scalars.
+ * Vectors independently calculated using Python integers and EIP-2494.
+ */
+static int public_mul_u32(
+    const babyjub_point_t *base,
+    uint32_t scalar,
+    babyjub_point_t *out) {
+  babyjub_point_t accumulator;
+  babyjub_point_t addend = *base;
+
+  if (!on_curve(base)) {
+    return 0;
+  }
+
+  bn_zero(&accumulator.x);
+  bn_one(&accumulator.y);
+
+  while (scalar != 0) {
+    babyjub_point_t next;
+
+    if ((scalar & 1u) != 0) {
+      if (!add_points(&accumulator, &addend, &next)) {
+        return 0;
+      }
+      accumulator = next;
+    }
+
+    scalar >>= 1;
+
+    if (scalar != 0) {
+      if (!add_points(&addend, &addend, &next)) {
+        return 0;
+      }
+      addend = next;
+    }
+  }
+
+  *out = accumulator;
+  return 1;
+}
+
+static void test_public_scalar_reference_vectors(void) {
+  static const struct {
+    uint32_t scalar;
+    const char *x;
+    const char *y;
+  } vectors[] = {
+    {0,
+     "0000000000000000000000000000000000000000000000000000000000000000",
+     "0000000000000000000000000000000000000000000000000000000000000001"},
+    {1, BASE_X, BASE_Y},
+    {2, DOUBLE_X, DOUBLE_Y},
+    {3, TRIPLE_X, TRIPLE_Y},
+    {8,
+     "10c347ae3592776a678f9fc29ecd029f8297367209a4f28f7cb49b09bffd4145",
+     "113f8246f336e8d375c9daab552816825f481c210226f307bc863e017642566c"},
+    {16,
+     "2d66d2bb7bd385a5e2965d03466bc0579ce96b37ef9541be1aff46d012269648",
+     "2f71787edba2b346e45bc228ddf388cf5746118513e6e515e9cd294c5da7c007"},
+    {31,
+     "1390b1c9d9a82d2159b46c2bb964b4b2f33fce1689896c95545db5582db57f2e",
+     "29cec8b61d518c9fb134222a259fb1aac3ef5a0e96ffe08d5f6102a388e5f488"}
+  };
+
+  babyjub_point_t base;
+  load_point(&base, BASE_X, BASE_Y);
+
+  for (size_t i = 0; i < sizeof(vectors) / sizeof(vectors[0]); i++) {
+    babyjub_point_t result;
+
+    TEST_ASSERT_TRUE(
+        public_mul_u32(&base, vectors[i].scalar, &result));
+
+    assert_point(&result, vectors[i].x, vectors[i].y);
+  }
+}
+
+static void test_public_scalar_rejects_invalid_point(void) {
+  babyjub_point_t invalid;
+  babyjub_point_t result;
+
+  bn_one(&invalid.x);
+  bn_zero(&invalid.y);
+
+  TEST_ASSERT_FALSE(on_curve(&invalid));
+  TEST_ASSERT_FALSE(public_mul_u32(&invalid, 8, &result));
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_base_point_is_on_curve);
@@ -264,5 +355,7 @@ int main(void) {
   RUN_TEST(test_additive_identity);
   RUN_TEST(test_additive_inverse);
   RUN_TEST(test_reject_off_curve_coordinates);
+  RUN_TEST(test_public_scalar_reference_vectors);
+  RUN_TEST(test_public_scalar_rejects_invalid_point);
   return UNITY_END();
 }
