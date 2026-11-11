@@ -15,6 +15,7 @@
 #include "keycard/pairing.h"
 #include "keycard/scv2_whitelist.h"
 #include "keycard/secure_channel_v1.h"
+#include "keys_host.h"
 #include "sc_card.h"
 #include "sc_host.h"
 #include "sc_v1_card.h"
@@ -35,7 +36,9 @@
  * whole activation, not per command.
  */
 
-/* The applet's secure-element key, whose public half the application info carries. */
+/* TEST-ONLY KEY: invented for these tests, used nowhere else, guarding nothing real.
+ *
+ * The applet's secure-element key, whose public half the application info carries. */
 static const uint8_t SC_PRIV[32] = {0x21, 0x31, 0x41, 0x51, 0x61, 0x71, 0x81, 0x91,
                                     0xa1, 0xb1, 0xc1, 0xd1, 0xe1, 0xf1, 0x02, 0x12,
                                     0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x82, 0x92,
@@ -60,10 +63,20 @@ static unsigned card_seq;
  * certificate is built around, which is also what the whitelist holds. */
 static v2_card_t v2;
 
+/* TEST-ONLY KEY: invented for these tests, used nowhere else, guarding nothing real. */
 static const uint8_t V2_ID_PRIV[32] = {0x41, 0x51, 0x61, 0x71, 0x81, 0x91, 0xa1, 0xb1,
                                        0xc1, 0xd1, 0xe1, 0xf1, 0x02, 0x12, 0x22, 0x32,
                                        0x42, 0x52, 0x62, 0x72, 0x82, 0x92, 0xa2, 0xb2,
                                        0xc2, 0xd2, 0xe2, 0xf2, 0x03, 0x13, 0x23, 0x33};
+
+/* TEST-ONLY KEY: invented for these tests, used nowhere else, guarding nothing real. */
+/* A CA of nobody's but ours, to sign a card's certificate with when the point is that the shell's CA
+ * did not. */
+/* TEST-ONLY KEY: invented for these tests, used nowhere else, guarding nothing real. */
+static const uint8_t OTHER_CA_PRIV[32] = {0x72, 0x82, 0x92, 0xa2, 0xb2, 0xc2, 0xd2, 0xe2,
+                                          0xf2, 0x03, 0x13, 0x23, 0x33, 0x43, 0x53, 0x63,
+                                          0x73, 0x83, 0x93, 0xa3, 0xb3, 0xc3, 0xd3, 0xe3,
+                                          0xf3, 0x04, 0x14, 0x24, 0x34, 0x44, 0x54, 0x64};
 
 static const uint8_t V2_EPHEM_PRIV[32] = {0x51, 0x61, 0x71, 0x81, 0x91, 0xa1, 0xb1, 0xc1,
                                           0xd1, 0xe1, 0xf1, 0x02, 0x12, 0x22, 0x32, 0x42,
@@ -72,6 +85,7 @@ static const uint8_t V2_EPHEM_PRIV[32] = {0x51, 0x61, 0x71, 0x81, 0x91, 0xa1, 0x
 
 void setUp(void) {
   host_ui_reset();
+  host_key_reset();
   hal_host_sc_reset();
   /* The pairing store is read on the way to a channel, and the key that encrypts it comes from the
    * one the host flash model boots with. */
@@ -903,6 +917,104 @@ void test_a_card_with_no_keys_is_given_one(void) {
   TEST_ASSERT_NULL(memmem(apdu, len, entropy, sizeof(entropy)));
 }
 
+/* The branch every other v4 case here has stepped around: a certificate the CA in the device really
+ * signed. The card is opened and unlocked with nothing asked of the user and, unlike the trusted-card
+ * case below, nothing written to the whitelist -- the trust was in the shell all along, which is why
+ * a card nobody vouched for cannot borrow it. */
+void test_a_v4_card_the_embedded_ca_vouches_for_is_opened_without_a_word_to_the_user(void) {
+  card_present();
+
+  v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
+  v2_card_cert_sign(&v2, SC_V2_CA_PRIV);
+
+  uint8_t ca[33];
+  v2_card_ca_public(ca);
+  host_key_set(KEYCARD_CA_KEY, ca);
+
+  uint8_t answer[224];
+  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  card_says(answer, len);
+
+  hal_host_rng_seed(RNG_SEED);
+  v2_card_draws(&v2);
+
+  v2_card_queue_open(&v2, (uint8_t)card_seq++);
+
+  card_v2_says_name();
+  card_v2_says_retries(3, 16);
+
+  static const uint8_t PIN[KEYCARD_PIN_LEN] = {'7', '8', '9', '0', '1', '2'};
+  host_ui_script_pin(PIN);
+  host_ui_answer_call("ui_read_pin", CORE_EVT_UI_OK);
+
+  card_v2_says_ok(0x20, 0, PIN, sizeof(PIN));
+
+  hal_host_rng_seed(RNG_SEED);
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(0, host_ui_call_count("ui_keycard_not_genuine"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_secure_channel_ok"));
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_pin_ok"));
+  TEST_ASSERT_EQUAL_UINT8(1, kc.ch.open);
+
+  /* What the certificate bought is only this: the store still holds nothing about this card, so a
+   * device the CA stops vouching for is asked about again the moment it is reinserted. */
+  TEST_ASSERT_NOT_EQUAL(ERR_OK, scv2_whitelist_check(v2.cert));
+}
+
+/* The same card, the same certificate shape, signed by a CA the shell does not carry: asked about. The
+ * signature is sound and the recovery succeeds -- it is the key that comes back that the shell refuses,
+ * which is the difference between checking who signed and merely checking that someone did. */
+void test_a_v4_card_whose_certificate_another_ca_signed_is_asked_about(void) {
+  card_present();
+
+  v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
+  v2_card_cert_sign(&v2, OTHER_CA_PRIV);
+
+  uint8_t ca[33];
+  v2_card_ca_public(ca);
+  host_key_set(KEYCARD_CA_KEY, ca);
+
+  uint8_t answer[224];
+  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  card_says(answer, len);
+
+  host_ui_answer_call("ui_keycard_not_genuine", CORE_EVT_UI_CANCELLED);
+
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_not_genuine"));
+  TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
+  sc_card_assert_no_apdu(1);
+}
+
+/* One byte of the identity key changed after the CA signed, which is the only way a certificate means
+ * anything about a key: the signature is over the first 33 bytes, so a card presenting someone else's
+ * key with someone's valid signature is refused rather than believed. */
+void test_a_v4_card_whose_certificate_changed_after_the_ca_signed_it_is_asked_about(void) {
+  card_present();
+
+  v2_card_init(&v2, V2_ID_PRIV, V2_EPHEM_PRIV);
+  v2_card_cert_sign(&v2, SC_V2_CA_PRIV);
+  v2.cert[7] ^= 0x01;
+
+  uint8_t ca[33];
+  v2_card_ca_public(ca);
+  host_key_set(KEYCARD_CA_KEY, ca);
+
+  uint8_t answer[224];
+  const size_t len = app_info_v4(answer, sizeof(answer), 0x0400, v2.cert);
+  card_says(answer, len);
+
+  host_ui_answer_call("ui_keycard_not_genuine", CORE_EVT_UI_CANCELLED);
+
+  keycard_activate(&kc);
+
+  TEST_ASSERT_EQUAL_UINT(1, host_ui_call_count("ui_keycard_not_genuine"));
+  TEST_ASSERT_EQUAL_UINT8(0, kc.ch.open);
+  sc_card_assert_no_apdu(1);
+}
+
 /* A v4 card whose certificate the shell cannot check against the embedded CA is refused unless the
  * user says to trust it -- and trusting it is durable: the device public key goes on the whitelist,
  * so the same card is not asked about again. The channel it opens is another matter, and this card
@@ -1307,6 +1419,9 @@ int main(void) {
   RUN_TEST(test_an_imported_mnemonic_loads_the_seed_its_vector_publishes);
   RUN_TEST(test_a_scanned_mnemonic_loads_its_seed);
   RUN_TEST(test_an_imported_slip39_group_loads_a_key_template);
+  RUN_TEST(test_a_v4_card_the_embedded_ca_vouches_for_is_opened_without_a_word_to_the_user);
+  RUN_TEST(test_a_v4_card_whose_certificate_another_ca_signed_is_asked_about);
+  RUN_TEST(test_a_v4_card_whose_certificate_changed_after_the_ca_signed_it_is_asked_about);
   RUN_TEST(test_a_v4_card_accepted_despite_its_certificate_is_whitelisted);
   RUN_TEST(test_a_v4_card_already_trusted_is_opened_and_unlocked);
   RUN_TEST(test_a_v4_card_declined_by_the_user_is_not_trusted_and_not_opened);

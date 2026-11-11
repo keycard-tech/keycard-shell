@@ -80,13 +80,66 @@ static inline size_t v2_card_der_sig(const uint8_t sig[64], uint8_t* out) {
   return n + 2;
 }
 
+/* A certificate is the identity key, a signature over its first 33 bytes by some CA, and the recovery
+ * id that reads that CA back out of the signature -- which is exactly how the shell checks it, with no
+ * CA public key in the certificate to compare against. Install its public half with
+ * host_key_set(KEYCARD_CA_KEY, ...) the way the release tool installs the real one.
+ *
+ * TEST-ONLY KEY: invented for these tests, used nowhere else, guarding nothing real. */
+static const uint8_t SC_V2_CA_PRIV[32] = {0x62, 0x72, 0x82, 0x92, 0xa2, 0xb2, 0xc2, 0xd2,
+                                          0xe2, 0xf2, 0x03, 0x13, 0x23, 0x33, 0x43, 0x53,
+                                          0x63, 0x73, 0x83, 0x93, 0xa3, 0xb3, 0xc3, 0xd3,
+                                          0xe3, 0xf3, 0x04, 0x14, 0x24, 0x34, 0x44, 0x54};
+
+static inline void v2_card_ca_public(uint8_t out[33]) {
+  /* get_public_key33 fills the whole uncompressed point and rewrites only the prefix, so the buffer
+   * it wants is 65 bytes whatever its name says. */
+  uint8_t pub[ECC256_POINT_SIZE + 1];
+  TEST_ASSERT_EQUAL_INT(0, ecdsa_get_public_key33(&secp256k1, SC_V2_CA_PRIV, pub));
+  memcpy(out, pub, 33);
+}
+
+/* Signing the certificate the card will present. Any CA key will do, so a test that means "some other
+ * CA vouched for this one" passes a different key rather than no key. */
+static inline void v2_card_cert_sign(v2_card_t* c, const uint8_t ca_priv[32]) {
+  uint8_t digest[SHA256_DIGEST_LENGTH];
+  sha256_Raw(c->cert, 33, digest);
+
+  uint8_t sig[64];
+  TEST_ASSERT_EQUAL_INT(0, ecdsa_sign(&secp256k1, ca_priv, digest, sig));
+
+  uint8_t ca_pub[ECC256_POINT_SIZE + 1];
+  TEST_ASSERT_EQUAL_INT(0, ecdsa_get_public_key65(&secp256k1, ca_priv, ca_pub));
+
+  /* Four recovery ids give four points; the one that comes back the signer's is the certificate's
+   * last byte, and a signature whose issuer cannot be recovered from it is not a certificate. */
+  int recid = -1;
+  for (int i = 0; i < 4; i++) {
+    uint8_t pub[ECC256_POINT_SIZE + 1];
+    if ((ecdsa_recover_pub_from_sig(&secp256k1, pub, sig, digest, i) == 0) &&
+        (memcmp(&pub[1], &ca_pub[1], ECC256_POINT_SIZE) == 0)) {
+      recid = i;
+      break;
+    }
+  }
+
+  TEST_ASSERT_NOT_EQUAL(-1, recid);
+
+  memcpy(&c->cert[33], sig, 64);
+  c->cert[97] = (uint8_t)recid;
+}
+
 static inline void v2_card_init(v2_card_t* c, const uint8_t id_priv[32], const uint8_t eph_priv[32]) {
   memset(c, 0, sizeof(*c));
   memcpy(c->id_priv, id_priv, sizeof(c->id_priv));
   memcpy(c->eph_priv, eph_priv, sizeof(c->eph_priv));
 
-  /* The identity public key is the first 65 bytes of what the applet calls its certificate. */
-  TEST_ASSERT_EQUAL_INT(0, ecdsa_get_public_key65(&secp256k1, c->id_priv, c->cert));
+  /* The certificate leads with the identity key compressed: those 33 bytes are what the CA signs, and
+   * the shell uncompresses them again to check the handshake signature, so the remaining 65 of the 98
+   * are free for the signature and its recovery id. */
+  uint8_t pub[ECC256_POINT_SIZE + 1];
+  TEST_ASSERT_EQUAL_INT(0, ecdsa_get_public_key33(&secp256k1, c->id_priv, pub));
+  memcpy(c->cert, pub, 33);
 }
 
 /* The transcript the card signs, and the session keys from the card's side of the same ECDHE. */
