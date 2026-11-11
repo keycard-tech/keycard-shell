@@ -400,6 +400,7 @@ shellos_test(fuzz LIBS app_btc_sig app_keycard app_bitcoin app_ethereum app_cryp
 # mutated count fails the suite instead of the CI runner.
 set_tests_properties(fuzz PROPERTIES TIMEOUT 120)
 shellos_test(bignum LIBS app_crypto)
+shellos_test(railgun_babyjubjub LIBS app_crypto)
 shellos_test(ethereum LIBS app_ethereum app_crypto)
 shellos_test(eip712 LIBS app_ethereum app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)
