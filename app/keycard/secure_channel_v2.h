@@ -25,6 +25,9 @@ typedef struct __attribute__((packed, aligned(4))) {
   uint8_t nonce_counter[SCV2_NONCE_SIZE];
 } secure_channel_v2_t;
 
+/* What follows are the protocol steps of this version, private to secure_channel.c: call the
+ * securechannel_*() wrappers, which own the open state and wipe the keys when an exchange fails. */
+
 /**
  * Open a Secure Channel V2 session.
  *

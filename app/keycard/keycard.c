@@ -30,7 +30,6 @@
 #define KEYCARD_DEF_PUK_RETRIES 5
 
 const uint8_t KEYCARD_AID[] = {0xa0, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x01, 0x01};
-const uint8_t KEYCARD_DEFAULT_PSK[] = {0x67, 0x5d, 0xea, 0xbb, 0x0d, 0x7c, 0x72, 0x4b, 0x4a, 0x36, 0xca, 0xad, 0x0e, 0x28, 0x08, 0x26, 0x15, 0x9e, 0x89, 0x88, 0x6f, 0x70, 0x82, 0x53, 0x5d, 0x43, 0x1e, 0x92, 0x48, 0x48, 0xbc, 0xf1};
 
 static void keycard_random_puk(uint8_t puk[KEYCARD_PUK_LEN]) {
   for (int i = 0; i < KEYCARD_PUK_LEN; i++) {
@@ -158,7 +157,7 @@ static app_err_t keycard_factoryreset_on_init(keycard_t* kc) {
   }
 }
 
-static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instance_uid) {
+static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instance_uid, bool* paired_now) {
   memcpy(pairing->instance_uid, instance_uid, APP_INFO_INSTANCE_UID_LEN);
   
   if (pairing_read(pairing) == ERR_OK) {
@@ -193,6 +192,7 @@ static app_err_t keycard_pair(keycard_t* kc, pairing_t* pairing, uint8_t* instan
         return ERR_DATA;
       }
 
+      *paired_now = true;
       ui_keycard_paired(default_pass);
       return ERR_OK;
     } else if (err == ERR_FULL) {
@@ -497,11 +497,11 @@ static app_err_t keycard_read_name(keycard_t* kc) {
 }
 
 static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin) {
+  securechannel_close(&kc->ch);
+
   if (keycard_cmd_select(kc, KEYCARD_AID, KEYCARD_AID_LEN) != ERR_OK) {
     return ERR_TXRX;
   }
-
-  kc->ch.open = 0;
 
   if (APDU_SW(&kc->apdu) != SW_OK) {
     ui_keycard_wrong_card();
@@ -548,7 +548,8 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
 
   if (info.version < KEYCARD_SCV2_MIN_VERSION) {
     APP_ALIGNED(pairing_t pairing, 4);
-    err = keycard_pair(kc, &pairing, info.v3.instance_uid);
+    bool paired_now = false;
+    err = keycard_pair(kc, &pairing, info.v3.instance_uid, &paired_now);
     if (err == ERR_FULL) {
       if (ui_keycard_no_pairing_slots() == CORE_EVT_UI_OK) {
         return keycard_factoryreset_on_init(kc);
@@ -565,7 +566,9 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
       if (err != ERR_TXRX) {
         pairing_erase(&pairing);
         ui_keycard_secure_channel_failed();
-        return ERR_RETRY;
+
+        /* If the pairing was just created but SecureChannel opening still fails, we give up. */
+        return paired_now ? ERR_CRYPTO : ERR_RETRY;
       } else {
         return ERR_TXRX;
       }
@@ -607,7 +610,7 @@ static app_err_t keycard_setup(keycard_t* kc, uint8_t* pin, uint8_t* cached_pin)
 
 void keycard_init(keycard_t* kc) {
   smartcard_init(&kc->sc);
-  kc->ch.open = 0;
+  securechannel_close(&kc->ch);
 }
 
 void keycard_activate(keycard_t* kc) {
@@ -730,5 +733,6 @@ void keycard_in(keycard_t* kc) {
 void keycard_out(keycard_t* kc) {
   ui_card_removed();
   smartcard_out(&kc->sc);
-  kc->ch.open = 0;
+  /* The card is gone; the session keys for it have to be too. */
+  securechannel_close(&kc->ch);
 }

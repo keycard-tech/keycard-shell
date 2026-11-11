@@ -118,6 +118,7 @@ hal_err_t hal_smartcard_set_timeout(uint32_t timeout);
 hal_err_t hal_smartcard_set_blocklen(uint32_t len);
 hal_err_t hal_smartcard_send(const uint8_t* data, size_t len);
 hal_err_t hal_smarcard_recv(uint8_t* data, size_t len);
+uint32_t hal_smartcard_received(void);
 void hal_smartcard_abort();
 
 // Crypto (only use in crypto library)

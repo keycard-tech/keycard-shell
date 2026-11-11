@@ -19,6 +19,7 @@ import base64
 import hashlib
 import hmac
 import itertools
+import textwrap
 import json
 import os
 import random
@@ -11108,12 +11109,1384 @@ static const pbkdf2_kat_t PBKDF2_KAT[] = {{
 """
 
 
+def util_vectors() -> str:
+    """crypto/util.c -- the parsers that sit between a string someone typed and the bytes that get
+    hashed, plus the ISO 7816-4 padding the secure channel uses.
+
+    The arithmetic is Python's: a decimal or hex string through Python's big integers and to_bytes(32).
+    That is the point -- decimal_to_256 is a hand-rolled 256-bit accumulator (limbs * 8 plus a carry),
+    and an error in it changes the number being signed without changing its shape. The accept/reject
+    lines are not Python's: they are the contract str_to_int256 implements, written out here so that a
+    change to it -- what gets trimmed, whether a bare sign or a negative hex literal is accepted, where
+    a hex string stops fitting -- has to be changed in two places on purpose.
+    """
+    WS = " \t\n\v\f\r"
+    DIGITS = set("0123456789")
+    HEX = DIGITS | set("abcdefABCDEF")
+
+    def parse(text: str):
+        """The contract, as the module documents it: surrounding whitespace trimmed, one optional sign,
+        0x/0X introducing up to 64 hex digits and no sign, otherwise decimal up to 2**256 - 1. Returns
+        (magnitude, negative) or None for a rejection."""
+        i, j = 0, len(text)
+        while i < j and text[i] in WS:
+            i += 1
+        while j > i and text[j - 1] in WS:
+            j -= 1
+        neg = False
+        if i < j and text[i] in "+-":
+            neg = text[i] == "-"
+            i += 1
+            if i == j:
+                return None
+        if i == j:
+            return (0, False)
+        body = text[i:j]
+        if len(body) >= 2 and body[0] == "0" and body[1] in "xX":
+            if neg:
+                return None
+            digits = body[2:]
+            if len(digits) == 0 or len(digits) > 64 or any(c not in HEX for c in digits):
+                return None
+            return (int(digits, 16), False)
+        if any(c not in DIGITS for c in body):
+            return None
+        value = int(body)
+        if value >= 1 << 256:
+            return None
+        return (value, neg)
+
+    inputs = [
+        ("empty string", ""),
+        ("whitespace only", "   \t\n "),
+        ("zero", "0"),
+        ("one", "1"),
+        ("single digit with spaces", "\t 7 \n"),
+        ("carriage return and vertical tab", "\r\v42\f\v"),
+        ("leading zeros", "000000000000000000000016"),
+        ("plus sign", "+1234"),
+        ("negative one", "-1"),
+        ("negative zero", "-0"),
+        ("space after the sign", "- 7"),
+        ("bare sign", "-"),
+        ("bare sign with space", "+ "),
+        ("ten", "10"),
+        ("uint64 max", str(2**64 - 1)),
+        ("uint128 boundary", "340282366920938463463374607431768211455"),
+        ("uint256 max", str(2**256 - 1)),
+        ("uint256 overflow", str(2**256)),
+        ("seventy nine digits", "9" * 79),
+        ("negative uint256 max", "-" + str(2**256 - 1)),
+        ("two to the 255", str(2**255)),
+        ("negative two to the 255", "-" + str(2**255)),
+        ("hex zero", "0x0"),
+        ("hex lowercase", "0xdeadbeef"),
+        ("hex uppercase prefix", "0XFF"),
+        ("hex odd digits", "0xabc"),
+        ("hex one digit", "0xf"),
+        ("hex uint256 max", "0x" + "f" * 64),
+        ("hex one digit too many", "0x" + "f" * 65),
+        ("hex no digits", "0x"),
+        ("hex with a space inside", "0x1 f"),
+        ("negative hex", "-0x10"),
+        ("not a number", "12a3"),
+        ("space inside a decimal", "1 2"),
+        ("leading zero then letters", "0abc"),
+        ("hex letters out of range", "0xg"),
+    ]
+
+    int256_rows = []
+    for name, text in inputs:
+        got = parse(text)
+        if got is None:
+            int256_rows.append(f'    {{ "{name}", "{hexs(text.encode())}", NULL, false, NULL, 0 }},')
+            continue
+        mag, neg = got
+        value = (-mag) & ((1 << 256) - 1) if neg else mag
+        sig = 32 - ((mag.bit_length() + 7 + 7) // 8) if mag == 0 else (mag.bit_length() + 7) // 8
+        sig = 0 if mag == 0 else sig
+        int256_rows.append(
+            f'    {{ "{name}", "{hexs(text.encode())}", '
+            f'"{mag.to_bytes(32, "big").hex()}", {"true" if neg else "false"}, '
+            f'"{value.to_bytes(32, "big").hex()}", {sig} }},'
+        )
+
+    pad_rows = []
+    for plen in (16, 8):
+        for size in (0, 1, 7, 8, 15, 16, 17, 31, 32):
+            payload = bytes((0xa0 + i) & 0xff for i in range(size))
+            padding = plen - (size % plen)
+            padded = payload + b"\x80" + b"\x00" * (padding - 1)
+            pad_rows.append(
+                f'    {{ {plen}, "{hexs(payload)}", "{hexs(padded)}", {size + padding}, {size + plen} }},'
+            )
+
+    u64_rows = []
+    for value in (0, 1, 9, 10, 99, 100, 2**31 - 1, 2**32 - 1, 2**32, 2**53, 10**18, 2**64 - 1):
+        text = str(value)
+        u64_rows.append(f'    {{ {value}ULL, "{text}", {len(text) + 1} }},')
+
+    return f"""#ifndef VECTORS_UTIL_H
+#define VECTORS_UTIL_H
+
+/* The values are Python's -- big integers, to_bytes(32, "big"), str(). decimal_to_256 is a hand-rolled
+ * 256-bit accumulator and u64toa a hand-rolled decimal conversion, so the arithmetic here belongs to
+ * nobody who shipped this firmware. Which strings are accepted is this module's own contract, restated
+ * below and asserted verbatim: it is not pinned by any standard, and eip712.c reads whatever it returns
+ * into the struct hash of a message the user is being asked to approve.
+ */
+
+typedef struct {{
+  const char* name;
+  const char* text_hex;
+  const char* mag_hex;
+  bool negative;
+  const char* value_hex;
+  size_t significant;
+}} int256_kat_t;
+
+static const int256_kat_t INT256_KAT[] = {{
+{chr(10).join(int256_rows)}
+}};
+
+#define INT256_KAT_COUNT (sizeof(INT256_KAT) / sizeof(INT256_KAT[0]))
+
+/* ISO 7816-4 padding: 0x80 then zeros up to the next block. room is what the caller has to leave
+ * past the payload, because pad_iso9797_m1 always writes a whole block's worth. */
+typedef struct {{
+  uint8_t block;
+  const char* data_hex;
+  const char* padded_hex;
+  uint32_t padded_len;
+  uint32_t room;
+}} pad_kat_t;
+
+static const pad_kat_t PAD_KAT[] = {{
+{chr(10).join(pad_rows)}
+}};
+
+#define PAD_KAT_COUNT (sizeof(PAD_KAT) / sizeof(PAD_KAT[0]))
+
+typedef struct {{
+  uint64_t value;
+  const char* text;
+  uint32_t room;
+}} u64toa_kat_t;
+
+static const u64toa_kat_t U64TOA_KAT[] = {{
+{chr(10).join(u64_rows)}
+}};
+
+#define U64TOA_KAT_COUNT (sizeof(U64TOA_KAT) / sizeof(U64TOA_KAT[0]))
+
+#endif
+"""
+
+
+# ATRs to parse. Two sources, both stated in the emitted comment.
+#
+# - pcsc: captured from real cards, copied from pcsc-tools' smartcard_list.txt (Ludovic Rousseau's
+#   collection of ATRs reported by people running pcsc_scan), with the card that list names.
+# - own: captured on the bench with tools/capture-atr.py, from the stack of cards at hand. Every one
+#   of them is in pcsc-tools' collection too, which is where the row names come from.
+# - spec: built byte by byte from ISO/IEC 7816-3:2006 for a shape the collection does not contain,
+#   so that a clause the wild cards never exercise is still pinned.
+#
+# Expectations come from the standard, never from iso7816/atr.c: see iso_expect().
+CAPTURED_ATRS = [
+    # (name, atr, source, what the structure is)
+    ("timing only", "3B 90 95 80 11 FE 6A", "pcsc",
+     "T=0 offered first; TD2 then offers T=1, whose first triple is a lone TA = IFSC 254"),
+    ("staros s21", "3B BF 18 00 80 31 70 35 53 54 41 52 43 4F 53 20 53 32 31 20 43 90 00 9B", "pcsc",
+     "STARCOS S21 C: T=0 then T=1 with IFSC 112 and BWI 3 CWI 5, 15 historical bytes"),
+    ("three protocols",
+     "3B 9F 97 C0 0A B1 FE 45 3F C6 82 80 31 E0 73 FE 21 1B 65 D0 02 3A 14 C9 81 0F 8B", "pcsc",
+     "T=0, then T=1, then T=15, whose first TA is classes A+B+C with clock stop both states"),
+    ("second group TC", "3B 97 11 C0 FF B1 FE 35 1F 83 A5 05 01 01 02 A3 01 5F", "pcsc",
+     "TC2 = FF is T=0's WI; the T=1 triple is split across TA3 (IFSC) and TB3 (BWI 3 CWI 5)"),
+    ("t1 tb only", "3B 85 C0 FA 21 63 80 63 01 01 05 1B", "pcsc",
+     "the T=1 triple offers only TB, so IFSC keeps its default while CWI 3 and BWI 6 are read"),
+    ("t0 only", "3B 15 11 12 CA 07 00 DB", "pcsc",
+     "nothing offered but T=0, so 8.2.5 says there is no check byte and the last byte is historical"),
+    ("t1 no interface", "3B 80 01 81", "pcsc",
+     "TD1 = 01 offers T=1 and nothing else: no interface byte at all, check byte still required"),
+    ("sse piv", "3B 9C 95 81 01 50 53 43 50 2D 53 43 53 56 31 2E 30 8E", "pcsc",
+     "TD1 offers T=1, TD2 = 01 repeats it with no bytes; the T=1 triple never arrives"),
+    ("didem v1.7", "3B 97 18 11 81 44 49 44 45 4D 01 07 58", "pcsc",
+     "Didem Card V1.7: TD1 offers T=1 and TA2, which 8.3 makes the global specific mode byte, not IFSC"),
+    ("t15 in td1", "3B 81 1F 00 CC 52", "pcsc",
+     "the one card in that list that puts T=15 in TD1, which 8.2.3 declares invalid"),
+    # Built from the standard: shapes the collection above does not exercise.
+    ("t1 crc", "3B 80 81 71 81 59 01 A9", "spec",
+     "8.2.3 puts the first T=1 triple after a TD2 indicating T=1: IFSC 129, BWI 5 CWI 9, and bit 1 of "
+     "the first TC asks for CRC per 11.4.4"),
+    ("t1 lrc", "3B 80 81 71 81 59 00 A8", "spec",
+     "the same triple with bit 1 of the first TC clear, which 11.4.4 makes LRC -- the default when "
+     "that byte is absent anyway"),
+    ("t1 first triple wins", "3B 80 81 B1 21 44 31 62 66 E0", "spec",
+     "two triples qualified for T=1: 8.2.3 numbers them by occurrence and 11.4.1 lets only the first "
+     "set IFSC, BWI and CWI, so IFSC is 33 and not 98"),
+    ("t0 and t15", "3B 80 80 1F 47 58", "spec",
+     "T=0 then T=15, whose first TA is classes A+B+C with clock stop preferred in state L. 8.2.3 says "
+     "T=15 is not a protocol, so T=1 stays unoffered -- yet 8.2.5 still requires the check byte"),
+    ("no interface byte", "3B 02 14 1C", "pcsc",
+     "T0 sets no Y1 bit and offers no TD, so 8.2.3 leaves only T=0 by default: 8.3 and 10.2 give every "
+     "parameter and 8.2.5 wants no check byte. 93 of the list's ATRs are shaped like this"),
+    ("comsign eid", "3B D5 18 FF 81 91 FE 1F C3 80 73 C8 21 10 0A", "own",
+     "TD1 offers T=1 and TD2 repeats it with a lone TA3 = IFSC 254, so 11.4.3 and 11.4.4 leave BWI at "
+     "4, CWI at 13 and the code at LRC; TD3 then brings T=15 last, classes A+C"),
+    ("renap guatemala", "3B D5 18 FF 81 B1 FE 45 1F C3 80 73 C8 21 10 6F", "own",
+     "the chain of comsign eid with a TB3 added to TD2's third group, and 11.4.3 takes BWI 4 and CWI 5 "
+     "out of it: the only difference between the two rows is which byte TD2 indicates"),
+    ("jcop3 p60", "3B DC 18 FF 81 91 FE 1F C3 80 73 C8 21 13 66 05 03 63 51 00 02 50", "own",
+     "JCOP3 SecID P60: comsign eid's chain with 12 historical bytes, which 8.2.5 folds into the check "
+     "byte like any other count"),
+    ("jcop 2.4.1r3", "3B EA 00 00 81 31 FE 45 00 31 C1 73 C8 40 00 00 90 00 7A", "own",
+     "Y1 sets TB1, TC1 and TD1 and no TA1, so 8.3 gives Fi = 372 and Di = 1 even though a TB1 is there "
+     "to be ignored, and TC1 = 00 is N = 0 rather than a missing byte"),
+    ("cryptnox fido2", "3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2", "own",
+     "VPP not connected, TC1 = FF, T=1 offered by TD1 and again by TD2, whose triple is IFSC 254 "
+     "with TB3 = 00, asking for CWI 0 and BWI 0"),
+    ("acosj 40k", "3B 69 00 02 41 43 4F 53 4A 76 31 30 31", "own",
+     "TB1 and TC1 and no TD anywhere, so 8.2.3 leaves only T=0 by default and 8.2.5 wants no check "
+     "byte: the ATR ends with the nine historical bytes spelling ACOSJv101"),
+    ("t0 not first", "3B 80 81 00 01", "spec",
+     "TD1 offers T=1 and TD2 then offers T=0, which 8.2.3 forbids: if T=0 is present it shall be first"),
+    ("t15 not last", "3B 80 80 9F 11 01 8F", "spec",
+     "TD2 brings T=15 and TD3 repeats T=1 after it; 8.2.3 puts T=15 last, so the offer is refused "
+     "rather than handed to pps_negotiate as a protocol of 15"),
+    ("t0 offered, no t15", "3B 80 40 0B", "spec",
+     "TD1 offers T=0 and TC2 = 0B is its WI. With no T=15, 8.3 gives class A and clock stop not "
+     "supported; with nothing but T=0 indicated, 8.2.5 gives no check byte"),
+    ("specific t0", "3B F0 11 00 FF 91 00 01 8E", "spec",
+     "TD1 offers T=1, but TA2 = 00 is specific mode with type 0, so 6.3.1 runs T=0 and bit 5 clear "
+     "keeps TA1's Fi = 372 and Di = 1"),
+    ("specific unsupported type", "3B F0 11 00 FF 91 8F 01 01", "spec",
+     "8.3's NOTE: a type the interface device cannot run is a warm reset or a deactivation, so TA2 = 8F "
+     "of specific mode and type 15 is refused"),
+]
+
+
+def atr_walk(atr: str):
+    """The structure per ISO/IEC 7816-3:2006:8.2.3. T0 conveys Y1 and K; every TD conveys the
+    indicator Yi+1 -- which of TA, TB, TC, TD follow -- and the type T, which qualifies those bytes.
+    If a TD is absent, the group after it is absent too.
+
+    Returns the groups as (qualifying type, bytes) in order -- the first group is qualified by no
+    type, being the timing group -- together with the bytes after the interface bytes. Only the two
+    bytes a reader needs at the top of the walk are checked here: TS's convention and T0."""
+    b = bytes.fromhex(atr.replace(" ", ""))
+    if len(b) < 2 or (b[0] != 0x3B and b[0] != 0x3F):
+        raise ValueError(f"not an ATR: {atr}")
+    pos = 2
+    groups = []
+    presence, proto = (b[1] >> 4) & 0xF, None
+    while presence:
+        g, td = {}, None
+        for bit, name in ((1, "TA"), (2, "TB"), (4, "TC"), (8, "TD")):
+            if presence & bit:
+                if pos >= len(b):
+                    raise ValueError(f"ATR ends inside a group: {atr}")
+                g[name] = b[pos]
+                pos += 1
+                if name == "TD":
+                    td = g["TD"]
+        groups.append((proto, g))
+        if td is None:
+            break
+        presence, proto = (td >> 4) & 0xF, td & 0xF
+
+    hist_len = b[1] & 0x0F
+    if pos + hist_len > len(b):
+        raise ValueError(f"ATR is shorter than T0 promises: {atr}")
+    return b, groups, b[pos:pos + hist_len], b[pos + hist_len:]
+
+
+def iso_expect(atr: str) -> dict:
+    """What ISO/IEC 7816-3:2006 says a reader must take from an ATR, clause by clause. This is the
+    specification the test asserts; atr.c is what it checks."""
+    b, groups, hist, rest = atr_walk(atr)
+    types = [g["TD"] & 0xF for _, g in groups if "TD" in g]
+
+    e = {
+        # 8.3: Fi = 372, Di = 1, which atr.c carries as the byte 0x11; N = 0; TA2 absent.
+        "fi_di": 0x11, "n": 0, "ta2": 0xFF,
+        # 10.2: WI = 10 unless TC2 says otherwise.
+        "t0_wi": 10,
+        # 8.2.3: without a TD1 the only offer is T=0, and 11.4.2/11.4.3/11.4.4 give the T=1 defaults.
+        "default_protocol": 0, "protocols": 1,
+        "t1_ifsc": 32, "t1_cwi": 13, "t1_bwi": 4, "t1_rc": 0,
+        # 8.3: clock stop not supported, only class A.
+        "t15_present": 0, "classes": 1, "clockstop": 0,
+        "hist_len": len(hist), "hist": hist.hex(), "result": "ERR_OK",
+    }
+
+    # An empty group means T0 set no Y1 bit at all, so every byte here is a default of 8.3 and 10.2.
+    if groups:
+        if groups[0][1].get("TA") is not None:
+            e["fi_di"] = groups[0][1]["TA"]
+        if groups[0][1].get("TC") is not None:
+            e["n"] = groups[0][1]["TC"]
+
+    if types:
+        # 8.2.3: TD1 encodes the first offered protocol.
+        e["default_protocol"] = types[0]
+        e["protocols"] = 0
+        for t in types:
+            if t == 0:
+                e["protocols"] |= 1
+            elif t == 1:
+                e["protocols"] |= 2
+        if types[0] == 15:
+            e["result"] = "ERR_DATA"
+        if 0 in types and types[0] != 0:
+            e["result"] = "ERR_DATA"
+        if 15 in types and types[-1] != 15:
+            e["result"] = "ERR_DATA"
+
+    # 8.2.3: TA1, TB1, TC1, TA2 and TB2 are global and TC2 is specific to T=0, whatever TD1 said.
+    # TB1 and TB2 are deprecated and the reader shall ignore them.
+    if len(groups) > 1:
+        g2 = groups[1][1]
+        if g2.get("TA") is not None:
+            e["ta2"] = g2["TA"]
+        if g2.get("TC") is not None:
+            e["t0_wi"] = g2["TC"]
+
+    if e["ta2"] != 0xFF:
+        # 6.3.1 with 8.3: in specific mode the protocol is the type TA2 encodes. A type the reader
+        # cannot run is the deactivation 8.3's NOTE asks for.
+        specific = e["ta2"] & 0x0F
+        if specific in (0, 1):
+            e["default_protocol"] = specific
+        else:
+            e["result"] = "ERR_DATA"
+
+    # 8.2.3: from the third group on, the type in the TD before it decides what TAi TBi TCi mean.
+    # 11.4.1 and 8.3 then take only the first of each kind for their type.
+    seen = 0
+    for proto, g in groups[2:]:
+        if proto == 1:
+            if g.get("TA") is not None and not seen & 1:
+                seen |= 1
+                e["t1_ifsc"] = g["TA"]
+            if g.get("TB") is not None and not seen & 2:
+                seen |= 2
+                e["t1_cwi"] = g["TB"] & 0xF
+                e["t1_bwi"] = (g["TB"] >> 4) & 0xF
+            if g.get("TC") is not None and not seen & 4:
+                seen |= 4
+                e["t1_rc"] = 1 if g["TC"] & 1 else 0
+        elif proto == 15:
+            e["t15_present"] = 1
+            if g.get("TA") is not None and not seen & 8:
+                seen |= 8
+                e["classes"] = g["TA"] & 0x7
+                e["clockstop"] = g["TA"] & 0xC0
+
+    # 8.2.5: the check byte is absent if only T=0 is indicated, possibly by default, and present in
+    # every other case. When it is present, T0 to TCK inclusive exclusive-or to 00.
+    only_t0 = not types or set(types) == {0}
+    e["tck"] = 0 if only_t0 else 1
+
+    covered = b[1:2] + b[2:2 + (len(b) - 2 - len(rest))] + hist
+    if e["tck"]:
+        if len(rest) < 1:
+            raise ValueError(f"8.2.5 requires a check byte, none present: {atr}")
+        parity = 0
+        for byte in b[1:2] + b[2:len(b) - 1]:
+            parity ^= byte
+        if parity ^ rest[0] != 0:
+            raise ValueError(f"check byte does not cover T0 to historical inclusive: {atr}")
+        if len(rest) != 1:
+            raise ValueError(f"bytes after the check byte: {atr}")
+    elif len(rest) != 0:
+        raise ValueError(f"T=0 only, so bytes after the historical ones are unexplained: {atr}")
+
+    return e
+
+
+def atr_vectors() -> str:
+    rows = []
+    for name, atr, source, note in CAPTURED_ATRS:
+        try:
+            e = iso_expect(atr)
+        except ValueError as exc:
+            print(f"  skipping {name}: {exc}")
+            continue
+        rows.append((name, atr, source, note, e))
+
+    def comment(name, source, note, e):
+        origin = f"Synthetic: {name}" if source == "spec" else f"Card: {name}"
+        lines = textwrap.wrap(f"{origin}. {note}", width=94)
+        out = [f"    /* {lines[0]}"] + [f"     * {line}" for line in lines[1:]]
+        out[-1] += " */"
+        return "\n".join(out)
+
+    body = "\n".join(
+        f'{comment(name, source, note, e)}\n'
+        f'    {{\n'
+        f'        "{name}", "{atr.replace(" ", "")}", {e["result"]}, {e["tck"]},\n'
+        f'        0x{e["fi_di"]:02X}, 0x{e["n"]:02X}, 0x{e["ta2"]:02X}, {e["t0_wi"]}, '
+        f'{e["default_protocol"]}, {e["protocols"]},\n'
+        f'        0x{e["t1_ifsc"]:02X}, {e["t1_bwi"]}, {e["t1_cwi"]}, {e["t1_rc"]}, '
+        f'{e["t15_present"]}, 0x{e["classes"]:02X}, 0x{e["clockstop"]:02X},\n'
+        f'        {e["hist_len"]}, "{e["hist"]}",\n'
+        f'    }},'
+        for name, atr, source, note, e in rows
+    )
+
+    return f"""#ifndef VECTORS_ATR_H
+#define VECTORS_ATR_H
+
+/* What ISO/IEC 7816-3:2006 requires of a reader facing an ATR, row by row. Each row is one ATR --
+ * captured from a real card, from pcsc-tools' smartcard_list.txt or from the cards at hand, or built
+ * from the standard's own tables for a shape those collections do not contain -- and the fields are
+ * the
+ * answer in iso7816/atr.c's terms, derived from the text by tests/vectors/generate.py rather than
+ * from that file.
+ *
+ * The clauses:
+ *  - 8.2.3 structure. T0 conveys Y1 and K; each TD conveys which of TA, TB, TC, TD follow it and the
+ *    type T that qualifies those bytes; an absent TD means the whole group after it is absent. TA1,
+ *    TB1, TC1, TA2 and TB2 are global and TC2 is specific to T=0, so from the third group on the
+ *    bytes mean what the preceding TD's T says they mean, and the k-th triple for a type follows the
+ *    k-th occurrence of that type. T=0 first if offered, T=15 last and invalid in TD1.
+ *  - 8.2.5 check byte. Absent if only T=0 is indicated, possibly by default; present otherwise.
+ *    Exclusive-oring T0 to TCK inclusive gives 00, TS excluded.
+ *  - 8.3 global bytes. TA1 is Fi, Di and f(max), default Fi = 372, Di = 1; TB1 and TB2 are
+ *    deprecated and the reader shall ignore them; TC1 is N, default 0; TA2 is the specific mode byte
+ *    and says nothing about IFSC. The first TA for T=15 is the clock stop indicator X in bits 8-7 and
+ *    the classes in bits 6-1, default clock stop not supported and class A only.
+ *  - 10.2 T=0. TC2 is WI over eight bits except 00, default 10, and WT = WI * 960 * Fi / f.
+ *  - 11.4.2 to 11.4.4 T=1. The first TA for T=1 is IFSC, 01..FE encoding 1..254 with 00 and FF
+ *    reserved, default 32. The first TB for T=1 is BWI in bits 8-5 (0..9, default 4) and CWI in bits
+ *    4-1 (default 13). Bit 1 of the first TC for T=1 selects CRC, and clear selects LRC, which is
+ *    also the default when the byte is absent.
+ *
+ * Two things the standard does not let this reader enforce, and the suite therefore does not claim.
+ * The types in TD1, TD2 and so on "shall be in ascending numerical order", yet 1014 of the 2678
+ * check-byte-valid ATRs in that collection repeat the first type, which is exactly how the clause
+ * 8.2.3 note places the first T=1 triple after a TD2 indicating T=1 for a card that offers no T=0;
+ * order is only checked where the text names a case invalid. And 11.4.2 reserves IFSC values 00 and
+ * FF without saying what a reader does about them; 4 of those 2678 ATRs use one, so no row here asks
+ * for a verdict.
+ */
+
+typedef struct {{
+  const char* name;
+  const char* atr_hex;
+  app_err_t result;
+  uint8_t tck;
+  uint8_t fi_di;
+  uint8_t n;
+  uint8_t ta2;
+  uint8_t t0_wi;
+  uint8_t default_protocol;
+  uint8_t protocols;
+  uint8_t t1_ifsc;
+  uint8_t t1_bwi;
+  uint8_t t1_cwi;
+  uint8_t t1_rc;
+  uint8_t t15_present;
+  uint8_t classes;
+  uint8_t clockstop;
+  size_t hist_len;
+  const char* hist_hex;
+}} atr_kat_t;
+
+static const atr_kat_t ATR_KAT[] = {{
+{body}
+}};
+
+#define ATR_KAT_COUNT (sizeof(ATR_KAT) / sizeof(ATR_KAT[0]))
+
+#endif
+"""
+
+
+
+# What a reader must ask the peripheral for once the ATR has been read. Every number is derived from
+# ISO/IEC 7816-3:2006, none from iso7816/pps.c:
+#
+#  - 7.1: 1 etu = F / (D * f) seconds, with F the clock rate conversion integer, D the baud rate
+#    adjustment integer and f the frequency supplied on CLK. Fd = 372 and Dd = 1 are the defaults of
+#    6.3.1, which is also what "implicit values" means in TA2.
+#  - 8.3 Table 7: bits 8 to 5 of TA1 give Fi and f(max) together, Table 8: bits 4 to 1 give Di. The
+#    two nibbles are independent, so Fi does not come from the same nibble as Di.
+#  - 8.3: GT = 12 etu + R * N / f, with R = F / D when T=15 is absent and R = Fi / Di when it is
+#    present. The character frame already spans twelve etu, so the peripheral is asked for the
+#    excess over that -- which is nothing for N = 0, and nothing for N = 255, where 11.2 fixes the
+#    guard at 11 etu for T=1 whatever TA1 says.
+#  - 9.1: the interface device starts the PPS exchange, the card answers a correct request or WT
+#    (9600 etu) elapses, and 9.2 puts the proposed Fi/Di in PPS1 -- present only when bit 5 of PPS0
+#    says so, encoded as in TA1, from Fd up and Dd up. A device that omits PPS1 proposes Fd and Dd.
+#  - 9.3: the exchange succeeds when bits 4 to 1 of the answer match, bits 5 to 7 are the same or 0,
+#    and an answer whose bit 5 is 0 means Fd and Dd are in force -- so the answer need not echo the
+#    request, and it is one byte shorter when it does not.
+#  - 10.2: WT = WI * 960 * Fi / f, which is WI * 960 * Fi * D / (F * f) in etu, and 11.4.3:
+#    CWT = (11 + 2^CWI) etu and BWT = 11 etu + 2^BWI * 960 * Fd / f, Fd being 372 whatever Fi is.
+#
+# The frequency fed to CLK is the hardware's choice and is only bounded by the text: it shall not
+# exceed f(max). This device divides the kernel clock by 2 * Prescaler (see
+# hal_smartcard_pps in stm32/Core/Src/stm32_smartcard.c), so the expectation is the fastest such
+# frequency the card allows -- derived from Table 7 and SMARTCARD_CLOCK, not from pps.c's table.
+
+FI_FMAX = {
+    0x0: (372, 4000000), 0x1: (372, 5000000), 0x2: (558, 6000000), 0x3: (744, 8000000),
+    0x4: (1116, 12000000), 0x5: (1488, 16000000), 0x6: (1860, 20000000),
+    0x9: (512, 5000000), 0xA: (768, 7500000), 0xB: (1024, 10000000),
+    0xC: (1536, 15000000), 0xD: (2048, 20000000),
+}
+DI_CODE = {0x1: 1, 0x2: 2, 0x3: 4, 0x4: 8, 0x5: 16, 0x6: 32, 0x7: 64, 0x8: 12, 0x9: 20}
+DEFAULT_FMAX = 5000000  # 8.3: "f (max.) = 5 MHz" when TA1 is absent
+FD, DD = 372, 1         # 6.3.1
+GUARD_MAX = 255         # GTPR.GT is 8 bits of etu (baud clock periods)
+PPS_WT = 9600           # 9.1
+
+
+def kernel_clock() -> int:
+    """SMARTCARD_CLOCK, from the build rather than from a copy of it."""
+    found = set()
+    for cmake in (HERE / "../../CMakeLists.txt", HERE / "../../tests/CMakeLists.txt"):
+        m = re.search(r"SMARTCARD_CLOCK=(\d+)", cmake.read_text())
+        if m:
+            found.add(int(m.group(1)))
+    assert len(found) == 1, f"SMARTCARD_CLOCK disagrees between builds: {found}"
+    return found.pop()
+
+
+def card_clock(fmax: int) -> int:
+    """The fastest f = kernel / (2 * Prescaler) that a card allowing f(max) will accept."""
+    kernel = kernel_clock()
+    return max(kernel // (2 * p) for p in range(1, 512) if kernel // (2 * p) <= fmax)
+
+
+def mk_atr(groups: list, hist: bytes = b"", ts: int = 0x3B) -> str:
+    """Assemble an ATR from its groups: the timing group as a dict of TA1/TB1/TC1, then one
+    (type, dict of TA/TB/TC) per further group. TD bytes and their indicator nibbles follow from
+    which groups and slots exist, per 8.2.3; the check byte follows from 8.2.5."""
+    g1 = groups[0]
+    y1 = 0
+    body = []
+    for name, bit in (("TA1", 1), ("TB1", 2), ("TC1", 4)):
+        if name in g1:
+            y1 |= bit
+            body.append(g1[name])
+    if len(groups) > 1:
+        y1 |= 8
+    out = [ts, (y1 << 4) | (len(hist) & 0xF)] + body
+
+    rest = groups[1:]
+    for i, (t, slots) in enumerate(rest):
+        y = 0
+        tail = []
+        for name, bit in (("TA", 1), ("TB", 2), ("TC", 4)):
+            if name in slots:
+                y |= bit
+                tail.append(slots[name])
+        if i + 1 < len(rest):
+            y |= 8
+        out.append((y << 4) | t)
+        out.extend(tail)
+    out.extend(hist)
+
+    types = [g[0] for g in groups[1:]]
+    if types and set(types) != {0}:
+        parity = 0
+        for byte in out[1:]:
+            parity ^= byte
+        out.append(parity)
+    return " ".join(f"{b:02X}" for b in out)
+
+
+def pps_answer(t: int, fi_di: int | None, spu: bool = False, bad_pck: bool = False) -> str:
+    """A card's PPS response: an echo of a request carrying type t and, if fi_di is not None, a
+    PPS1 with those values. spu sets bit 6, and bad_pck corrupts the check byte."""
+    pps0 = t
+    if fi_di is not None:
+        pps0 |= 0x10
+    if spu:
+        pps0 |= 0x20
+    seq = [0xFF, pps0] + ([fi_di] if fi_di is not None else [])
+    pck = 0
+    for byte in seq:
+        pck ^= byte
+    seq.append(pck if not bad_pck else pck ^ 0xFF)
+    return " ".join(f"{b:02X}" for b in seq)
+
+
+def ceil_div(a: int, b: int) -> int:
+    return -(-a // b)
+
+
+# (name, atr, answer, note). `answer` names a card reply built by pps_answer(); None is a card that
+# never answers, which 9.1 settles by WT. The ATRs of the bench cards are their real bytes; the
+# others are assembled around the shape being pinned, and each offers T=1 through a TD2 with no
+# interface bytes of its own so that the triple after it is TA3, TB3 and TC3 rather than the global
+# TA2 of 8.3.
+PPS_CASES = [
+    ("comsign eid", mk_atr([{"TA1": 0x18, "TC1": 0xFF}, (1, {}), (1, {"TA": 0xFE}),
+                            (15, {"TA": 0xC3})], bytes.fromhex("8073C82110")),
+     "echo",
+     "Fi = 372 comes from the upper nibble of TA1 and Di = 12 from the lower, so the proposal carries "
+     "them, the bit rate is twelve per etu, and N = 255 asks for no extra guard"),
+    ("cryptnox fido2", "3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2", "echo",
+     "TB3 = 00: CWI = 0 is legal, 11.4.3 says so, and puts CWT at its minimum of 12 etu -- one etu "
+     "above the eleven this reader's character spans -- while BWI = 0 puts BWT at 960 Fd/f plus the "
+     "11 etu. The card that lights only the backlight"),
+    ("specific t0", "3B F0 11 00 FF 91 00 01 8E", None,
+     "6.3.1 applies the specific values at once, so T=0 is programmed with 10.2's waiting time and no "
+     "request goes out"),
+    ("comsign declined", mk_atr([{"TA1": 0x18, "TC1": 0xFF}, (1, {}), (1, {"TA": 0xFE}),
+                                 (15, {"TA": 0xC3})], bytes.fromhex("8073C82110")),
+     "decline",
+     "9.3: an answer with bit 5 clear is a successful exchange, and Fd = 372 with Dn = 1 are then in "
+     "force even though TA1 indicated 372 over 12 -- the etu grows twelvefold, and so does CWT"),
+    ("jcop 2.4.1r3", mk_atr([{"TB1": 0x00, "TC1": 0x00}, (1, {}),
+                             (1, {"TA": 0xFE, "TB": 0x45})],
+                            bytes.fromhex("0031C173C840000090007A")),
+     "echo_default",
+     "no TA1 at all, so Fi = 372 and Di = 1 by default and there is nothing to propose in PPS1, yet "
+     "9.1 still requires the request: PPS0's type nibble is how the card is told to run T=1"),
+    ("di 64", mk_atr([{"TA1": 0x17}, (1, {}), (1, {"TA": 0xFE})]), "echo",
+     "Table 8 gives Di = 64 for bits 4 to 1 equal to 0111, a valid value the reader may not refuse"),
+    ("fi rfu", mk_atr([{"TA1": 0x71}, (1, {}), (1, {"TA": 0xFE})]), None,
+     "Table 7 leaves bits 8 to 5 = 0111 without an Fi, so there is no rate to run and no exchange to "
+     "start"),
+    ("ta2 implicit", mk_atr([{"TA1": 0x77}, (1, {"TA": 0x11}), (1, {"TA": 0xFE})]), "decline",
+     "TA2 = 11 has bit 5 set, so 8.3 takes the implicit Fd and Dd, and the RFU nibble of TA1 is none "
+     "of the reader's business because nothing reads it"),
+    ("ta2 indicated", mk_atr([{"TA1": 0x95}, (1, {"TA": 0x01}), (1, {"TA": 0xFE})]), "echo",
+     "TA2 = 01 leaves bit 5 clear, so the Fi = 512 and Di = 1 of TA1 apply and are what gets proposed"),
+    ("cwt zero", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TB": 0x00})]), "echo_default",
+     "11.4.3 with CWI = 0 gives CWT = 11 + 1 = 12 etu, the minimum the text states"),
+    ("cwt five", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TB": 0x45})]), "echo_default",
+     "CWI = 5 and BWI = 4: CWT = 11 + 32 etu and BWT = 11 + 16 * 960 etu at Fd and Dd"),
+    ("bwt nine", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TB": 0x90})]), "echo",
+     "BWI = 9 is the largest 11.4.3 defines, and Fd over f grows with Di = 12"),
+    ("guard n three", mk_atr([{"TA1": 0x11, "TC1": 0x03}, (1, {}), (1, {"TA": 0x20})]), "echo_default",
+     "N = 3 with no T=15 in the ATR, so R = F / D and the extra guard comes out as exactly N etu"),
+    ("guard n three t15", mk_atr([{"TA1": 0x91, "TC1": 0x03}, (1, {}), (1, {"TA": 0x20}),
+                                  (15, {"TA": 0x03})]),
+     "decline",
+     "with T=15 present 8.3 takes R from Fi / Di instead of from what is in force, which does not "
+     "divide: 512 * 3 over 372 is 4.13 etu and the card must not be shortchanged, so 5"),
+    ("guard clamped", mk_atr([{"TA1": 0xD1, "TC1": 0xFE}, (1, {}), (1, {"TA": 0x20}),
+                              (15, {"TA": 0x03})]),
+     "decline",
+     "Fi = 2048 over the Fd = 372 that is in force would ask for 1400 etu of guard and the peripheral "
+     "holds 255: the card wanted more than the reader can give, so it gets the maximum, no error"),
+    ("n 255", mk_atr([{"TA1": 0x11, "TC1": 0xFF}, (1, {}), (1, {"TA": 0x20})]), "echo_default",
+     "8.3 defers N = 255 to the protocol and 11.2 answers 11 etu, which the character frame spans by "
+     "itself: no extra guard either way"),
+    ("etu not divisible", mk_atr([{"TA1": 0x26}, (1, {}), (1, {"TA": 0xFE})]), "echo",
+     "Fi = 558 with Di = 32: the etu is 558 over 32 times f, so dividing F by D before multiplying by "
+     "the clock loses a sixth of it"),
+    ("answer wrong type", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), "wrong_type",
+     "9.3: bits 4 to 1 of the answer shall be identical to those of the request"),
+    ("answer bad pck", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), "bad_pck",
+     "9.2: exclusive-oring PPSS to PCK inclusive shall give 00, and 9.1 hands a device whose answer "
+     "does not check to a deactivation"),
+    ("answer asks spu", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), "spu",
+     "9.3 lets bit 6 of the answer be what the request made it or 0, and the request made it 0, so a "
+     "card offering the SPU of 5.2.4 here is answering a different request from the one it got"),
+    ("no answer", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), None,
+     "9.1: a card that stays silent after a correct request leaves the reader to wait out WT and stop"),
+    ("answer truncated", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF11",
+     "the answer promises a PPS1 and then stops: two bytes are not an exchange, and 9.1 leaves the "
+     "reader with a waiting time rather than with what it half heard"),
+    ("answer without pck", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF1118",
+     "9.2 puts PCK last, so an answer that ends before it says nothing whatever it carried"),
+    ("answer unasked pps1", mk_atr([{"TA1": 0x11}, (1, {}), (1, {"TA": 0x20})]), "FF1118F6",
+     "the request asked for no PPS1, so 9.3 lets bit 5 of the answer read only 0: a card that insists "
+     "on proposing rates to a reader that did not ask is not answering this request"),
+    ("answer one byte", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF",
+     "one byte is not the start of an answer either: 9.1 gives the reader a waiting time and a "
+     "deactivation, and nothing here reads meaning into a PPSS on its own"),
+    ("decline with a fourth byte", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF01FE00",
+     "9.3: with bit 5 clear PPS1 of the answer shall be absent, so the three bytes that do check are "
+     "the whole answer and whatever followed it is not part of this exchange"),
+    ("answer other rates", mk_atr([{"TA1": 0x18}, (1, {}), (1, {"TA": 0x20})]), "FF1112ED",
+     "9.3: PPS1 of the answer shall be identical to the request's, so a card that agrees to T=1 while "
+     "putting other integers in their place is refused rather than run at a rate neither asked for"),
+    ("t0 card", mk_atr([{"TB1": 0x00, "TC1": 0x02}], b"ACOSJv101"), None,
+     "no TD anywhere, so the only offer is T=0, which the shell refuses at the APDU layer; 10.2 still "
+     "gives the waiting time to program, and N = 2 the guard"),
+]
+
+
+def pps_expect(atr: str, answer: str | None) -> dict:
+    a = iso_expect(atr)
+    b = bytes.fromhex(atr.replace(" ", ""))
+    t = a["default_protocol"]
+
+    e = {"atr": atr, "result": "ERR_OK", "pps_called": 0, "request": "", "protocol": t,
+         "freq": 0, "baud": 0, "etu_10ns": 9300, "guard": 0, "cwt": 0, "bwt": 0, "timeout": 0,
+         # t1.c scales the block waiting time by this, so a card in T=1 must find 1 in it.
+         "bwt_factor": 1}
+
+    fi_code, di_code = a["fi_di"] >> 4, a["fi_di"] & 0xF
+    fi, fmax = FI_FMAX.get(fi_code, (None, DEFAULT_FMAX))
+    ta2_implicit = a["ta2"] != 0xFF and (a["ta2"] & 0x10)
+    if ta2_implicit:
+        # 8.3: with bit 5 of TA2 set the implicit values apply, which are Fd and Dd -- and that
+        # holds even when TA1 carries nibbles with no valid meaning, since nothing reads them.
+        fi, di = FD, DD
+    elif fi is None or di_code not in DI_CODE:
+        e["result"] = "ERR_DATA"
+        return e
+    else:
+        di = DI_CODE[di_code]
+
+    e["freq"] = card_clock(fmax)
+    e["etu_10ns"] = (100000000 * fi) // (di * e["freq"])
+    e["baud"] = (e["freq"] * di) // fi
+
+    def guard() -> int:
+        # 8.3 and 11.2 less the frame this reader sends -- eleven etu in T=1 (STOP = 00), eleven and a
+        # half otherwise, in half etu to keep that half exact. RM0481 programs GTPR.GT, in baud clock
+        # periods of one etu each, as CGT minus the duration of one character, and takes twelve for a
+        # frame with two stop bits. Both protocols take their CGT from 8.3, so this holds for the T=0
+        # rows too.
+        n = a["n"]
+        if n == 255:
+            return 0 if t == 1 else 1
+        if a["t15_present"] and not ta2_implicit:
+            r_num, r_den = FI_FMAX.get(fi_code, (FD, DD))[0], DI_CODE.get(di_code, DD)
+        else:
+            r_num, r_den = fi, di
+        return min(GUARD_MAX, 1 + ceil_div(r_num * n * di, r_den * fi))
+
+    if t != 1:
+        e["guard"] = guard()
+
+        # 10.2: WT = WI * 960 * Fi / f, in etu WI * 960 * Fi * D / F, and F is Fi until a PPS says
+        # otherwise. The shell does not speak T=0, so it asks the peripheral for the waiting time
+        # and leaves the exchange to fail later, where the reason is visible.
+        e["timeout"] = a["t0_wi"] * 960 * di  # F is Fi until a PPS changes it, so 10.2 is WI*960*Di
+        e["pps_called"] = 1  # the waiting time still reaches the peripheral; no exchange is made
+        return e
+
+    if a["ta2"] != 0xFF:
+        # 6.3.1: specific mode applies the specific values at once, and the card need not support a PPS
+        # exchange, so nothing goes on the wire.
+        e["pps_called"] = 1
+        e["guard"] = guard()
+        e["cwt"] = 11 + (1 << a["t1_cwi"])
+        e["bwt"] = 11 + (((1 << a["t1_bwi"]) * 960 * FD * di) // fi)
+        return e
+
+    # 9.1 and 9.2: the request goes out whatever the rates are, because PPS0's type nibble is what
+    # puts the card into T=1. PPS1 is only there when there is something to propose.
+    propose = (fi, di) != (FD, DD)
+    pps0 = t | (0x10 if propose else 0)
+    seq = [0xFF, pps0] + ([a["fi_di"]] if propose else [])
+    pck = 0
+    for byte in seq:
+        pck ^= byte
+    e["request"] = " ".join(f"{x:02X}" for x in seq + [pck])
+
+    if answer is None:
+        e["result"] = "ERR_TXRX"
+        return e
+
+    r = bytes.fromhex(answer.replace(" ", ""))
+    # The reader takes the answer in one reception of four bytes, which is all of it it can see: an
+    # answer longer than that arrives as one unread byte after the exchange, and one shorter ends
+    # the reception by waiting time.
+    r = r[:4]
+    if len(r) < 2:
+        e["result"] = "ERR_TXRX"
+        return e
+    req0 = (0x10 if propose else 0) | t
+    if r[0] != 0xFF or (r[1] & 0x0F) != t or (r[1] & ~req0 & 0xF0):
+        # 9.3: bits 4 to 1 identical, and each of bits 5, 6 and 7 as requested or 0, with bit 8
+        # reserved. A bit the answer sets on its own claims a parameter byte the request never sent,
+        # and is refused before any further byte is asked for.
+        e["result"] = "ERR_DATA"
+        return e
+
+    checked = 3
+    if r[1] & 0x10:
+        if len(r) < 4:
+            e["result"] = "ERR_TXRX"
+            return e
+        if r[2] != a["fi_di"]:
+            e["result"] = "ERR_DATA"
+            return e
+        checked = 4
+    else:
+        # 9.3: clearing bit 5 is a success, and it puts Fd and Dd in force however TA1 read.
+        fi, di = FD, DD
+    if len(r) != checked:
+        # A PPS1 where none was invited is as much a violation as a missing PCK: 9.3 makes the
+        # answer's shape follow the request's, so the reader takes what it promised and nothing more.
+        e["result"] = "ERR_TXRX"
+        return e
+
+    parity = 0
+    for byte in r[:checked]:
+        parity ^= byte
+    if parity != 0:
+        e["result"] = "ERR_DATA"
+        return e
+
+    # Nothing reaches the peripheral unless the exchange succeeded: 9.1 sends a device whose answer
+    # does not check, or one that heard nothing at all, to a deactivation.
+    e["pps_called"] = 1
+    e["etu_10ns"] = (100000000 * fi) // (di * e["freq"])
+    e["baud"] = (e["freq"] * di) // fi
+    e["guard"] = guard()
+    e["cwt"] = 11 + (1 << a["t1_cwi"])
+    e["bwt"] = 11 + (((1 << a["t1_bwi"]) * 960 * FD * di) // fi)
+
+    return e
+
+
+def pps_vectors() -> str:
+    rows = []
+    for name, atr, answer, note in PPS_CASES:
+        if iso_expect(atr)["ta2"] != 0xFF:
+            answer = None  # 6.3.1: specific mode, the exchange never happens
+        if answer is not None and re.fullmatch(r"[0-9A-F]+", answer):
+            rows.append((name, atr, answer, note, pps_expect(atr, answer)))
+            continue
+        if answer == "echo":
+            a = iso_expect(atr)
+            answer = pps_answer(a["default_protocol"], None if a["fi_di"] == 0x11 else a["fi_di"])
+        elif answer == "echo_default":
+            answer = pps_answer(1, None)
+        elif answer == "decline":
+            answer = pps_answer(1, None)
+        elif answer == "wrong_type":
+            answer = pps_answer(0, None)
+        elif answer == "bad_pck":
+            answer = pps_answer(1, None, bad_pck=True)
+        elif answer == "spu":
+            answer = pps_answer(1, None, spu=True)
+        rows.append((name, atr, answer, note, pps_expect(atr, answer)))
+
+    def comment(name, atr, note, e):
+        text = f"Card ATR {atr}. {note}"
+        lines = textwrap.wrap(text, width=94)
+        out = [f"    /* {lines[0]}"] + [f"     * {line}" for line in lines[1:]]
+        out[-1] += " */"
+        return "\n".join(out)
+
+    body = "\n".join(
+        f'{comment(name, atr, note, e)}\n'
+        f'    {{\n'
+        f'        "{name}", "{atr.replace(" ", "")}", '
+        f'{"NULL" if answer is None else chr(34) + answer.replace(" ", "") + chr(34)}, '
+        f'{e["result"]}, {e["pps_called"]},\n'
+        f'        "{e["request"].replace(" ", "")}", {e["protocol"]}, '
+        f'{e["freq"]}, {e["baud"]}, {e["etu_10ns"]},\n'
+        f'        {e["guard"]}, {e["cwt"]}, {e["bwt"]}, {e["timeout"]}, {e["bwt_factor"]},\n'
+        f'    }},'
+        for name, atr, answer, note, e in rows
+    )
+
+    fmax_rows = "\n".join(
+        f'    {{ 0x{code:X}, {fmax}, "TA1 {code:X}x" }},' for code, (_, fmax) in sorted(FI_FMAX.items())
+    )
+
+    return f"""#ifndef VECTORS_PPS_H
+#define VECTORS_PPS_H
+
+/* What ISO/IEC 7816-3:2006 requires of a reader once it has read an ATR: the protocol and parameter
+ * selection of clause 9 and the rates, guard and waiting times that follow from clauses 7, 8, 10
+ * and 11. One row is one ATR and one card answer, and the fields are what pps.c must hand to
+ * hal_smartcard_pps and to smartcard_t, derived from the text by tests/vectors/generate.py.
+ *
+ * The derivation is in pps_vectors() above; the short version is that Table 7 of 8.3 pairs Fi with
+ * f(max) in the upper nibble of TA1 and Table 8 puts Di in the lower one, so the two are read from
+ * different nibbles; that the clock fed to CLK is whatever the device can produce under f(max) --
+ * kernel / (2 * Prescaler) here -- and that everything else is arithmetic on 7.1's etu, 8.3's guard
+ * with its R taken from F/D or from Fi/Di depending on whether T=15 is in the ATR, 10.2's waiting
+ * time, and 11.4.3's CWT and BWT, both of which carry an 11 etu term. Clause 9 is structural: the
+ * request is always sent, PPS1 only when there is something to propose and only with bit 5 of PPS0
+ * set, and a card may answer shorter than it was asked, in which case Fd and Dd are in force.
+ */
+
+#include "error.h"
+#include "iso7816/smartcard.h"
+
+typedef struct {{
+  const char* name;
+  const char* atr_hex;
+  const char* pps_answer_hex; /* NULL when the card never answers */
+  app_err_t result;
+  uint8_t pps_called;
+  const char* pps_request_hex;
+  uint8_t protocol;
+  uint32_t freq;
+  uint32_t baud;
+  uint32_t etu_10ns;
+  uint8_t guard;
+  uint32_t t1_cwt;
+  uint32_t t1_bwt;
+  uint32_t t0_timeout;
+  uint8_t t1_bwt_factor;
+}} pps_kat_t;
+
+/* Table 7 of 8.3, as a bound a test can check the device's own frequency table against. */
+typedef struct {{
+  uint8_t code;
+  uint32_t fmax_hz;
+  const char* name;
+}} pps_fmax_t;
+
+static const pps_fmax_t PPS_FMAX[] = {{
+{fmax_rows}
+}};
+
+#define PPS_FMAX_COUNT (sizeof(PPS_FMAX) / sizeof(PPS_FMAX[0]))
+
+static const pps_kat_t PPS_KAT[] = {{
+{body}
+}};
+
+#define PPS_KAT_COUNT (sizeof(PPS_KAT) / sizeof(PPS_KAT[0]))
+
+#endif
+"""
+
+# --- T=1 blocks: 11.3 framing, 11.4.2 field sizes, 11.4.4 epilogue, 11.6 blocks ---------------
+
+T1_IFSD = 254          # t1.h offers this as IFSD in S(IFS request)
+T1_BUF = 261           # smartcard.h's APDU_BUF_LEN
+T1_BGT = 22            # 11.2, both directions
+T1_BWT_WAIT = 2        # 11.4.3 bounds the card's reply; 32 bits leave room for two times the largest
+T1_EDC_RETRIES = 3     # t1.c's T1_MAX_LRC_RETRIES: 7.4.1 allows two further attempts, so one spare
+T1_TIMEOUTS_MAX = 24
+T1_XMIT, T1_IFSD_ENTRY = 0, 1
+
+
+def t1_lrc(body: bytes) -> int:
+    """11.3.4: exclusive-oring the block from NAD to LRC inclusive shall give 00."""
+    x = 0
+    for byte in body:
+        x ^= byte
+    return x
+
+
+def t1_block(pcb: int, inf: bytes = b"", bad_edc: bool = False) -> bytes:
+    body = bytes([0x00, pcb, len(inf)]) + inf
+    return body + bytes([t1_lrc(body) ^ (0xFF if bad_edc else 0)])
+
+
+def t1_i(ns: int, inf: bytes = b"", more: bool = False, bad_edc: bool = False) -> bytes:
+    return t1_block((ns << 6) | (0x20 if more else 0), inf, bad_edc)   # 11.3.2.2: bit 7 is N(S), bit 6 is M
+
+
+def t1_r(nr: int, err: int = 0) -> bytes:
+    return t1_block(0x80 | (nr << 5) | err)     # bits 8 and 7 are 10; N(R) is bit 6, the code bits 4 to 1
+
+
+def t1_s(kind: int, inf: bytes = b"", resp: bool = False) -> bytes:
+    return t1_block(0xC0 | (0x20 if resp else 0) | kind, inf)
+
+
+def apdu_bytes(cla: int, ins: int, p1: int, p2: int, data: bytes = b"", le: int | None = None):
+    """The command as the shell holds it, with the flags APDU_LEN counts."""
+    body = bytes([cla, ins, p1, p2])
+    has_lc = 1 if data else 0
+    has_le = 0 if data else (1 if le is not None else 0)
+    if data:
+        body += bytes([len(data)]) + data
+    if le is not None and not data:
+        body += bytes([le])
+    return body, has_lc, has_le
+
+
+def t1_expect(atr: str, cmd: bytes, entry: int, card: bytes, retry: int = 0,
+              refuse_sends: int = 0) -> dict:
+    """The exchange 11.6 describes, from the script of blocks the card sends. Reader output is built
+    from the clauses, not from t1.c: the point is that the two agree by different routes."""
+    a = iso_expect(atr)
+    # 6.3.1: specific mode, so no PPS answer precedes the blocks below.
+    answer = None if a["ta2"] != 0xFF else pps_answer(
+        a["default_protocol"], None if a["fi_di"] == 0x11 else a["fi_di"])
+    p = pps_expect(atr, answer)
+
+    ifsc = a["t1_ifsc"]
+    bwt, cwt, etu = p["bwt"], p["cwt"], p["etu_10ns"]
+    wire = bytearray()
+    resp = bytearray()
+    timeouts: list[int] = []
+    state = {"ns": 0, "nr": 0, "factor": 1, "retries": 0, "pos": 0, "delay": 0, "ifsc": ifsc}
+
+    def read(n: int) -> bytes | None:
+        if state["pos"] + n > len(card):
+            return None
+        out = card[state["pos"]:state["pos"] + n]
+        state["pos"] += n
+        return out
+
+    def receive_one(accept_i: bool, chain_open: bool = False) -> str:
+        """One block from the card. 'again' keeps waiting for the next one, 'advance' ends the
+        exchange or acknowledges a chunk, 'retry' retransmits it, 'fail' gives up."""
+        timeouts.append(T1_BWT_WAIT * bwt * state["factor"])
+        state["factor"] = 1                    # the extension the card granted is spent on this block
+        head = read(3)
+        if head is None:
+            return "fail"
+        _, pcb, ln = head
+        is_i = (pcb & 0x80) == 0
+        timeouts.append(cwt)
+        if is_i:
+            # 11.4.2: nothing lands outside the response buffer, and an I-block has no business in an
+            # exchange that asked only to negotiate. Rule 2.2 adds that a card owing the
+            # acknowledgment of a chained I-block owes an R-block, so an I-block in that window is
+            # refused rather than written over command bytes still to go. The rest stays unread.
+            if not accept_i or chain_open or len(resp) + ln > T1_BUF:
+                return "fail"
+        elif (pcb & 0xC0) == 0xC0 and ln > 1:
+            return "fail"
+        inf = read(ln) if ln else b""
+        if inf is None:
+            return "fail"
+        edc = read(1)
+        if edc is None:
+            return "fail"
+        state["delay"] += (etu * T1_BGT) // 100     # 11.2: BGT after each block received
+        if t1_lrc(head + inf) != edc[0]:
+            state["retries"] += 1
+            if state["retries"] > T1_EDC_RETRIES:
+                return "fail"
+            wire.extend(t1_r(state["nr"], 0x01))    # rule 7.1: ask again for the expected I-block
+            return "again"
+        state["retries"] = 0
+        if is_i:
+            resp.extend(inf)
+            if (pcb & 0x40) != (state["nr"] << 6):
+                wire.extend(t1_r(state["nr"], 0x02))
+                return "again"
+            state["nr"] ^= 1
+            if pcb & 0x20:
+                # 11.6.2.2: a more-data I-block is answered by R(N(R)) naming the next one
+                wire.extend(t1_r(state["nr"]))
+                return "again"
+            return "advance"
+        if (pcb & 0xC0) == 0x80:
+            # rule 5: the R-block acknowledging a chunk carries N(R) other than the N(S) just sent
+            if (pcb & 0x0F) != 0 or (pcb & 0x20) != ((state["ns"] ^ 1) << 5):
+                return "retry"
+            return "advance"
+        kind = pcb & 0x03
+        is_resp = (pcb & 0x20) != 0
+        if kind == 3:                                # rule 3
+            if ln != 1:
+                return "retry"                       # the multiplier is in INF: there is nothing to apply
+            state["factor"] = inf[0]
+            wire.extend(t1_s(3, inf, resp=True))
+            return "again"
+        if kind == 2:                                # rule 9
+            wire.extend(t1_s(2, resp=True))
+            return "fail"
+        if kind == 1:                                # rule 4
+            if ln != 1:
+                return "retry"
+            if is_resp:
+                return "advance"
+            if inf[0] != 0:                          # 11.4.2 reserves 00 and FF
+                state["ifsc"] = min(inf[0], T1_IFSD)
+            wire.extend(t1_s(1, inf, resp=True))     # the response echoes the byte, as rule 4 says
+            return "again"
+        kind = pcb & 0x1F
+        if kind != 0:
+            # Figure 20 reserves the other codings and 11.6.3.1 counts an unknown PCB as an invalid
+            # block: nothing is acknowledged, least of all a resynchronization.
+            return "retry"
+        if not is_resp:
+            wire.extend(t1_s(0, resp=True))          # rule 6.2 answers the request
+        state["ns"] = 0
+        state["nr"] = 0
+        return "advance" if is_resp else "again"
+
+    if refuse_sends:                                 # the peripheral will not write at all
+        return {"result": "ERR_TXRX", "wire": "", "send_seq": 0, "recv_seq": 0, "ifsc": ifsc,
+                "bwt_factor": 1, "unread": len(card), "delay_us": (etu * T1_BGT) // 100
+                if entry == T1_IFSD_ENTRY else 0, "resp_len": 0, "timeouts": [],
+                "pps_answer": answer}
+
+    if a["t1_rc"]:                                   # 11.4.4 asked for a CRC: nothing goes out
+        return {"result": "ERR_UNSUPPORTED", "wire": "", "send_seq": 0, "recv_seq": 0, "ifsc": ifsc,
+                "bwt_factor": 1, "unread": len(card), "delay_us": 0, "resp_len": 0,
+                "timeouts": [], "pps_answer": answer}
+
+    if entry == T1_IFSD_ENTRY:
+        result = "ERR_TXRX"
+        for attempt in range(retry + 1):
+            # A negotiation is opened with a BGT, and rule 6 restarts it from the beginning.
+            state["delay"] += (etu * T1_BGT) // 100
+            wire.extend(t1_s(1, bytes([T1_IFSD])))
+            outcome = "again"
+            while outcome == "again":
+                outcome = receive_one(accept_i=False)
+            if outcome == "advance":
+                result = "ERR_OK"
+                break
+            if attempt == retry:
+                break
+            # rule 7.3 then rule 6: the request goes unanswered, so reach resynchronization first
+            wire.extend(t1_s(0))
+            outcome = "again"
+            while outcome == "again":
+                outcome = receive_one(accept_i=False)
+            if outcome != "advance":
+                break
+    else:
+        if ifsc == 0:
+            return {"result": "ERR_TXRX", "wire": "", "send_seq": 0, "recv_seq": 0, "ifsc": 0,
+                    "bwt_factor": 1, "unread": len(card), "delay_us": 0, "resp_len": 0,
+                    "timeouts": [], "pps_answer": answer}
+        to_send, off, resend = len(cmd), 0, 0
+        while to_send > 0 and resend < 2:
+            blen = min(to_send, state["ifsc"])
+            # rule 1 wants N(S) = 0 first and it alternates after each I-block; the M-bit is rule 5
+            wire.extend(t1_i(state["ns"], cmd[off:off + blen], more=to_send > state["ifsc"]))
+            outcome = "again"
+            while outcome == "again":
+                outcome = receive_one(accept_i=True, chain_open=to_send > state["ifsc"])
+            if outcome == "fail":
+                break
+            if outcome == "retry":
+                resend += 1
+                continue
+            state["ns"] ^= 1
+            off += blen
+            to_send -= blen
+            resend = 0
+        result = "ERR_OK" if to_send == 0 and len(resp) >= 2 else "ERR_TXRX"
+
+    return {"result": result, "wire": wire.hex(), "send_seq": state["ns"], "recv_seq": state["nr"],
+            "ifsc": state["ifsc"], "bwt_factor": state["factor"], "unread": len(card) - state["pos"],
+            "delay_us": state["delay"], "resp_len": len(resp), "timeouts": timeouts,
+            "pps_answer": answer}
+
+
+def t1_atr(ifsc: int = 0x20, tb: int = 0x45, tc: int = 0x00, ta1: int | None = 0x18) -> str:
+    """An ATR offering T=1 with its triple: TA is IFSC, TB is BWI and CWI, TC is the redundancy code
+    (11.4.1, 11.4.2 and 11.4.4). CWI = 5 and BWI = 4 are TB = 0x45; no TA1 leaves the global Fd and Dd."""
+    first = {} if ta1 is None else {"TA1": ta1}
+    return mk_atr([first, (1, {}), (1, {"TA": ifsc, "TB": tb, "TC": tc})])
+
+
+C5 = apdu_bytes(0x00, 0xA4, 0x04, 0x00, le=0x00)     # case 2: header and Le, nothing else
+SW_OK = bytes.fromhex("9000")
+PAYLOAD = bytes(range(0x41, 0x41 + 40))
+
+T1_CASES = [
+    ("single response", t1_atr(), C5, T1_XMIT, t1_i(0, SW_OK),
+     "the smallest exchange there is: one I-block out, one back carrying SW1 SW2, and the reader "
+     "acknowledges it by its next command rather than by an R-block (rule 2.1)"),
+    ("chained command", t1_atr(ifsc=0x20), apdu_bytes(0x80, 0xC0, 0x00, 0x00, PAYLOAD), T1_XMIT,
+     t1_r(1) + t1_i(0, SW_OK),
+     "figure 23: the command is longer than IFSC, so it is split with the M-bit set on all but the "
+     "last block, and each piece is acknowledged by R(N(R)) naming the next one (rule 5)"),
+    ("chained response", t1_atr(), C5, T1_XMIT,
+     t1_i(0, bytes(range(20)), more=True) + t1_i(1, SW_OK),
+     "11.6.2.2: a more-data I-block is answered by R(N(R)) with the sequence of the I-block expected "
+     "next, and the last block of the chain is not answered at all"),
+    ("wtx request", t1_atr(), C5, T1_XMIT,
+     t1_s(3, bytes([0x05])) + t1_i(0, SW_OK),
+     "rule 3: the multiplier is applied to the waiting time of the block being waited for, and the "
+     "response carries the same INF"),
+    ("wtx without inf", t1_atr(), C5, T1_XMIT,
+     t1_s(3) + t1_i(0, SW_OK),
+     "rule 3 puts the multiplier in INF, so a block that promises one without carrying it is not an "
+     "extension to apply: the factor stays one and the chunk is retransmitted"),
+    ("ifs request without inf", t1_atr(), C5, T1_XMIT,
+     t1_s(1) + t1_i(0, SW_OK),
+     "rule 4 puts the new IFSC in INF: a request carrying none is not a size to adopt, because "
+     "IFSC 0 would leave nothing to send, and the chunk goes out again"),
+    ("ifs request from card", t1_atr(), C5, T1_XMIT,
+     t1_s(1, bytes([0x40])) + t1_i(0, SW_OK),
+     "rule 4: the new IFSC is in force from the request, and the response echoes the byte"),
+    ("ifs request zero reserved", t1_atr(), C5, T1_XMIT,
+     t1_s(1, bytes([0x00])) + t1_i(0, SW_OK),
+     "11.4.2 reserves 00, so what is kept is unchanged while rule 4 still gets its echo"),
+    ("ifs request ff reserved", t1_atr(), C5, T1_XMIT,
+     t1_s(1, bytes([0xFF])) + t1_i(0, SW_OK),
+     "11.4.2 reserves FF too; the largest IFSD is what is kept, since a larger field than that "
+     "cannot be received anyway"),
+    ("ifs negotiate", t1_atr(), b"", T1_IFSD_ENTRY, t1_s(1, bytes([0xFE]), resp=True),
+     "rule 4 the other way round: the reader offers its IFSD and the exchange is over when the "
+     "response arrives, before any APDU is sent"),
+    ("edc error then good block", t1_atr(), C5, T1_XMIT,
+     t1_i(0, SW_OK, bad_edc=True) + t1_i(0, SW_OK),
+     "11.3.4 with the LRC: a block whose epilogue does not check is refused by R(N(R)) with the "
+     "redundancy-code error, and the block retransmitted is accepted with the same N(S)"),
+    ("edc error exhausted", t1_atr(), C5, T1_XMIT,
+     t1_i(0, SW_OK, bad_edc=True) * 4,
+     "the reader asks a bounded number of times: rule 7.4.1 allows two further attempts, and t1.c "
+     "grants three, so the fourth bad block is the last one it answers"),
+    ("card repeats a sequence", t1_atr(), C5, T1_XMIT,
+     t1_i(0, bytes(10), more=True) + t1_i(0, bytes(10), more=True) + t1_i(1, SW_OK),
+     "the second block repeats the N(S) the reader has already accepted, so it is a retransmission of "
+     "a piece already had: the reader says so with the other-error code, naming the I-block it wants"),
+    ("r block wrong n(r)", t1_atr(), C5, T1_XMIT,
+     t1_r(0) + t1_i(0, SW_OK),
+     "rule 5: N(R) of the R-block acknowledging a chunk is not the N(S) that chunk carried, so an "
+     "R(0) after I(0) acknowledges nothing and the chunk goes out again"),
+    ("abort", t1_atr(), C5, T1_XMIT,
+     t1_s(2) + t1_i(0, SW_OK),
+     "rule 9: a chain is aborted by S(ABORT request), answered by S(ABORT response); nothing the "
+     "card sends afterwards completes the exchange"),
+    ("response over the buffer", t1_atr(), C5, T1_XMIT,
+     b"".join(t1_i(i & 1, bytes(32), more=True) for i in range(9)),
+     "the response is bounded by the buffer the reader holds, not by what the card decides to send: "
+     "the block that would pass the end is refused and left unread"),
+    ("crc requested", t1_atr(tc=0x01), C5, T1_XMIT, t1_i(0, SW_OK),
+     "11.4.4: bit 1 of the first TC for T=1 asks for a CRC epilogue, which is not implemented, so "
+     "the card is refused before a single byte goes out rather than answered with an LRC it rejects"),
+    ("crc requested, negotiation", t1_atr(tc=0x01), b"", T1_IFSD_ENTRY, b"",
+     "the IFSD negotiation is the first thing the protocol does after PPS, so it refuses a CRC card "
+     "too, instead of talking at it with the wrong epilogue"),
+    ("silent card", t1_atr(), C5, T1_XMIT, b"",
+     "a card that answers nothing within BWT leaves the reader with the command it sent and a "
+     "waiting time that expired (rule 7.6 leaves R(0) unattempted here)"),
+    ("block without epilogue", t1_atr(), C5, T1_XMIT,
+     bytes([0x00, 0x00, 0x02]),
+     "11.3.1 makes the epilogue mandatory: a block that ends with its information field is not a "
+     "block, and there is no code to check"),
+    ("card asks to resynchronize", t1_atr(), C5, T1_XMIT,
+     t1_s(0) + t1_i(0, SW_OK),
+     "rule 6.2 acknowledged in the other direction: the answer to S(RESYNCH request) is S(RESYNCH "
+     "response), and both sequence numbers start again at zero (11.6.2.1)"),
+    dict(name="ifs request answered by resynchronization", atr=t1_atr(), cmd=C5, entry=T1_IFSD_ENTRY,
+         card=t1_r(0) + t1_s(0, resp=True) + t1_s(1, bytes([0xFE]), resp=True), retry=1,
+         note="rule 7.3: an S(request) that does not get its response is tried again, and rule 6 "
+              "puts S(RESYNCH request) between the attempts, after which the negotiation starts over "
+              "with the parameters at their initial values"),
+    dict(name="s block of an undefined type", atr=t1_atr(), cmd=C5, entry=T1_XMIT,
+         card=t1_s(4) + t1_i(0, SW_OK),
+         note="Figure 20 leaves the coding 4 reserved and 11.6.3.1 calls an unknown PCB an invalid "
+              "block: it is not a request, so nothing is acknowledged and the command goes out again"),
+    dict(name="answer in the middle of a chain", atr=t1_atr(),
+         cmd=apdu_bytes(0x80, 0xC0, 0x00, 0x00, PAYLOAD), entry=T1_XMIT, card=t1_i(0, SW_OK),
+         note="rule 2.2: a chained I-block is acknowledged by R(N(R)), and the note to it allows "
+              "chaining in one direction at a time. An I-block in that window is not an "
+              "acknowledgment, and it would also be appended over command bytes that have not gone "
+              "out, answer and command sharing apdu->data"),
+    dict(name="wtx request in the middle of a chain", atr=t1_atr(),
+         cmd=apdu_bytes(0x80, 0xC0, 0x00, 0x00, PAYLOAD), entry=T1_XMIT,
+         card=t1_s(3, bytes([5])) + t1_r(1) + t1_i(0, SW_OK),
+         note="S(…request) carries no acknowledgment (11.6.2.1), so the refusal above is about "
+              "I-blocks only: the extension is applied, the chain goes on, and the R-block is what "
+              "acknowledges the piece"),
+    dict(name="command longer than a byte counts", atr=t1_atr(ifsc=0xFE),
+         cmd=apdu_bytes(0x80, 0xC0, 0x00, 0x00, bytes([0x41 + (i % 26) for i in range(255)])),
+         entry=T1_XMIT, card=t1_r(1) + t1_i(0, SW_OK),
+         note="APDU_LEN is 4 + 1 + 255 for a full data field, which is why the count of bytes left "
+              "to send is not a byte: 254 in the first chunk, 6 in the second"),
+    dict(name="cryptnox single response", atr="3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2",
+         cmd=apdu_bytes(0x00, 0xA4, 0x04, 0x00, bytes.fromhex("A0 00 00 08 04 00 01")),
+         entry=T1_XMIT, card=t1_i(0, SW_OK),
+         note="the card that lights only the backlight, at its own parameters: IFSC 254, CWI 0 so CWT is "
+              "the 12 etu minimum of 11.4.3, BWI 0 so BWT is 960 Fd/f plus 11 etu, and no TC3 so the LRC"),
+    dict(name="cryptnox silent card", atr="3B FA 13 00 FF 91 01 31 FE 00 00 31 C1 73 C8 40 00 00 90 00 D2",
+         cmd=apdu_bytes(0x00, 0xA4, 0x04, 0x00, bytes.fromhex("A0 00 00 08 04 00 01")),
+         entry=T1_XMIT, card=b"",
+         note="the same card saying nothing: the block waiting time it asked for is the only thing that "
+              "ends the exchange, and with BWI = 0 it is the shortest the text allows"),
+    dict(name="peripheral refuses the write", atr=t1_atr(), cmd=C5, entry=T1_XMIT,
+         card=t1_i(0, SW_OK), refuse_sends=1,
+         note="a write the peripheral refuses is not a card error to retry: the exchange is over, "
+              "with nothing claimed to have been sent"),
+]
+
+
+def t1_vectors() -> str:
+    rows = []
+    for case in T1_CASES:
+        case = dict(zip(("name", "atr", "cmd", "entry", "card", "note"), case)) if isinstance(
+            case, tuple) else dict(case)
+        cmd, has_lc, has_le = case["cmd"] if isinstance(case["cmd"], tuple) else (case["cmd"], 0, 0)
+        e = t1_expect(case["atr"], cmd, case["entry"], case["card"], case.get("retry", 0),
+                      case.get("refuse_sends", 0))
+        rows.append((case["name"], case["atr"], cmd, case["entry"], case["card"], case["note"], e,
+                     has_lc, has_le, case.get("retry", 0), case.get("refuse_sends", 0)))
+
+    def comment(name, atr, note):
+        lines = textwrap.wrap(f"ATR {atr}. {note}", width=94)
+        out = [f"    /* {lines[0]}"] + [f"     * {line}" for line in lines[1:]]
+        out[-1] += " */"
+        return "\n".join(out)
+
+    body = "\n".join(
+        f'{comment(name, atr, note)}\n'
+        f'    {{\n'
+        f'        "{name}", "{atr.replace(" ", "")}", '
+        f'{"NULL" if e["pps_answer"] is None else chr(34) + e["pps_answer"].replace(" ", "") + chr(34)}, '
+        f'"{cmd.hex().upper()}", '
+        f'{has_lc}, {has_le}, {entry}, {retry}, {refuse},\n'
+        f'        "{card.hex().upper()}", {e["result"]}, "{e["wire"].upper()}",\n'
+        f'        {e["send_seq"]}, {e["recv_seq"]}, {e["ifsc"]}, {e["bwt_factor"]}, '
+        f'{e["unread"]}, {e["delay_us"]}, {e["resp_len"]},\n'
+        f'        {len(e["timeouts"])}, {{{", ".join(str(t) for t in e["timeouts"])}}},\n'
+        f'    }},'
+        for name, atr, cmd, entry, card, note, e, has_lc, has_le, retry, refuse in rows
+    )
+
+    return f"""#ifndef VECTORS_T1_H
+#define VECTORS_T1_H
+
+/* Generated by tests/vectors/generate.py: t1_vectors(). T=1 blocks, framed per 11.3 and exchanged
+ * per 11.6, with the parameters of 11.4. Every expectation is derived from those clauses; see the
+ * note above each row. */
+
+#define T1_TIMEOUTS_MAX {T1_TIMEOUTS_MAX}
+
+typedef struct {{
+  const char* name;
+  const char* atr_hex;
+  const char* pps_answer_hex;
+  const char* apdu_hex;
+  uint8_t has_lc;
+  uint8_t has_le;
+  uint8_t entry;           /* T1_ENTRY_TRANSMIT or T1_ENTRY_NEGOTIATE */
+  uint8_t retry;           /* the retries t1_negotiate_ifsd is granted */
+  uint8_t refuse_sends;    /* writes the peripheral refuses, before anything else happens */
+  const char* card_hex;    /* the blocks the card sends, in order */
+  app_err_t result;
+  const char* wire_hex;    /* every byte the reader transmits, in order */
+  uint8_t send_seq;
+  uint8_t recv_seq;
+  uint8_t ifsc;
+  uint8_t bwt_factor;
+  uint32_t unread;         /* card bytes left unconsumed */
+  uint32_t delay_us;       /* BGT delays, 11.2 */
+  uint32_t resp_len;       /* apdu->lr when the exchange ended */
+  unsigned timeout_count;
+  uint32_t timeouts[T1_TIMEOUTS_MAX];   /* BWT then CWT, per block awaited */
+}} t1_kat_t;
+
+#define T1_ENTRY_TRANSMIT 0
+#define T1_ENTRY_NEGOTIATE 1
+
+static const t1_kat_t T1_KAT[] = {{
+{body}
+}};
+
+#define T1_KAT_COUNT (sizeof(T1_KAT) / sizeof(T1_KAT[0]))
+
+#endif
+"""
+
+
 def main() -> None:
     written = {
         "vectors_hash.h": hash_vectors(),
         "vectors_hmac.h": hmac_vectors(),
         "vectors_hkdf.h": hkdf_vectors(),
         "vectors_pbkdf2.h": pbkdf2_vectors(),
+        "vectors_util.h": util_vectors(),
+        "vectors_atr.h": atr_vectors(),
+        "vectors_pps.h": pps_vectors(),
+        "vectors_t1.h": t1_vectors(),
         "vectors_bip39.h": bip39_vectors(),
         "vectors_multisig.h": multisig_vectors(),
         "vectors_slip39.h": slip39_vectors(),

@@ -55,6 +55,7 @@ add_library(test_framework STATIC
     host/hal_host.c
     host/hal_pka_host.c
     host/host_data.c
+    host/sc_host.c
 )
 target_include_directories(test_framework PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -148,10 +149,29 @@ add_library(app_keycard STATIC
     ${SHELLOS_ROOT}/app/keycard/application_info.c
     ${SHELLOS_ROOT}/app/keycard/signature.c
     ${SHELLOS_ROOT}/app/keycard/scv2_whitelist.c
+    # Activation is the card's state machine -- SELECT, pairing, channel, PIN -- and it needs no
+    # hardware: every platform call is a smartcard one, plus the ui calls scripted in
+    # host/ui_keycard_host.c. Its ui.h chain reaches the CBOR codec, hence zcbor here.
+    ${SHELLOS_ROOT}/app/keycard/keycard.c
 )
-target_include_directories(app_keycard PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_include_directories(app_keycard PUBLIC
+    ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_keycard PRIVATE ${SHELLOS_COMMON_FLAGS})
 target_link_libraries(app_keycard PUBLIC app_util)
+
+# The commands the applet is spoken to, and the channel they are handed to. keycard_cmdset.c is the
+# APDU builders and the status-word mapping; secure_channel*.c is what decides whether a command goes
+# out at all, so the three are one link unit. keycard.c is not in it: it needs the ui, and the two
+# statements of keycard_init are made by the test's own setUp.
+add_library(app_keycard_cmdset STATIC
+    ${SHELLOS_ROOT}/app/keycard/keycard_cmdset.c
+    ${SHELLOS_ROOT}/app/keycard/secure_channel.c
+    ${SHELLOS_ROOT}/app/keycard/secure_channel_v1.c
+    ${SHELLOS_ROOT}/app/keycard/secure_channel_v2.c
+)
+target_include_directories(app_keycard_cmdset PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_keycard_cmdset PRIVATE ${SHELLOS_COMMON_FLAGS})
+target_link_libraries(app_keycard_cmdset PUBLIC app_util app_aes)
 
 # What a SIGN reply becomes once it is a PSBT input record: BIP-174's key and value, assembled from
 # the reply that test_keycard_signature pins. Kept apart from core_btc.c, which cannot be linked
@@ -186,6 +206,19 @@ target_include_directories(app_ur PUBLIC
 )
 target_compile_options(app_ur PRIVATE ${SHELLOS_COMMON_FLAGS})
 target_link_libraries(app_ur PUBLIC app_crypto zcbor)
+
+# ISO 7816. smartcard.c belongs here rather than being stubbed out: its *_sync wrappers decide between
+# ERR_OK, ERR_TXRX and ERR_HW from the peripheral notification, and sc_host.c scripts that notification
+# instead of faking the layer. tests/host/freertos stands in for the kernel headers for this library.
+add_library(app_iso7816 STATIC
+    ${SHELLOS_ROOT}/app/iso7816/atr.c
+    ${SHELLOS_ROOT}/app/iso7816/pps.c
+    ${SHELLOS_ROOT}/app/iso7816/t1.c
+    ${SHELLOS_ROOT}/app/iso7816/smartcard.c
+)
+target_include_directories(app_iso7816 PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host
+    ${CMAKE_CURRENT_SOURCE_DIR}/host/freertos)
+target_compile_options(app_iso7816 PRIVATE ${SHELLOS_COMMON_FLAGS})
 
 # The store. fs.c is the log every persisted thing in the device sits on -- settings, pairing, the
 # multisig entries, the token database -- and its six entry points are the whole API, so it is
@@ -232,7 +265,7 @@ target_include_directories(app_storage PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURREN
 target_compile_options(app_storage PRIVATE ${SHELLOS_COMMON_FLAGS} -Wno-pointer-to-int-cast)
 
 # Settings: the store half is the point of the test, and the four menus it hangs off are scripted in
-# host/ui_host.c. i18n.c and english.c compile as they are, so the string table is the device's own --
+# host/ui_host.c and host/ui_keycard_host.c. i18n.c and english.c compile as they are, so the string table is the device's own --
 # menu.c is the one that cannot, needing FreeRTOS for data the seam only takes the address of.
 add_library(app_settings STATIC
     ${SHELLOS_ROOT}/app/core/settings.c
@@ -242,9 +275,15 @@ add_library(app_settings STATIC
 target_include_directories(app_settings PUBLIC ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_settings PRIVATE ${SHELLOS_COMMON_FLAGS})
 
-add_library(settings_seam STATIC host/ui_host.c)
-target_include_directories(settings_seam PUBLIC ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
-target_compile_options(settings_seam PRIVATE ${SHELLOS_COMMON_FLAGS})
+add_library(ui_seam STATIC
+    host/ui_host.c
+    # The notices and prompts keycard.c shows while it activates a card, recorded by name and answered
+    # from a script. One library with the menus above, because host_ui_reset() resets both.
+    host/ui_keycard_host.c
+)
+target_include_directories(ui_seam PUBLIC
+    ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(ui_seam PRIVATE ${SHELLOS_COMMON_FLAGS})
 
 # The OpenPGP card mode's packet and request parsers, which are every byte of this device that
 # reads an OpenPGP stream. They need no hardware and no UI: the one function that touches the
@@ -307,18 +346,20 @@ shellos_test(hash LIBS app_crypto)
 shellos_test(hmac LIBS app_crypto)
 shellos_test(privacy_pools_v1 LIBS app_crypto)
 shellos_test(core_privacy_pools_v1 LIBS app_crypto)
-shellos_test(core_kohaku_key LIBS app_settings settings_seam app_crypto app_ur app_aes)
+shellos_test(core_kohaku_key LIBS app_settings ui_seam app_crypto app_ur app_aes)
 target_sources(test_core_kohaku_key PRIVATE
     ${SHELLOS_ROOT}/app/core/core_kohaku_key.c
     ${SHELLOS_ROOT}/app/core/core_kohaku_key_batch.c)
 target_sources(test_core_privacy_pools_v1 PRIVATE
     ${SHELLOS_ROOT}/app/core/core_privacy_pools_v1.c)
-shellos_test(core_kohaku_key_batch LIBS app_settings settings_seam app_aes app_crypto app_ur)
+shellos_test(core_kohaku_key_batch LIBS app_settings ui_seam app_aes app_crypto app_ur)
 target_sources(test_core_kohaku_key_batch PRIVATE
     ${SHELLOS_ROOT}/app/core/core_kohaku_key_batch.c)
 
 shellos_test(rand LIBS app_crypto)
 shellos_test(pbkdf2 LIBS app_crypto)
+# crypto/util.c, named for the module rather than test_util, which is the framework helper.
+shellos_test(crypto_util LIBS app_crypto)
 shellos_test(hkdf LIBS app_crypto)
 shellos_test(bip39 LIBS app_crypto)
 shellos_test(slip39 LIBS app_crypto)
@@ -355,13 +396,17 @@ shellos_test(keycard_signature LIBS app_crypto app_keycard)
 shellos_test(keycard_bip85 LIBS app_crypto)
 target_sources(test_keycard_bip85 PRIVATE
     ${SHELLOS_ROOT}/app/keycard/keycard_bip85.c)
+shellos_test(keycard_cmdset LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
+shellos_test(secure_channel_v2 LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
+shellos_test(secure_channel_v1 LIBS app_keycard_cmdset app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
+shellos_test(keycard_activate LIBS app_keycard app_keycard_cmdset app_settings ui_seam app_iso7816 app_aes app_crypto app_keys app_pairing app_storage)
 shellos_test(btc_sig LIBS app_btc_sig app_keycard)
 
 shellos_test(shamir LIBS app_crypto)
 shellos_test(storage_fs LIBS app_storage)
 shellos_test(eth_db LIBS app_ethereum app_storage)
 shellos_test(scv2_whitelist LIBS app_keycard app_storage)
-shellos_test(settings LIBS app_settings settings_seam app_storage)
+shellos_test(settings LIBS app_settings ui_seam app_storage)
 shellos_test(aes LIBS app_aes)
 shellos_test(hal_aes)
 shellos_test(keys LIBS app_keys app_crypto)
@@ -371,3 +416,8 @@ shellos_test(multisig_store LIBS app_multisig app_aes app_storage app_crypto)
 shellos_test(hal_pka LIBS app_crypto)
 shellos_test(bip32 LIBS app_crypto)
 shellos_test(taproot LIBS app_bitcoin app_crypto)
+
+shellos_test(smartcard LIBS app_iso7816)
+shellos_test(atr LIBS app_iso7816)
+shellos_test(pps LIBS app_iso7816)
+shellos_test(t1 LIBS app_iso7816)

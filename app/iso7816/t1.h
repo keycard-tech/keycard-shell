@@ -23,6 +23,8 @@
 #define T1_R_SEQ(__seq__) (__seq__ << 5)
 #define T1_R_SEQ_MSK 0x20
 
+#define T1_S_TYPE_MSK 0x1F
+
 #define T1_S_RESYNCH 0x00
 #define T1_S_IFS 0x01
 #define T1_S_ABORT 0x02

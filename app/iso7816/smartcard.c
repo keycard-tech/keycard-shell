@@ -7,12 +7,13 @@
 #include "hal.h"
 
 #define SC_DEFAULT_ETU10NS 9300
-#define SC_MAX_TIMEOUT_MS 1000
+#define SC_MAX_TIMEOUT_MS 2000
 
 static inline void smartcard_state_reset(smartcard_t* sc) {
   sc->send_seq = 0;
   sc->recv_seq = 0;
   sc->etu_10ns = SC_DEFAULT_ETU10NS;
+  sc->t1_bwt_factor = 1;
 }
 
 void smartcard_delay(smartcard_t* sc, uint32_t etu) {
