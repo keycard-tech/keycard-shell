@@ -30,16 +30,18 @@ add_compile_definitions(
 )
 
 # -Wextra on the application sources is a build configuration the firmware does not use (it
-# builds with -Wall only), so the noise it produces here is silenced rather than chased.
-add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -g)
+# builds with -Wall only), so the noise it produces here is silenced rather than chased -- except
+# -Wenum-conversion, the one class that turns a peripheral's two-value answer into a reason by
+# accident: HAL_FAIL read back as ERR_TXRX, or an app error returned in a hal_err_t. Nothing in
+# the tree trips it now, and the firmware build will never check it, so this is where it is refused.
+add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Werror=enum-conversion -g)
 
-# The application is written against a 32-bit address space: updater.c still casts pointers through
-# uint32_t, and the flash model recovers a device address from the pointer it is handed, so a
-# position-independent test binary would place every buffer the firmware dereferences as a pointer above
-# the width those casts keep. Linking the image where a Cortex-M33 would put it is the same decision
-# that maps the flash model at HAL_FLASH_ADDR, and it is what lets a test's scratch buffer be an ordinary
-# array -- which ASan watches, and an mmap'd region it does not.
-add_link_options(-no-pie)
+# Nothing in the application converts a pointer through a 32-bit integer: fs.c and updater.c go through
+# uintptr_t, and the only place that reads a device address back out of a pointer is the flash model,
+# which maps its own array at HAL_FLASH_ADDR to make that true. So the test binaries are position
+# independent like any other host program, which is the state worth defending -- a truncation put back
+# into code under test lands above 4 GB here and breaks, instead of working because the image happens to
+# be loaded low.
 
 if(HOST_TESTS_SANITIZERS)
   add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer
@@ -304,11 +306,11 @@ target_include_directories(app_core PUBLIC
     ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host
     ${CMAKE_CURRENT_SOURCE_DIR}/host/freertos)
 target_compile_options(app_core PRIVATE ${SHELLOS_COMMON_FLAGS})
-# updater.c locates the other bank's copy of this image's version bytes by casting &FW_VERSION to the
-# address width the device has, which on a 64-bit host is a narrowing cast rather than what it says.
 # core_eth.c tests a transaction type against MIN_TX_TYPE, which is 0, so -Wextra calls the half of the
-# comparison always true -- true on the device too, where the flag is not used.
-target_compile_options(app_core PRIVATE -Wno-pointer-to-int-cast -Wno-type-limits)
+# comparison always true -- true on the device too, where the flag is not used. Nothing here narrows a
+# pointer any more: fs.c and updater.c convert through uintptr_t, so that warning is not silenced and
+# has nothing to say.
+target_compile_options(app_core PRIVATE -Wno-type-limits)
 target_link_libraries(app_core PUBLIC app_btc_sig)
 
 add_library(ui_seam STATIC

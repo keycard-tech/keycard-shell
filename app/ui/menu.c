@@ -199,7 +199,7 @@ static app_err_t menu_draw_inverted(screen_text_ctx_t* ctx, const char* str) {
 
 static app_err_t menu_margin(uint16_t yOff, uint16_t height) {
   screen_area_t area = { 0, yOff, SCREEN_WIDTH, height };
-  return screen_fill_area(&area, TH_COLOR_BG);
+  return screen_fill_area(&area, TH_COLOR_BG) == HAL_SUCCESS ? ERR_OK : ERR_HW;
 }
 
 void menu_render_entry(const menu_entry_t* entry, uint8_t is_selected, uint16_t yOff) {

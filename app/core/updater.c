@@ -196,7 +196,7 @@ static void updater_clear_flash_area() {
 }
 
 static app_err_t updater_verify_firmware() {
-  uint8_t* const fw_upgrade_area = (uint8_t*) HAL_FLASH_FW_UPGRADE_AREA;
+  uint8_t* const fw_upgrade_area = (uint8_t*) (uintptr_t) HAL_FLASH_FW_UPGRADE_AREA;
 
   uint8_t digest[SHA256_DIGEST_LENGTH];
   SHA256_CTX sha2;
@@ -224,7 +224,7 @@ static inline uint8_t updater_progress() {
 }
 
 static app_err_t updater_confirm_fw_upgrade() {
-  uint8_t* ver_buf = (uint8_t*)HAL_FLASH_FW_UPGRADE_AREA + HAL_FW_HEADER_OFFSET + SIG_LEN;
+  uint8_t* ver_buf = (uint8_t*) (uintptr_t) HAL_FLASH_FW_UPGRADE_AREA + HAL_FW_HEADER_OFFSET + SIG_LEN;
 
   // don't consider beta when checking version
   uint32_t current_ver = ((uint32_t) FW_VERSION[0] << 24) | ((uint32_t) FW_VERSION[1] << 16) | ((uint32_t) FW_VERSION[2] << 8) | 0;
@@ -270,7 +270,7 @@ app_err_t updater_usb_fw_upgrade(command_t *cmd, apdu_t* apdu) {
     return ERR_DATA;
   }
 
-  uint8_t* const fw_upgrade_area = (uint8_t*) HAL_FLASH_FW_UPGRADE_AREA;
+  uint8_t* const fw_upgrade_area = (uint8_t*) (uintptr_t) HAL_FLASH_FW_UPGRADE_AREA;
   hal_flash_begin_program();
   hal_flash_program(data, &fw_upgrade_area[g_core.data.msg.received], len);
   hal_flash_end_program();

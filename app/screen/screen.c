@@ -260,8 +260,14 @@ size_t screen_string_width(screen_text_ctx_t* ctx, const char* str) {
   return res;
 }
 
-hal_err_t screen_draw_centered_string(screen_text_ctx_t* ctx, const char* str) {
-  return screen_draw_text(ctx, (SCREEN_WIDTH - ctx->x), (ctx->y + ctx->font->yAdvance), (uint8_t*) str, strlen(str), false, true) == 0 ? ERR_OK : ERR_FULL;
+app_err_t screen_draw_centered_string(screen_text_ctx_t* ctx, const char* str) {
+  size_t left = screen_draw_text(ctx, (SCREEN_WIDTH - ctx->x), (ctx->y + ctx->font->yAdvance), (uint8_t*) str, strlen(str), false, true);
+
+  if (left == SCREEN_TEXT_ERR) {
+    return ERR_HW;
+  }
+
+  return left ? ERR_FULL : ERR_OK;
 }
 
 hal_err_t screen_draw_glyphs(screen_text_ctx_t* ctx, const glyph_t* glyphs[], size_t len) {
@@ -335,7 +341,7 @@ size_t screen_draw_text_offset(screen_text_ctx_t* ctx, uint16_t start_x, uint16_
       }
 
       if (screen_draw_glyphs(ctx, line, line_len) != HAL_SUCCESS) {
-        return UINT32_MAX;
+        return SCREEN_TEXT_ERR;
       }
     }
 
