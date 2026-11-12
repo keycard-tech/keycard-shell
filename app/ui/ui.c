@@ -627,10 +627,6 @@ core_evt_t ui_confirm_export_key() {
   return ui_prompt(LSTR(PUBKEY_EXPORT_TITLE), LSTR(PUBKEY_EXPORT_MSG), UI_INFO_CANCELLABLE);
 }
 
-core_evt_t ui_device_auth(uint32_t first_auth, uint32_t auth_time, uint32_t auth_count) {
-  return ui_info(ICON_INFO_SUCCESS, LSTR(DEV_AUTH_INFO_SUCCESS_MSG), LSTR(DEV_AUTH_INFO_SUCCESS_SUB), 0);
-}
-
 core_evt_t ui_settings_brightness(uint8_t* brightness) {
   g_ui_cmd.type = UI_CMD_LCD_BRIGHTNESS;
   g_ui_cmd.params.lcd.brightness = brightness;

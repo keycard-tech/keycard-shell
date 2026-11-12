@@ -109,14 +109,6 @@ core_evt_t ui_confirm_export_key(void) {
   return host_ui_answer_for("ui_confirm_export_key");
 }
 
-core_evt_t ui_device_auth(uint32_t first_auth, uint32_t auth_time, uint32_t auth_count) {
-  (void)first_auth;
-  (void)auth_time;
-  (void)auth_count;
-  host_ui_record("ui_device_auth");
-  return host_ui_answer_for("ui_device_auth");
-}
-
 core_evt_t ui_devinfo(const char* fw_ver, const char* app_ver, const char* db_ver, const char* sn) {
   (void)fw_ver;
   (void)app_ver;

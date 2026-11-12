@@ -59,7 +59,6 @@ static void test_a_key_can_only_be_read_the_way_it_exists(void) {
 
   /* The two switches are disjoint on purpose: asking a public key to be read as a private one derives
    * nothing at all. */
-  TEST_ASSERT_EQUAL_INT(ERR_DATA, key_read_private(DEV_AUTH_SERVER_KEY, out));
   TEST_ASSERT_EQUAL_INT(ERR_DATA, key_read_private(FW_VERIFICATION_KEY, out));
   TEST_ASSERT_EQUAL_INT(ERR_DATA, key_read_private(DB_VERIFICATION_KEY, out));
   TEST_ASSERT_EQUAL_INT(ERR_DATA, key_read_private(KEYCARD_CA_KEY, out));
@@ -120,7 +119,7 @@ static void test_the_anchors_are_the_lengths_the_callers_assume(void) {
 
   /* Every embedded anchor is a compressed secp256k1 point: 33 bytes, prefix 0x02 or 0x03. The callers
    * hand these straight to ecdsa_verify(), which reads the prefix and 32 bytes and nothing else. */
-  const key_type_t anchors[] = {DEV_AUTH_SERVER_KEY, DB_VERIFICATION_KEY, KEYCARD_CA_KEY};
+  const key_type_t anchors[] = {DB_VERIFICATION_KEY, KEYCARD_CA_KEY};
 
   for (size_t i = 0; i < sizeof(anchors) / sizeof(anchors[0]); i++) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(ERR_OK, key_read_public(anchors[i], &key), "anchor missing");

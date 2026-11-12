@@ -274,13 +274,9 @@ const char *const i18n_english_strings[] = {
     "Verify device",
     "First, visit shell.keycard.tech/verify, press OK on Shell and scan the QR code from the website.",
     "Next, after pressing OK, a QR code will be displayed on Shell. Scan it from the website to confirm the device authenticity.",
-    "Finally, press OK and scan the confirmation QR from the website. This guarantees the website is authentic too.",
     "Wrong QR",
     "This is not a device verification QR code",
-    "Site is not authentic",
-    "Check URL or try another browser",
-    "Device and site authentic",
-    "You can safely use your device",
+    "Verification complete",
 
     // LCD settings
     "LCD brightness",

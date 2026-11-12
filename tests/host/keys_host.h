@@ -8,9 +8,9 @@
 /*
  * Installing a public key the device is expected to trust.
  *
- * The keys the firmware embeds are each in their own elf section -- .keycard_ca_key, .db_auth_key,
- * .dev_auth_server_key -- because the release tool substitutes them into an image after the rest of it
- * is hashed. host_key_set() does the same thing to the running test binary's copy of those bytes:
+ * The keys the firmware embeds are each in their own elf section -- .keycard_ca_key, .db_auth_key --
+ * because the release tool substitutes them into an image after the rest of it is hashed.
+ * host_key_set() does the same thing to the running test binary's copy of those bytes:
  * nothing in the firmware is changed and nothing about the check is faked, so a key that was not
  * installed is still refused and the signature path is the firmware's own.
  *

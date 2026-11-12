@@ -85,7 +85,6 @@ core_evt_t ui_scan_mnemonic(uint16_t* indexes, uint32_t* len);
 
 core_evt_t ui_confirm_export_key();
 
-core_evt_t ui_device_auth(uint32_t first_auth, uint32_t auth_time, uint32_t auth_count);
 core_evt_t ui_settings_brightness(uint8_t* brightness);
 
 core_evt_t ui_keycard_not_genuine();

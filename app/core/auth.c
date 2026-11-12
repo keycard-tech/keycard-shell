@@ -58,7 +58,7 @@ void device_auth_run() {
   // Step 2
   if (!g_settings.skip_help && (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT_STEP2), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
     return;
-  }  
+  }
 
   // Response
   random_buffer((uint8_t*) auth.dev_auth_challenge.dev_auth_challenge.value, AUTH_CHALLENGE_LEN);
@@ -78,42 +78,5 @@ void device_auth_run() {
     return;
   }
 
-  sha256_Init(&sha256);
-  sha256_Update(&sha256, uid, HAL_DEVICE_UID_LEN);
-  sha256_Update(&sha256, auth.dev_auth_challenge.dev_auth_challenge.value, auth.dev_auth_challenge.dev_auth_challenge.len);
-
-  // Step 3
-  if (!g_settings.skip_help && (ui_prompt(LSTR(DEV_AUTH_TITLE), LSTR(DEV_AUTH_PROMPT_STEP3), UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK)) {
-    return;
-  }
-
-  // Final QR
-  if (ui_qrscan(DEV_AUTH, &auth) != CORE_EVT_UI_OK) {
-    return;
-  }
-
-  if ((auth.dev_auth_step.dev_auth_step_type_choice != dev_auth_step_type_dev_auth_server_m_c) ||
-      auth.dev_auth_challenge_present ||
-      auth.dev_auth_dev_id_present ||
-      !auth.dev_auth_first_auth_present ||
-      !auth.dev_auth_auth_time_present ||
-      !auth.dev_auth_auth_count_present ||
-      !auth.dev_auth_auth_sig_present
-      ) {
-    ui_info(ICON_INFO_ERROR, LSTR(DEV_AUTH_INVALID_QR), LSTR(DEV_AUTH_INVALID_CHALLENGE_SUB), 0);
-    return;
-  }
-
-  sha256_Update(&sha256, (uint8_t*) &auth.dev_auth_first_auth.dev_auth_first_auth, 4);
-  sha256_Update(&sha256, (uint8_t*) &auth.dev_auth_auth_time.dev_auth_auth_time, 4);
-  sha256_Update(&sha256, (uint8_t*) &auth.dev_auth_auth_count.dev_auth_auth_count, 4);
-  sha256_Final(&sha256, digest);
-
-  const uint8_t* key;
-  key_read_public(DEV_AUTH_SERVER_KEY, &key);
-  if (!ecdsa_verify(&secp256k1, key, auth.dev_auth_auth_sig.dev_auth_auth_sig.value, digest)) {
-    ui_device_auth(auth.dev_auth_first_auth.dev_auth_first_auth, auth.dev_auth_auth_time.dev_auth_auth_time, auth.dev_auth_auth_count.dev_auth_auth_count);
-  } else {
-    ui_info(ICON_INFO_ERROR, LSTR(DEV_AUTH_INVALID_SITE_MSG), LSTR(DEV_AUTH_INVALID_SITE_SUB), 0);
-  }
+  ui_info(ICON_INFO_SUCCESS, LSTR(DEV_AUTH_INFO_SUCCESS_MSG), NULL, 0);
 }
