@@ -1,5 +1,12 @@
 # Keycard Shell Dev Firmware
 
+## 1.5.3 (2026-11-12)
+
+* [btc] fixes in taproot psbt parsing
+* [iso7816] fix handling of cards with no PPS support
+* [ui] shorter verification flow
+* [db] rotate db keys
+
 ## 1.5.2 (2026-10-31)
 
 * [btc] add address URI recognition
