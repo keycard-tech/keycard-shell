@@ -20,15 +20,17 @@
  * an encoder that wrote ahead of what it declared is caught here rather than by a wallet three steps
  * away. ASan watches the buffer ends.
  *
- * crypto-account and crypto-multi-accounts are reachable from core.c but not covered yet, and
- * hd-key's use-info is never set by the shell.
+ * The two account families are what a watch-only wallet imports, so their rows are the shapes
+ * core.c builds -- four script types for a singlesig account, three for a multisig, the account
+ * index replacing the third component of every path -- and a wrong tag there is found three levels
+ * deep by the wallet rather than by the shell.
  */
 
 /* Same convention as vectors_ur_decode.h: an index at or above 2^31 is not an index, so 0xffffffff
  * stands for a component that carried none. */
 #define NO_INDEX 0xffffffffu
 
-#define OUT_SIZE 512
+#define OUT_SIZE 4096
 #define FILL 0xa5
 /* What the length out-parameter is set to before a call that is expected to fail, so that "the
  * encoder did not touch it" is an assertion rather than an absence of one. */
@@ -149,6 +151,57 @@ static void build_hdkey(const ur_encode_hdkey_case_t* c, struct hd_key* key) {
     keypath(&key->hd_key_children.hd_key_children, c->child_index, c->child_hardened,
             c->child_count, 0, 0, 0, 0);
   }
+  key->hd_key_use_info_present = c->has_use_info;
+  key->hd_key_use_info.hd_key_use_info.coininfo_coin_type = c->coin_type;
+  key->hd_key_use_info.hd_key_use_info.coininfo_network = c->network;
+}
+
+/* Every variant of the crypto-output union is a struct hd_key, and core.c's CORE_BITCOIN_EXPORT
+ * macro fills that one member and then sets the choice, so this does the same. */
+static void build_output(const ur_encode_output_t* o, struct crypto_output_r* out) {
+  struct hd_key key;
+
+  build_hdkey(&UR_ENCODE_ACCOUNT_KEYS[o->key], &key);
+  memcpy(&out->crypto_output_public_key_hash_m, &key, sizeof key);
+  out->crypto_output_choice = o->choice;
+}
+
+static void build_account(const ur_encode_account_case_t* c, struct crypto_account* account) {
+  memset(account, 0, sizeof(*account));
+  account->crypto_account_master_fingerprint = c->master_fingerprint;
+  account->crypto_account_output_descriptors_crypto_output_m_count = c->output_count;
+
+  for (uint8_t i = 0; i < c->output_count; i++) {
+    build_output(&c->outputs[i],
+                 &account->crypto_account_output_descriptors_crypto_output_m[i]);
+  }
+}
+
+static void build_text_field(struct zcbor_string* field, const char* text) {
+  if (text != NULL) {
+    str_field(field, (const uint8_t*)text, (uint16_t)strlen(text));
+  }
+}
+
+static void build_multi(const ur_encode_multi_case_t* c, struct crypto_multi_accounts* accounts) {
+  memset(accounts, 0, sizeof(*accounts));
+  accounts->crypto_multi_accounts_master_fingerprint = c->master_fingerprint;
+  accounts->crypto_multi_accounts_keys_tagged_hd_key_m_count = c->key_count;
+
+  for (uint8_t i = 0; i < c->key_count; i++) {
+    build_hdkey(&UR_ENCODE_ACCOUNT_KEYS[c->keys[i]],
+                &accounts->crypto_multi_accounts_keys_tagged_hd_key_m[i]);
+  }
+
+  accounts->crypto_multi_accounts_device_present = c->device != NULL;
+  build_text_field(&accounts->crypto_multi_accounts_device.crypto_multi_accounts_device,
+                   c->device);
+  accounts->crypto_multi_accounts_device_id_present = c->device_id != NULL;
+  build_text_field(&accounts->crypto_multi_accounts_device_id.crypto_multi_accounts_device_id,
+                   c->device_id);
+  accounts->crypto_multi_accounts_version_present = c->version != NULL;
+  build_text_field(&accounts->crypto_multi_accounts_version.crypto_multi_accounts_version,
+                   c->version);
 }
 
 void setUp(void) {}
@@ -255,6 +308,48 @@ void test_hd_key_rows(void) {
   }
 }
 
+void test_crypto_account_rows(void) {
+  for (size_t i = 0; i < sizeof(UR_ENCODE_ACCOUNT_CASES) / sizeof(UR_ENCODE_ACCOUNT_CASES[0]); i++) {
+    const ur_encode_account_case_t* c = &UR_ENCODE_ACCOUNT_CASES[i];
+    struct crypto_account account;
+    size_t written = 0;
+    int res;
+
+    build_account(c, &account);
+    start();
+    res = cbor_encode_crypto_account(out, OUT_SIZE, &account, &written);
+
+    if (!c->accept) {
+      TEST_ASSERT_NOT_EQUAL_MESSAGE(ZCBOR_SUCCESS, res, c->name);
+      TEST_ASSERT_EQUAL_UINT8_MESSAGE(0xa2, out[0], c->name); /* crypto-account has two fields */
+      continue;
+    }
+    done(c->name, c->expect, c->expect_len, res, written);
+  }
+}
+
+void test_crypto_multi_accounts_rows(void) {
+  for (size_t i = 0;
+       i < sizeof(UR_ENCODE_MULTI_ACCOUNTS_CASES) / sizeof(UR_ENCODE_MULTI_ACCOUNTS_CASES[0]);
+       i++) {
+    const ur_encode_multi_case_t* c = &UR_ENCODE_MULTI_ACCOUNTS_CASES[i];
+    struct crypto_multi_accounts accounts;
+    size_t written = 0;
+    int res;
+
+    build_multi(c, &accounts);
+    start();
+    res = cbor_encode_crypto_multi_accounts(out, OUT_SIZE, &accounts, &written);
+
+    if (!c->accept) {
+      TEST_ASSERT_NOT_EQUAL_MESSAGE(ZCBOR_SUCCESS, res, c->name);
+      TEST_ASSERT_EQUAL_UINT8_MESSAGE(0xa5, out[0], c->name);
+      continue;
+    }
+    done(c->name, c->expect, c->expect_len, res, written);
+  }
+}
+
 /* The firmware sizes every destination by a worst case of its own -- CBOR_SIG_MAX_LEN,
  * CBOR_KEY_MAX_LEN, a slice of the heap pool -- and passes it straight in, so an encoder given less
  * room than the item needs has to refuse rather than write what fits. One byte less than each item
@@ -317,6 +412,43 @@ void test_one_byte_short_is_refused_rather_than_truncated(void) {
         ZCBOR_SUCCESS, cbor_encode_psbt(out, c->expect_len - 1, &psbt, &written), c->name);
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(SENTINEL, (uint32_t)written, c->name);
   }
+
+  for (size_t i = 0; i < sizeof(UR_ENCODE_ACCOUNT_CASES) / sizeof(UR_ENCODE_ACCOUNT_CASES[0]); i++) {
+    const ur_encode_account_case_t* c = &UR_ENCODE_ACCOUNT_CASES[i];
+    struct crypto_account account;
+    size_t written = SENTINEL;
+
+    if (!c->accept) {
+      continue;
+    }
+    build_account(c, &account);
+    start();
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(
+        ZCBOR_SUCCESS, cbor_encode_crypto_account(out, c->expect_len - 1, &account, &written),
+        c->name);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(SENTINEL, (uint32_t)written, c->name);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0xa2, out[0], c->name);
+  }
+
+  for (size_t i = 0;
+       i < sizeof(UR_ENCODE_MULTI_ACCOUNTS_CASES) / sizeof(UR_ENCODE_MULTI_ACCOUNTS_CASES[0]);
+       i++) {
+    const ur_encode_multi_case_t* c = &UR_ENCODE_MULTI_ACCOUNTS_CASES[i];
+    struct crypto_multi_accounts accounts;
+    size_t written = SENTINEL;
+
+    if (!c->accept) {
+      continue;
+    }
+    build_multi(c, &accounts);
+    start();
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(
+        ZCBOR_SUCCESS, cbor_encode_crypto_multi_accounts(out, c->expect_len - 1, &accounts,
+                                                         &written),
+        c->name);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(SENTINEL, (uint32_t)written, c->name);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0xa5, out[0], c->name);
+  }
 }
 
 int main(void) {
@@ -327,6 +459,8 @@ int main(void) {
   RUN_TEST(test_dev_auth_rows);
   RUN_TEST(test_psbt_rows);
   RUN_TEST(test_hd_key_rows);
+  RUN_TEST(test_crypto_account_rows);
+  RUN_TEST(test_crypto_multi_accounts_rows);
   RUN_TEST(test_one_byte_short_is_refused_rather_than_truncated);
   return UNITY_END();
 }

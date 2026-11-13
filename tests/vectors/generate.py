@@ -8040,11 +8040,26 @@ def ur_encode_spec_checks() -> tuple[str, str]:
                  "children = 7", "parent-fingerprint = 8", "name = 9", "source = 10",
                  "key-data-bytes = bstr .size 33", "chain-code-bytes = bstr .size 32",
                  "challenge: bstr .size 32", "auth-sig: bstr .size 64",
-                 "tagged-psbt = #6.310(psbt)", "psbt = bstr"):
+                 "tagged-psbt = #6.310(psbt)", "psbt = bstr",
+                 "master-fingerprint = 1", "keys = 2", "device = 3", "device-id = 4",
+                 "version = 5", "output-descriptors = 2",
+                 "tagged-hd-key = #6.303(hd-key)", "key-exp = #6.303(hd-key)",
+                 "script-hash = #6.400(key-exp)",
+                 "script-hash-wpkh = #6.400(witness-public-key-hash)",
+                 "script-hash-wsh = #6.400(witness-script-hash)",
+                 "witness-script-hash= #6.401(key-exp)", "public-key-hash = #6.403(key-exp)",
+                 "witness-public-key-hash = #6.404(key-exp)", "taproot = #6.409(key-exp)",
+                 "coin-type = 1", "network = 2", "? use-info: #6.305(coininfo),"):
         assert line in cddl, f"cddl/ur.cddl no longer carries {line!r}"
     assert ";? is-master: bool," in cddl, \
         "hd-key's is-master is no longer commented out; if it came back the map gains a field 1 and " \
         "every expected byte string in this header moves"
+    assert "output-descriptors: [0*10 #6.308(crypto-output)]" in cddl and \
+        re.search(r"^crypto-output = \($", cddl, re.M), \
+        "crypto-output is no longer a group choice wrapped in #6.308. The account rows assume zcbor " \
+        "drops a tag that wraps a group and writes only the script tags, which is what " \
+        "bc-ur-registry parses: if the schema or the generator changed, the expected bytes here are " \
+        "no longer the bytes a wallet gets"
     return erc, iana
 
 
@@ -8170,35 +8185,178 @@ def ur_encode_vectors() -> str:
     # --- hd-key ----------------------------------------------------------------------------
     priv33 = b"\x00" + bytes(range(32))
     path_m = [(44, True), (60, True), (0, True)]
-    hd = []
-    for (name, is_private, key_data, chain_code, origin, origin_fp, origin_depth, parent_fp, nm,
-         source, children, constraint, accept) in [
-        ("an exported account key, the way the eth display builds it", False, pub33, cc32,
-         path_m, 0x12345678, 3, 0x9abcdef0, "m/44'/60'/0'", "Keycard", None, "", 1),
-        ("the required fields only, with an empty origin", False, pub33, cc32,
-         [], None, None, 0x9abcdef0, "", None, None, "", 1),
-        ("a private key: the encoder does not care which it is handed", True, priv33, cc32,
-         path_m, None, None, 0x9abcdef0, "m/44'", None, None,
-         "is-private is a fact about the bytes, not a permission", 1),
-        ("with children, whose single component carries no index", False, pub33, cc32,
-         path_m, 0x12345678, None, 0x9abcdef0, "m/44'/60'/0'", "Keycard", [(None, False)],
-         "core.c builds exactly this shape for the children keypath of an account", 1),
-        ("a 32 byte key-data is refused: .size 33 is exact on the way out", False, cc32, cc32,
-         path_m, None, None, 0x9abcdef0, "m/44'", None, None,
-         "key-data-bytes = bstr .size 33", 0),
-    ]:
+
+    def hd_pairs(is_private, key_data, chain_code, origin, origin_fp, origin_depth, parent_fp,
+                 nm, source, children, use_info):
+        """An hd-key's fields in the order the field numbers want. An absent optional is not there
+        at all rather than null, which is half of canonical CBOR and the half an encoder gets
+        wrong."""
         pairs = [(2, cbor_bool(is_private)), (3, cbor_bytes(key_data)),
-                 (4, cbor_bytes(chain_code)),
-                 (6, cbor_keypath(origin, fingerprint=origin_fp, depth=origin_depth)),
-                 (8, cbor_uint(parent_fp)), (9, cbor_text(nm))]
+                 (4, cbor_bytes(chain_code))]
+        if use_info is not None:
+            pairs.append((5, cbor_tag(305, cbor_map([(1, cbor_uint(use_info[0])),
+                                                     (2, cbor_uint(use_info[1]))]))))
+        pairs.append((6, cbor_keypath(origin, fingerprint=origin_fp, depth=origin_depth)))
         if children is not None:
             pairs.append((7, cbor_keypath(children)))
+        pairs.append((8, cbor_uint(parent_fp)))
+        pairs.append((9, cbor_text(nm)))
         if source is not None:
             pairs.append((10, cbor_text(source)))
-        if not accept:
-            pairs = []
-        hd.append((name, cbor_map(sorted(pairs)), is_private, key_data, chain_code, origin,
-                   origin_fp, origin_depth, parent_fp, nm, source, children, constraint, accept))
+        return sorted(pairs)
+
+    hd = []
+    for (name, is_private, key_data, chain_code, origin, origin_fp, origin_depth, parent_fp, nm,
+         source, children, use_info, constraint, accept) in [
+        ("an exported account key, the way the eth display builds it", False, pub33, cc32,
+         path_m, 0x12345678, 3, 0x9abcdef0, "m/44'/60'/0'", "Keycard", None, None, "", 1),
+        ("the required fields only, with an empty origin", False, pub33, cc32,
+         [], None, None, 0x9abcdef0, "", None, None, None, "", 1),
+        ("a private key: the encoder does not care which it is handed", True, priv33, cc32,
+         path_m, None, None, 0x9abcdef0, "m/44'", None, None, None,
+         "is-private is a fact about the bytes, not a permission", 1),
+        ("with children, whose single component carries no index", False, pub33, cc32,
+         path_m, 0x12345678, None, 0x9abcdef0, "m/44'/60'/0'", "Keycard", [(None, False)], None,
+         "core.c builds exactly this shape for the children keypath of an account", 1),
+        ("with use-info, which every key the shell exports carries", False, pub33, cc32,
+         path_m, 0x12345678, 3, 0x9abcdef0, "m/44'/60'/0'", "Keycard", None, (60, 0),
+         "set_hd_key_use_info() takes coin-type out of the path's coin component and sets network "
+         "testnet only for coin 1; BCR-2020-007 clients assume mainnet when it is absent", 1),
+        ("a 32 byte key-data is refused: .size 33 is exact on the way out", False, cc32, cc32,
+         path_m, None, None, 0x9abcdef0, "m/44'", None, None, None,
+         "key-data-bytes = bstr .size 33", 0),
+    ]:
+        pairs = hd_pairs(is_private, key_data, chain_code, origin, origin_fp, origin_depth,
+                         parent_fp, nm, source, children, use_info)
+        hd.append((name, cbor_map(pairs) if accept else b"", is_private, key_data, chain_code,
+                   origin, origin_fp, origin_depth, parent_fp, nm, source, children, use_info,
+                   constraint, accept))
+
+    # --- crypto-account and crypto-multi-accounts -------------------------------------------
+    # Every key in these two items comes out of core.c's get_hd_key(), so its rules are baked into
+    # the rows below: the account index replaces the third component and is hardened whatever the
+    # caller's path said, depth is the path length, coin-type is read out of the coin component and
+    # network is testnet only for coin 1, a path with no coin component (m/45') is mainnet, and the
+    # name is the card's own, falling back to EIP4527_NAME.
+    HARDENED = 0x80000000
+    MAINNET, TESTNET = HARDENED, HARDENED | 1
+    DEVICE_NAME = "Keycard Shell"
+    SERIAL = "00112233445566778899aabbccddeeff00112233"
+
+    def export_key(num, path, account=0, source=None, children=None, key_bytes=None):
+        coin = path[1] & 0x7fffffff if len(path) > 1 else 0
+        comps = [(c & 0x7fffffff, bool(c & HARDENED)) for c in path]
+        if len(comps) > 2:
+            comps[2] = (account, True)
+        return {
+            "key": key_bytes or bytes([2 + (num % 2)])
+            + bytes([(num * 7 + j) & 0xff for j in range(32)]),
+            "chain": bytes([(num * 11 + j + 1) & 0xff for j in range(32)]),
+            "origin": comps,
+            "origin_fp": 0x0a0b0c00 + num,
+            "depth": len(comps),
+            "parent_fp": 0x0d0e0f00 + num,
+            "name": DEVICE_NAME,
+            "source": source,
+            "children": children,
+            "use_info": (coin, 1 if coin == 1 else 0),
+        }
+
+    def hd_key_cbor(k):
+        return cbor_map(hd_pairs(False, k["key"], k["chain"], k["origin"], k["origin_fp"],
+                                 k["depth"], k["parent_fp"], k["name"], k["source"],
+                                 k["children"], k["use_info"]))
+
+    # The script tags, outermost first. #6.308(crypto-output) is deliberately not here: crypto-output
+    # is a CDDL group, and a tag around a group is what zcbor drops -- see the header comment.
+    SCRIPT_TAGS = {"sh": (400,), "sh_wpkh": (400, 404), "sh_wsh": (400, 401), "wsh": (401,),
+                   "pkh": (403,), "wpkh": (404,), "tr": (409,)}
+    CHOICE_ENUM = {"sh": "crypto_output_script_hash_m_c",
+                   "sh_wpkh": "crypto_output_script_hash_wpkh_m_c",
+                   "sh_wsh": "crypto_output_script_hash_wsh_m_c",
+                   "wsh": "crypto_output_witness_script_hash_m_c",
+                   "pkh": "crypto_output_public_key_hash_m_c",
+                   "wpkh": "crypto_output_witness_public_key_hash_m_c",
+                   "tr": "crypto_output_taproot_m_c"}
+
+    def script_wrapped(script, key_exp):
+        for tag in reversed(SCRIPT_TAGS[script]):
+            key_exp = cbor_tag(tag, key_exp)
+        return key_exp
+
+    wpkh, shwpkh, pkh, tr = (export_key(i, [p, MAINNET, HARDENED], account=2)
+                             for i, p in enumerate((0x80000054, 0x80000031, 0x8000002c, 0x80000056)))
+    eth = export_key(4, [0x8000002c, HARDENED | 60, HARDENED], source="account.standard")
+    wsh, shwsh = (export_key(5 + i, [0x80000030, MAINNET, HARDENED, HARDENED | (2 - i)],
+                             account=1) for i in range(2))
+    sh = export_key(7, [0x8000002d])
+    wpkh_t, shwpkh_t, pkh_t, tr_t = (export_key(8 + i, [p, TESTNET, HARDENED])
+                                     for i, p in enumerate((0x80000054, 0x80000031, 0x8000002c,
+                                                            0x80000056)))
+    short_key = export_key(12, [0x80000054, MAINNET, HARDENED], key_bytes=bytes(range(32)))
+    account_keys = [wpkh, shwpkh, pkh, tr, eth, wsh, shwsh, sh, wpkh_t, shwpkh_t, pkh_t, tr_t,
+                    short_key]
+
+    acct = []
+    for name, fingerprint, outs, constraint, accept in [
+        ("one bitcoin account, its four script types, the third account of the seed", 0x12345678,
+         [("wpkh", 0), ("sh_wpkh", 1), ("pkh", 2), ("tr", 3)],
+         "core_display_public_bitcoin(): native segwit, nested, legacy, taproot, in that order", 1),
+        ("the same four on testnet, where the coin component is 1'", 0x12345678,
+         [("wpkh", 8), ("sh_wpkh", 9), ("pkh", 10), ("tr", 11)],
+         "use-info's network follows the path rather than a flag of its own", 1),
+        ("a multisig account: wsh, sh(wsh) and the bare m/45'", 0x9abcdef0,
+         [("wsh", 5), ("sh_wsh", 6), ("sh", 7)],
+         "core_display_public_bitcoin_multisig(): the last has one component, so no account index "
+         "reaches it and coin-type falls back to mainnet", 1),
+        ("an account with no outputs", 0, [],
+         "output-descriptors is [0*10 ...], so an empty array is in range and only the importer "
+         "can call it wrong", 1),
+        ("ten outputs, the top of the range", 0x7fffffff,
+         [("sh", 7), ("sh_wpkh", 1), ("sh_wsh", 6), ("wsh", 5), ("pkh", 2), ("wpkh", 0),
+          ("tr", 3), ("sh", 0), ("wpkh", 3), ("tr", 1)],
+         "one of each script tag, then the widest array the schema allows", 1),
+        ("a master fingerprint of 7, written in one byte", 7, [("wpkh", 0)],
+         "uint32 is a range check here, not a width: zcbor_uint32_encode writes the shortest form, "
+         "and bc-ur-registry reads a number either way", 1),
+        ("an output whose key-data is 32 bytes is refused from inside the script wrapper", 0,
+         [("wpkh", 12)],
+         "key-data-bytes = bstr .size 33, checked only when the encoder reaches it, three tags deep",
+         0),
+        ("a choice outside the seven is refused rather than answered with a default", 0,
+         [("99", 0)], "encode_crypto_output has no fallthrough: an unset crypto_output_choice "
+         "fails the chain instead of encoding the first variant", 0),
+    ]:
+        items = [cbor_map([(1, cbor_uint(fingerprint)),
+                           (2, cbor_array([script_wrapped(s, cbor_tag(303, hd_key_cbor(
+                                                   account_keys[i])))
+                                           for s, i in outs if s != "99"]))])]
+        acct.append((name, items[0] if accept else b"", fingerprint, outs, constraint, accept))
+
+    multi = []
+    for name, fingerprint, nums, device, device_id, version, constraint, accept in [
+        ("a bitcoin-only build: the four bitcoin accounts, the device name and the serial", 0x12345678,
+         [2, 1, 0, 3], DEVICE_NAME, SERIAL, None,
+         "core_display_public_multicoin() under BITCOIN_ONLY", 1),
+        ("the fifth key is the eth account, sourced account.standard", 0x12345678,
+         [2, 1, 0, 3, 4], DEVICE_NAME, SERIAL, None,
+         "the same call without BITCOIN_ONLY; source is how a wallet learns which standard the "
+         "path follows", 1),
+        ("no keys and no optional fields", 0, [], None, None, None,
+         "keys is [0*10 tagged-hd-key]; each key carries its own #6.303, unlike an account output "
+         "where the script tags stand in for it", 1),
+        ("device present, serial number and version absent", 1, [0], DEVICE_NAME, None, None,
+         "three of the five fields, so the map closes at a3", 1),
+        ("a version that is present and empty", 1, [0], DEVICE_NAME, SERIAL, "",
+         "an absent text and an empty one are different items", 1),
+    ]:
+        pairs = [(1, cbor_uint(fingerprint)),
+                 (2, cbor_array([cbor_tag(303, hd_key_cbor(account_keys[i])) for i in nums]))]
+        for num, value in ((3, device), (4, device_id), (5, version)):
+            if value is not None:
+                pairs.append((num, cbor_text(value)))
+        multi.append((name, cbor_map(pairs) if accept else b"", fingerprint, nums, device,
+                      device_id, version, constraint, accept))
 
     # --- emit ------------------------------------------------------------------------------
     def digest(text: str) -> str:
@@ -8236,10 +8394,12 @@ def ur_encode_vectors() -> str:
              opt(payload, 'b')]) + "},")
 
     hd_rows = []
-    for (name, expect, is_private, key_data, chain_code, origin, origin_fp, origin_depth,
-         parent_fp, nm, source, children, constraint, accept) in hd:
+
+    def hd_case_row(name, expect, is_private, key_data, chain_code, origin, origin_fp,
+                    origin_depth, parent_fp, nm, source, children, use_info, constraint, accept):
         if origin:
-            o_idx, o_hard = uint_table([i for i, _ in origin]), bool_table([1 if h else 0 for _, h in origin])
+            o_idx, o_hard = uint_table([i for i, _ in origin]), \
+                bool_table([1 if h else 0 for _, h in origin])
         else:
             o_idx, o_hard = "0", "0"
         if children:
@@ -8247,14 +8407,54 @@ def ur_encode_vectors() -> str:
             c_hard = bool_table([1 if h else 0 for _, h in children])
         else:
             c_idx, c_hard = "0", "0"
-        hd_rows.append("  {" + ", ".join(
+        return "  {" + ", ".join(
             [f'"{name}"', blob('h', expect), str(len(expect)), str(1 if is_private else 0),
              opt(key_data, 'k'), opt(chain_code, 'c'), o_idx, o_hard, str(len(origin)),
              str(origin_fp or 0), str(1 if origin_fp is not None else 0),
              str(origin_depth or 0), str(1 if origin_depth is not None else 0),
              str(parent_fp), text_ptr(nm), text_ptr(source), c_idx, c_hard,
              str(len(children) if children is not None else 0),
-             str(1 if children is not None else 0), f'"{constraint}"', str(accept)]) + "},")
+             str(1 if children is not None else 0),
+             str(1 if use_info is not None else 0),
+             str(use_info[0] if use_info is not None else 0),
+             str(use_info[1] if use_info is not None else 0), f'"{constraint}"',
+             str(accept)]) + "},"
+
+    hd_rows = [hd_case_row(*row) for row in hd]
+    account_key_rows = [
+        hd_case_row(k["name"], hd_key_cbor(k), False, k["key"], k["chain"], k["origin"],
+                    k["origin_fp"], k["depth"], k["parent_fp"], k["name"], k["source"],
+                    k["children"], k["use_info"], "", 1)
+        for k in account_keys]
+
+    output_tables, key_index_tables = [], []
+
+    acct_rows = []
+    for name, expect, fingerprint, outs, constraint, accept in acct:
+        if outs:
+            tname = f"acct_outputs_{len(output_tables)}"
+            output_tables.append(
+                f"static const ur_encode_output_t {tname}[] = {{\n"
+                + ",\n".join(f"    {{ {CHOICE_ENUM.get(s, s)}, {i} }}" for s, i in outs)
+                + "\n};\n")
+        else:
+            tname = "0"
+        acct_rows.append("  {" + ", ".join(
+            [f'"{name}"', blob('a', expect), str(len(expect)), str(fingerprint), tname,
+             str(len(outs)), f'"{constraint}"', str(accept)]) + "},")
+
+    multi_rows = []
+    for name, expect, fingerprint, nums, device, device_id, version, constraint, accept in multi:
+        if nums:
+            kname = f"multi_keys_{len(key_index_tables)}"
+            key_index_tables.append(f"static const uint8_t {kname}[] = "
+                                    f"{{{', '.join(str(n) for n in nums)}}};\n")
+        else:
+            kname = "0"
+        multi_rows.append("  {" + ", ".join(
+            [f'"{name}"', blob('m', expect), str(len(expect)), str(fingerprint), kname,
+             str(len(nums)), text_ptr(device), text_ptr(device_id), text_ptr(version),
+             f'"{constraint}"', str(accept)]) + "},")
 
     blob_defs = []
     for name, data in blobs:
@@ -8264,6 +8464,7 @@ def ur_encode_vectors() -> str:
             blob_defs.append(f"static const uint8_t {name}[] = {{0}};\n")
     for name, values, ctype in tables:
         blob_defs.append(f"static const {ctype} {name}[] = {{{', '.join(str(v) for v in values)}}};\n")
+    blob_defs.extend(key_index_tables)
 
     return f"""#ifndef VECTORS_UR_ENCODE_H
 #define VECTORS_UR_ENCODE_H
@@ -8275,25 +8476,37 @@ def ur_encode_vectors() -> str:
  *     cddl/ur.cddl in this repository
  * sha256 {digest(cddl)}
  *
- * The bytes the shell shows the wallet. Nine of the eleven generated encoders are reachable --
- * eth-signature and btc-signature out of the signing flows, hd-key and crypto-account out of the
- * export paths, dev-auth out of the two-step verification, psbt out of three places, ur_part out of
- * the QR animator in ur.c -- and every one of them produces a QR code that something else has to
+ * The bytes the shell shows the wallet. Every encoder the shell can reach is here -- eth-signature
+ * and btc-signature out of the signing flows, hd-key, crypto-account and crypto-multi-accounts out of
+ * the export paths, dev-auth out of the two-step verification, psbt out of three places, ur_part out
+ * of the QR animator in ur.c -- and every one of them produces a QR code that something else has to
  * parse. A byte that is merely different is enough to break that, which is why the expectation here
- * is the whole encoded item rather than a property of it.
+ * is the whole encoded item rather than a property of it. The two generated encoders that are absent,
+ * eth-sign-request and btc-sign-request, are absent because the shell only ever decodes a request.
  *
  * The expected bytes come from generate.py's own encoders, the same ones that build the decode
  * vectors, and share nothing with the code under test. Canonical form is the assertion zcbor cannot
  * make about itself: minimal length heads, map keys in ascending order, an absent optional field
  * missing rather than null. The generator refuses to write this header unless ERC-4527 still labels
  * the signature fields 1..3 and still says bytes .size 65, unless the IANA registry still gives tag
- * 37 to a Binary UUID, and unless cddl/ur.cddl still carries the field numbers, the .size constraints
- * and hd-key's commented-out is-master.
+ * 37 to a Binary UUID, and unless cddl/ur.cddl still carries the field numbers, the .size constraints,
+ * hd-key's commented-out is-master and crypto-output as a group choice.
  *
- * One row records a divergence rather than a defect, and the constraint column says which:
- * ERC-4527 fixes eth-signature-bytes at 65 bytes, this repository's schema says bstr, and core_eth.c
- * writes v in as few bytes as it needs, so a signature for a chain id at 110 or above comes out 66
- * bytes or longer. Whether a given wallet enforces the 65 is not settled by anything here.
+ * Two rows record a divergence rather than a defect, and the constraint column says which. ERC-4527
+ * fixes eth-signature-bytes at 65 bytes, this repository's schema says bstr, and core_eth.c writes v
+ * in as few bytes as it needs, so a signature for a chain id at 110 or above comes out 66 bytes or
+ * longer. The wallets read it that way: @metamask/eth-qr-keyring takes r = subarray(0,32),
+ * s = subarray(32,64) and v = subarray(64), @keystonehq/base-eth-keyring the same with slice, and
+ * neither checks a length -- capping the tail would truncate v, which is the corruption the variable
+ * width exists to avoid.
+ *
+ * The second is #6.308(crypto-output). cddl/ur.cddl wraps every output descriptor in it, and the
+ * generated encoder never writes it, because crypto-output is a CDDL *group* and a tag around a group
+ * is what zcbor drops -- the same thing path-component does one level down. That is not a defect to
+ * repair: bc-ur-registry's CryptoOutput.fromDataItem walks script tags from the outside in, has no
+ * entry for 308, and hands anything else to its elliptic-curve-key reader, and its own encoder never
+ * writes 308 either. What a wallet sees is the script tag -- sh, sh(wpkh), sh(wsh), wsh, pkh, wpkh,
+ * tr -- directly over the #6.303 hd-key.
  *
  * The rows that are refused pin the other half of the story, and it is not the half to be assumed.
  * A .size constraint survives into the encoder as `len >= n && len <= n`, so a caller that handed
@@ -8301,15 +8514,16 @@ def ur_encode_vectors() -> str:
  * header is written with the field count at the top of the range and patched only when the map
  * closes, so an item that failed halfway leaves `a7` for dev-auth's seven fields, or `a9` for hd-key's
  * nine, with whatever it managed to write behind it, and the length out-parameter is left exactly as
- * it was passed in. core_eth.c, core_btc.c and auth.c all discard the return value and then display
- * `g_core.data.sig.cbor_sig` at `g_core.data.sig.cbor_len`, which on a failure is the previous
- * signature's length against a buffer holding part of this one. Nothing reaches that today -- the
- * fields are fixed-size and CBOR_SIG_MAX_LEN is 192 -- which is precisely why the shape of a refusal
- * belongs in a test rather than in a comment.
+ * it was passed in. An account output fails three tags deep, past the outer map header and past
+ * another account's bytes, which is why the call sites that display a signature check the return code
+ * rather than the length.
  *
  * hd-key's children keypath row is the shape core.c itself builds -- one component carrying no
  * child index at all -- recorded so that a change to it, in either direction, is a decision rather
- * than a surprise.
+ * than a surprise. The account rows are the other shapes core.c builds: the account index replacing
+ * the third component of every path and being hardened whatever the caller's path said, use-info's
+ * coin-type read out of the coin component so that testnet is a coin of 1 rather than a flag, and m/45'
+ * as the one path with no coin component at all.
  */
 
 #include <stdint.h>
@@ -8415,12 +8629,64 @@ typedef struct {{
   const uint8_t* child_hardened;
   uint8_t child_count;
   uint8_t has_children;
+  uint8_t has_use_info;
+  uint32_t coin_type;
+  int32_t network;
   const char* constraint;
   int accept;
 }} ur_encode_hdkey_case_t;
 
 static const ur_encode_hdkey_case_t UR_ENCODE_HDKEY_CASES[] = {{
 {chr(10).join(hd_rows)}
+}};
+
+/* The keys the two account items embed. The outputs of a crypto-account and the keys of a
+ * crypto-multi-accounts are hd-keys, so they are described by the same fields as
+ * UR_ENCODE_HDKEY_CASES and filled by the same builder; the expect here is that key on its own,
+ * which is not a shape the shell encodes by itself but is what makes a failing row readable. */
+static const ur_encode_hdkey_case_t UR_ENCODE_ACCOUNT_KEYS[] = {{
+{chr(10).join(account_key_rows)}
+}};
+
+/* One output of a crypto-account: which of the seven script shapes, and which key it wraps. The
+ * choice names come from ur/ur_types.h, which the test includes before this header. */
+typedef struct {{
+  int choice;
+  uint8_t key;
+}} ur_encode_output_t;
+
+{chr(10).join(output_tables)}
+typedef struct {{
+  const char* name;
+  const uint8_t* expect;
+  uint16_t expect_len;
+  uint32_t master_fingerprint;
+  const ur_encode_output_t* outputs;
+  uint8_t output_count;
+  const char* constraint;
+  int accept;
+}} ur_encode_account_case_t;
+
+static const ur_encode_account_case_t UR_ENCODE_ACCOUNT_CASES[] = {{
+{chr(10).join(acct_rows)}
+}};
+
+typedef struct {{
+  const char* name;
+  const uint8_t* expect;
+  uint16_t expect_len;
+  uint32_t master_fingerprint;
+  const uint8_t* keys;
+  uint8_t key_count;
+  const char* device;
+  const char* device_id;
+  const char* version;
+  const char* constraint;
+  int accept;
+}} ur_encode_multi_case_t;
+
+static const ur_encode_multi_case_t UR_ENCODE_MULTI_ACCOUNTS_CASES[] = {{
+{chr(10).join(multi_rows)}
 }};
 
 #endif /* VECTORS_UR_ENCODE_H */
