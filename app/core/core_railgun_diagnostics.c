@@ -139,21 +139,6 @@ static void show_result(const char* name, bool passed, uint32_t ms) {
           LSTR(MENU_RAILGUN_DIAGNOSTICS), message, 0);
 }
 
-static void show_stack_headroom(uint32_t free_bytes) {
-
-  char message[80] = {0};
-  size_t length = 0;
-
-  append_text(message, sizeof(message), &length,
-              "Core stack minimum free: ");
-  append_decimal(message, sizeof(message), &length, free_bytes);
-  append_text(message, sizeof(message), &length, " bytes");
-
-  ui_prompt(LSTR(MENU_RAILGUN_DIAGNOSTICS),
-            message, UI_INFO_CANCELLABLE);
-}
-
-
 #ifndef RAILGUN_GIT_REV
 #define RAILGUN_GIT_REV "unknown"
 #endif
@@ -210,12 +195,6 @@ static void append_benchmark_json(
 }
 
 static void finish_report(const railgun_report_t* report) {
-  uint32_t free_bytes =
-      (uint32_t) uxTaskGetStackHighWaterMark(NULL) *
-      (uint32_t) sizeof(StackType_t);
-
-  show_stack_headroom(free_bytes);
-
   if (ui_prompt(LSTR(MENU_RAILGUN_DIAGNOSTICS),
                 "Export benchmark results as QR?",
                 UI_INFO_CANCELLABLE) != CORE_EVT_UI_OK) {
@@ -253,8 +232,6 @@ static void finish_report(const railgun_report_t* report) {
   append_benchmark_json(
       json, sizeof(json), &length, "bj256", &report->bj256);
 
-  append_text(json, sizeof(json), &length, ",\"stack_free\":");
-  append_decimal(json, sizeof(json), &length, free_bytes);
   append_text(json, sizeof(json), &length, "}");
 
   ui_display_msg_qr(
@@ -433,21 +410,4 @@ void core_railgun_diagnostics_run(void) {
       full_budget.expired ? "Full-width timeout" : "BabyJubjub full",
       passed, ms);
   finish_report(&report);
-}
-
-/*
- * Experimental firmware fail-stop.
- * FreeRTOS calls this hook when its stack-overflow check detects
- * an exhausted task stack. Never continue after detection.
- */
-void vApplicationStackOverflowHook(
-    TaskHandle_t task, char* task_name) {
-  (void) task;
-  (void) task_name;
-
-  taskDISABLE_INTERRUPTS();
-
-  for (;;) {
-    __asm__ volatile ("nop");
-  }
 }
