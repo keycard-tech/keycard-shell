@@ -1,4 +1,5 @@
 #include "dialog.h"
+#include "ethereum/eth_multisend.h"
 #include "crypto/address.h"
 #include "crypto/bignum.h"
 #include "crypto/script.h"
@@ -480,7 +481,8 @@ static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint
   dialog_data(ctx, p);
 }
 
-static void dialog_measure_string_in_pages(screen_text_ctx_t* ctx, pager_ctx_t* pager, uint16_t start_y_off, uint16_t start_page, const uint8_t* str, size_t str_len) {
+static app_err_t dialog_measure_string_in_pages(screen_text_ctx_t* ctx, pager_ctx_t* pager, uint16_t start_y_off, uint16_t start_page, const uint8_t* str, size_t str_len) {
+  if (start_page >= MAX_PAGE_COUNT || str_len > UINT16_MAX) return ERR_DATA;
   pager->last_page = start_page;
   pager->pages[start_page] = 0;
 
@@ -497,9 +499,8 @@ static void dialog_measure_string_in_pages(screen_text_ctx_t* ctx, pager_ctx_t* 
     uint16_t to_display = str_len - offset;
     uint16_t remaining = screen_draw_text(ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &str[offset], to_display, true, false);
 
-    if (!remaining || pager->last_page == (MAX_PAGE_COUNT - 1)) {
-      break;
-    }
+    if (!remaining) return ERR_OK;
+    if (remaining >= to_display || pager->last_page == MAX_PAGE_COUNT - 1) return ERR_DATA;
 
     pager->pages[++pager->last_page] = offset + (to_display - remaining);
   }
@@ -979,6 +980,92 @@ app_err_t dialog_display_paged_text() {
   return ret;
 }
 
+/* The existing pager stores uint16_t offsets. Input stays in framebuffer 1;
+ * framebuffer 0 holds one bounded expansion for the existing Safe data pages. */
+#define SAFE_DATA_CAP ((CAMERA_FB_SIZE < UINT16_MAX) ? CAMERA_FB_SIZE : UINT16_MAX)
+
+static size_t dialog_batch_append(uint8_t* text, size_t offset, const char* str) {
+  size_t len = strlen(str);
+  if (offset >= SAFE_DATA_CAP || len >= SAFE_DATA_CAP - offset) return SAFE_DATA_CAP;
+  memcpy(text + offset, str, len + 1);
+  return offset + len;
+}
+
+static size_t dialog_batch_number(uint8_t* text, size_t offset, uint32_t number) {
+  uint8_t buf[11];
+  return dialog_batch_append(text, offset, (const char*)u32toa(number, buf, sizeof(buf)));
+}
+
+/* Existing formatter returns zero length when nonempty input cannot fit. */
+static app_err_t dialog_format_safe_data(const eth_abi_function_t* abi, const uint8_t* data,
+    size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len) {
+  *out_len = 0;
+  if (!data_len) return ERR_OK;
+  /* Short calldata has no selector; avoid the formatter's four-byte args head. */
+  if (data_len < sizeof(uint32_t)) {
+    if (!out_cap || data_len > (out_cap - 1) / 2) return ERR_DATA;
+    base16_encode(data, (char*)out, data_len);
+    *out_len = data_len * 2;
+  } else {
+    eth_data_format(abi, data, data_len, out, out_cap, out_len);
+  }
+  return *out_len ? ERR_OK : ERR_DATA;
+}
+
+static app_err_t dialog_format_batch(const eth_safe_tx_t* info, eth_multisend_variant_t variant,
+    uint8_t* text, size_t* text_len) {
+  eth_multisend_t batch;
+  if (info->operation != 1 || !bn_is_zero(&info->value) ||
+      eth_multisend_init(&batch, info->data, info->data_len, variant) != ETH_MULTISEND_COMPLETE)
+    return ERR_DATA;
+
+  size_t n = 0;
+  for (size_t index = 0; index < batch.count; index++) {
+    eth_multisend_call_t call;
+    if (!eth_multisend_next(&batch, &call)) return ERR_DATA;
+    n = dialog_batch_append(text, n, index ? "\n\n" : "");
+    n = dialog_batch_append(text, n, LSTR(TX_BATCH_CALL));
+    n = dialog_batch_number(text, n, index + 1);
+    n = dialog_batch_append(text, n, "/");
+    n = dialog_batch_number(text, n, batch.count);
+    n = dialog_batch_append(text, n, "\n");
+    if (call.operation == 1) {
+      n = dialog_batch_append(text, n, LSTR(TX_BATCH_DELEGATE));
+      n = dialog_batch_append(text, n, "\n");
+    }
+    char address[41];
+    const uint8_t* to = call.to;
+    /* Since 1.5.0, address(0) means address(this): the Safe in delegatecall context.
+     * https://github.com/safe-global/safe-smart-account/blob/v1.5.0/contracts/libraries/MultiSend.sol
+     */
+    if (variant >= ETH_MULTISEND_V150 && !memcmp(to, (const uint8_t[20]){0}, 20))
+      to = info->safeAddr;
+    base16_encode(to, address, 20);
+    n = dialog_batch_append(text, n, LSTR(TX_BATCH_TO));
+    n = dialog_batch_append(text, n, address);
+    n = dialog_batch_append(text, n, "\n");
+    bignum256 value;
+    bn_read_be(call.value, &value);
+    if (!bn_is_zero(&value)) {
+      char amount[BIGNUM_STRING_LEN];
+      bn_format(&value, NULL, NULL, 0, 0, 0, 0, amount, sizeof(amount));
+      n = dialog_batch_append(text, n, LSTR(TX_BATCH_VALUE));
+      n = dialog_batch_append(text, n, amount);
+      n = dialog_batch_append(text, n, "\n");
+    }
+    if (n >= SAFE_DATA_CAP) return ERR_DATA;
+    /* One level only: nested MultiSend calldata remains opaque. */
+    const eth_abi_function_t* abi = (call.data_len >= 4 && !memcmp(call.data, "\x8d\x80\xff\x0a", 4))
+        ? NULL : eth_data_recognize(call.data, call.data_len, !bn_is_zero(&value));
+    size_t len;
+    if (dialog_format_safe_data(abi, call.data, call.data_len, text + n, SAFE_DATA_CAP - n, &len) != ERR_OK)
+      return ERR_DATA;
+    n += len;
+  }
+  *text_len = n;
+  return ERR_OK;
+}
+
 static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr, const uint8_t* hash) {
   screen_text_ctx_t ctx = {
       .font = TH_FONT_TEXT,
@@ -992,9 +1079,29 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
   size_t data_str_len;
 
   if (info->data_len > 0) {
-    const eth_abi_function_t* abi = eth_data_recognize(info->data, info->data_len, !bn_is_zero(&info->value));
-    eth_data_format(abi, info->data, info->data_len, data_str, CAMERA_FB_SIZE, &data_str_len);
-    dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 3, data_str, data_str_len);
+    eth_multisend_variant_t variant = eth_multisend_classify(info->to);
+    bool batch = variant != ETH_MULTISEND_NONE;
+    app_err_t formatted = ERR_OK;
+    if (batch) {
+      formatted = dialog_format_batch(info, variant, data_str, &data_str_len);
+    } else {
+      const eth_abi_function_t* abi = eth_data_recognize(info->data, info->data_len, !bn_is_zero(&info->value));
+      if (dialog_format_safe_data(abi, info->data, info->data_len, data_str, SAFE_DATA_CAP, &data_str_len) != ERR_OK)
+        formatted = ERR_DATA;
+    }
+    if (formatted != ERR_OK ||
+        dialog_measure_string_in_pages(&ctx, &pager, TH_TITLE_HEIGHT + TH_LABEL_HEIGHT, 3, data_str, data_str_len) != ERR_OK) {
+      /* Discard the entire expansion. Never show a successful prefix. */
+      size_t prefix = dialog_batch_append(data_str, 0, LSTR(TX_BATCH_FALLBACK));
+      size_t raw_len;
+      if (prefix >= SAFE_DATA_CAP ||
+          dialog_format_safe_data(NULL, info->data, info->data_len, data_str + prefix,
+              SAFE_DATA_CAP - prefix, &raw_len) != ERR_OK)
+        return ERR_DATA;
+      data_str_len = prefix + raw_len;
+      if (dialog_measure_string_in_pages(&ctx, &pager, TH_TITLE_HEIGHT + TH_LABEL_HEIGHT, 3, data_str, data_str_len) != ERR_OK)
+        return ERR_DATA;
+    }
   }
 
   dialog_title(LSTR(TX_SAFE_CONFIRM_TITLE));
