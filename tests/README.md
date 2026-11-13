@@ -53,15 +53,16 @@ Tests compare against values the code did not produce. `vectors/generate.py` wri
 
 * **spec** — fetched from the upstream document or word list (BIP-32/39/173/350, SLIP-39,
   RFC 4231, RFC 5869, Bitcoin Core's `base58.cpp`, Blockchain Commons' `bc-bytewords` word list
-  and its own test vectors), pinned by SHA-256 in the header.
+  and its own test vectors, EIP-155/191/2718 and ERC-191/4527), pinned by SHA-256 in the header.
 * **reference** — computed by an independent implementation (CPython `hashlib`/`hmac`/`zlib`,
-  `pycryptodome`, `coincurve`, `eth_utils`).
+  `pycryptodome`, `coincurve`, `eth_utils`, and `eth_txn.py` for Keccak-256, RLP and secp256k1).
 
 The generator self-checks what it parses: the RFC 4231 and RFC 5869 cases are recomputed with
 CPython `hmac`, the BIP-39 seeds with `hashlib.pbkdf2_hmac`, each corrupted BIP-39
 mnemonic is verified to fail the checksum, and every bytewords literal is re-encoded from the word
 list and compared to what upstream wrote. A malformed vector therefore fails the generator, not the
-test.
+test. `eth_txn.py` holds up the Ethereum rows the same way: EIP-155's example transaction, its signing
+hash and the signature it publishes are all reproduced, so a rotted Keccak or RLP fails the generator.
 
 ```sh
 uv run python tests/vectors/generate.py     # needs network; sources cached in vectors/.cache

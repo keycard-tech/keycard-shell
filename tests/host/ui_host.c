@@ -63,7 +63,37 @@ void host_ui_record_progress(const char* name, uint8_t progress) {
   }
 }
 
+/* Wide enough for the widest item the shell turns into a QR -- a crypto-account of ten outputs is past
+ * a kilobyte -- so a capture is never silently dropped. */
+#define UR_QR_MAX 2048
+
+static struct {
+  uint8_t bytes[UR_QR_MAX];
+  uint32_t len;
+  ur_type_t type;
+} ur_qr;
+
+void host_ui_record_ur_qr(const uint8_t* data, uint32_t len, ur_type_t type) {
+  ur_qr.len = 0;
+
+  if ((data != NULL) && (len <= sizeof(ur_qr.bytes))) {
+    memcpy(ur_qr.bytes, data, len);
+    ur_qr.len = len;
+    ur_qr.type = type;
+  }
+}
+
 unsigned host_ui_calls(void) { return call_count; }
+
+const uint8_t* host_ui_ur_qr(uint32_t* len, ur_type_t* type) {
+  if (len != NULL) {
+    *len = ur_qr.len;
+  }
+  if (type != NULL) {
+    *type = ur_qr.type;
+  }
+  return ur_qr.len != 0 ? ur_qr.bytes : NULL;
+}
 
 unsigned host_ui_call_count(const char* name) {
   unsigned n = 0;
@@ -113,6 +143,7 @@ void host_ui_reset(void) {
 
   memset(calls, 0, sizeof(calls));
   call_count = 0;
+  memset(&ur_qr, 0, sizeof(ur_qr));
 
   host_ui_keycard_reset();
 

@@ -10,7 +10,8 @@
  * Recorded by name and answered from a script. What these take is a rendered thing -- a transaction
  * context, an EIP-712 type, an address -- so pinning the arguments would pin the current layout rather
  * than a protocol; what a test asserts is that the confirmation happened and what the user did about
- * it.
+ * it. The one exception is the UR a signature or an account descriptor becomes: those bytes are not a
+ * rendering, they are what the counterparty reads, and the seam keeps them for host_ui_ur_qr().
  *
  * Every default is a refusal. A confirmation granted by default lets a test pass by never saying who
  * pressed the button. The scalar out-parameters are zeroed so a caller that reads one after a refusal
@@ -66,10 +67,8 @@ core_evt_t ui_display_msg(addr_type_t addr_type, const uint8_t* address, const u
 
 core_evt_t ui_display_ur_qr(const char* title, const uint8_t* data, uint32_t len, ur_type_t type) {
   (void)title;
-  (void)data;
-  (void)len;
-  (void)type;
   host_ui_record("ui_display_ur_qr");
+  host_ui_record_ur_qr(data, len, type);
   return host_ui_answer_for("ui_display_ur_qr");
 }
 

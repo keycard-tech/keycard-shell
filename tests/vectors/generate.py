@@ -26,6 +26,8 @@ import os
 import random
 import struct
 
+import eth_txn
+
 from asn1crypto import core as asn1_core
 import re
 import string
@@ -95,6 +97,9 @@ SOURCES = {
     "shell_db_20261111.bin": "https://github.com/keycard-tech/keycard-eth-db/releases/download/20261111/shelldb-20261111.bin",
     "bc_bytewords_test.c": "https://raw.githubusercontent.com/BlockchainCommons/bc-bytewords/master/test/test.c",
     "erc-4527.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-4527.md",
+    "eip-155.md": "https://raw.githubusercontent.com/ethereum/EIPs/master/EIPS/eip-155.md",
+    "erc-191.md": "https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-191.md",
+    "eip-2718.md": "https://raw.githubusercontent.com/ethereum/EIPs/master/EIPS/eip-2718.md",
     "cbor_tags.xhtml": "https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml",
     "fips-197.pdf": "https://csrc.nist.gov/csrc/media/publications/fips/197/final/documents/fips-197.pdf",
     "sp800-38c.pdf": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38c.pdf",
@@ -8693,6 +8698,224 @@ static const ur_encode_multi_case_t UR_ENCODE_MULTI_ACCOUNTS_CASES[] = {{
 """
 
 
+def core_eth_vectors() -> str:
+    """A signing session end to end: the request a wallet shows the camera, the digest that implies,
+    what the card answers, and the signature the shell has to put back on screen.
+
+    The digests come from eth_txn.py -- Keccak and RLP written for this generator and checked against
+    the numbers the EIPs print -- so a row passes only if the shell's transaction parser agrees with an
+    independent one about what was signed. The card's reply is a signature over that digest by the key
+    the shell exports, which is what turns a parser that hashed something else into a failure."""
+    eth_txn.self_check()
+
+    eip155 = fetch("eip-155.md")
+    assert "0xdaf5a779ae972f972197303d7b574746c7ef83eadac0f2791ad23db92e4c8e53" in eip155, \
+        "EIP-155 no longer publishes the signing hash the first row is taken from, so both that row " \
+        "and eth_txn.py's self-check need the new value"
+    assert "CHAIN_ID * 2 + 35" in eip155, \
+        "EIP-155 no longer says v = CHAIN_ID * 2 + 35, which is what every legacy row here expects"
+    erc191 = fetch("erc-191.md")
+    assert '"\\x19Ethereum Signed Message:\\n" + len(message)' in erc191, \
+        "ERC-191 no longer spells the 0x45 prefix and the decimal length, which is what the message " \
+        "row hashes"
+    eip2718 = fetch("eip-2718.md")
+    assert "TransactionType" in eip2718, "EIP-2718 no longer defines the envelope the typed rows use"
+    cddl = (HERE.parent.parent / "cddl" / "ur.cddl").read_text()
+    for line in ("eth-transaction-data = 1", "eth-typed-data = 2", "eth-raw-bytes = 3",
+                 "eth-typed-transaction = 4", "sign-data = 2", "signature = 2"):
+        assert line in cddl, f"cddl/ur.cddl no longer carries {line!r}"
+
+    # TEST-ONLY KEY: the one EIP-155's worked example uses, so the first row is the document's own.
+    priv = int("46" * 32, 16)
+    pub = eth_txn.public_key(priv)
+    to = bytes.fromhex("3535353535353535353535353535353535353535")
+    request_id = bytes.fromhex("0f8fad5bd69548fe91bbfb5c0c8675a6")
+    path = [(44, True), (60, True), (0, True)]  # m/44'/60'/0', the account path a request carries
+    path_be = b"".join(((0x80000000 | i) if h else i).to_bytes(4, "big") for i, h in path)
+
+    def signed(digest: bytes, v_base: int) -> tuple[bytes, bytes, int]:
+        r, s, rec = eth_txn.sign(priv, digest)
+        v = v_base + rec
+        width = 1 if v <= 0xff else 2 if v <= 0xffff else 3 if v <= 0xffffff else 4
+        plain = r.to_bytes(32, "big") + s.to_bytes(32, "big") + v.to_bytes(width, "big")
+        return plain, eth_txn.der_signature(r, s), v
+
+    def card_reply(der: bytes) -> bytes:
+        return eth_txn.tlv(0xa0, eth_txn.tlv(0x80, eth_txn.uncompressed(pub)) + der)
+
+    rows = []
+
+    def row(name, data_type, sign_data, digest, v_base, note, chain_id=None,
+            echo_request_id=True):
+        item = dict(name=name, data_type=data_type, sign_data=sign_data, chain_id=chain_id,
+                    digest=None, card_reply=None, cbor=None, usb=None, note=note,
+                    request_id=echo_request_id)
+        if digest is not None:
+            plain, der, v = signed(digest, v_base)
+            pairs = [(2, cbor_bytes(plain))]
+            if echo_request_id:
+                pairs.insert(0, (1, cbor_uuid(request_id)))
+            item.update(digest=digest, card_reply=card_reply(der), cbor=cbor_map(sorted(pairs)),
+                        usb=bytes([v & 0xff]) + plain[:64] + b"\x90\x00")
+        rows.append(item)
+
+    def legacy_tx(chain_id: int) -> bytes:
+        return eth_txn.rlp_list([9, 20 * 10**9, 21000, to, 10**18, b"", chain_id, 0, 0])
+
+    tx = legacy_tx(1)
+    row("the transaction EIP-155 works through, on chain 1",
+        "sign_data_type_eth_transaction_data_m_c", tx, eth_txn.keccak256(tx), 2 * 1 + 35,
+        "the document's own example: v = 37, so the signature is 65 bytes")
+
+    tx = legacy_tx(137)
+    row("the same transaction bound to chain 137, where v needs two bytes",
+        "sign_data_type_eth_transaction_data_m_c", tx, eth_txn.keccak256(tx), 2 * 137 + 35,
+        "309 or 310 does not fit a byte, which is what the ERC's 65 would force it into",
+        chain_id=137)
+
+    tx = legacy_tx(42161)
+    row("chain 42161, whose v is past two bytes",
+        "sign_data_type_eth_transaction_data_m_c", tx, eth_txn.keccak256(tx), 2 * 42161 + 35,
+        "three bytes of v", chain_id=42161)
+
+    tx = legacy_tx(1313161554)
+    row("chain 1313161554, whose v is past three",
+        "sign_data_type_eth_transaction_data_m_c", tx, eth_txn.keccak256(tx), 2 * 1313161554 + 35,
+        "four bytes of v, the widest a uint32 holds", chain_id=1313161554)
+
+    tx = legacy_tx(0x7FFFFFFF)
+    row("a chain id past the point where v * 2 + 35 would wrap",
+        "sign_data_type_eth_transaction_data_m_c", tx, None, 0,
+        "the parser faults on it, so nothing is signed and no QR is shown")
+
+    tx = bytes([2]) + eth_txn.rlp_list([137, 9, 2 * 10**9, 30 * 10**9, 21000, to, 10**18, b"", []])
+    row("an EIP-1559 transfer, whose v is the y-parity alone",
+        "sign_data_type_eth_typed_transaction_m_c", tx, eth_txn.keccak256(tx), 0,
+        "0 or 1 whatever the chain id, because the type is inside what gets hashed", chain_id=137)
+
+    tx = bytes([1]) + eth_txn.rlp_list(
+        [1, 9, 20 * 10**9, 21000, to, 10**18, b"", [[to, [b"\x00" * 32]]]])
+    row("an EIP-2930 transaction with an access list",
+        "sign_data_type_eth_typed_transaction_m_c", tx, eth_txn.keccak256(tx), 0,
+        "the access list is part of what is hashed", chain_id=1)
+
+    tx = bytes([2]) + eth_txn.rlp_list([137, 10, 2 * 10**9, 30 * 10**9, 21000, to, 2 * 10**18,
+                                        b"", []])
+    row("a request that carried no request-id",
+        "sign_data_type_eth_typed_transaction_m_c", tx, eth_txn.keccak256(tx), 0,
+        "ERC-4527 makes it optional, so the signature has nothing to echo back",
+        chain_id=137, echo_request_id=False)
+
+    tx = bytes([5]) + eth_txn.rlp_list([1, 9, 21000, to, 0, b"", []])
+    row("a transaction type the shell has never seen",
+        "sign_data_type_eth_typed_transaction_m_c", tx, None, 0,
+        "a type byte below 0x80 that is not one of the two it parses is refused, not guessed")
+
+    msg = b"keycard-shell host test"
+    row("a personal message", "sign_data_type_eth_raw_bytes_m_c", msg,
+        eth_txn.message_digest(msg), 27,
+        "ERC-191: 27 or 28, with the prefix and the decimal length prepended by the shell")
+
+    # --- emit ------------------------------------------------------------------------------
+    arrays = []
+
+    def blob(data: bytes, prefix: str) -> str:
+        name = f"{prefix}_{len(arrays)}"
+        arrays.append(f"static const uint8_t {name}[] = {{\n{c_array(data, 12)}\n}};\n")
+        return name
+
+    def ptr(data, prefix: str) -> str:
+        return f"{blob(data, prefix)}, {len(data)}" if data else "0, 0"
+
+    case_rows = []
+    for r in rows:
+        case_rows.append("  {" + ", ".join([
+            f'"{r["name"]}"', r["data_type"],
+            str(1 if r["request_id"] else 0),
+            str(1 if r["chain_id"] is not None else 0), str(r["chain_id"] or 0),
+            ptr(r["sign_data"], "sd"), ptr(r["digest"], "dg"), ptr(r["card_reply"], "cr"),
+            ptr(r["cbor"], "cb"), ptr(r["usb"], "us"), f'"{r["note"]}"']) + "},")
+
+    return f"""#ifndef VECTORS_CORE_ETH_H
+#define VECTORS_CORE_ETH_H
+
+/* spec: {provenance('eip-155.md')}
+ *     {provenance('erc-191.md')}
+ *     {provenance('eip-2718.md')}
+ *     {provenance('erc-4527.md')}
+ *
+ * What a signing session has to produce. A wallet shows the camera an eth-sign-request; the shell
+ * parses it, hashes what it found, asks the card to sign that hash, and answers with an
+ * eth-signature. The rows pin both ends: the digest the shell must have arrived at -- from the Keccak
+ * and RLP in eth_txn.py, which check themselves against the values the EIPs print -- and the bytes of
+ * the signature the shell puts back on screen, which are the artifact a wallet broadcasts.
+ *
+ * The v tail is where the arithmetic earns its keep. EIP-155 puts the chain id in it
+ * (CHAIN_ID * 2 + 35 + parity), an EIP-2718 typed transaction puts only the parity, and an ERC-191
+ * message 27 or 28 -- so a signature is 65 bytes on mainnet, 66 on Polygon, 67 on Arbitrum and 68 on
+ * Aurora, the tail written in as few bytes as hold it. ERC-4527 5.3 is aware of the tension: it advises
+ * against a chain id above 32767 on the grounds that a wallet reading the whole signature still
+ * broadcasts while one reading a fixed 65 does not. expect_usb is what the same session answers a host
+ * on the wire with, where the protocol gives v a single byte.
+ *
+ * The card's reply is a DER signature by the exported key over the pinned digest, in the template the
+ * applet uses: a 0xa0 holding a 0x80 uncompressed key, then the DER. The shell recovers the key from
+ * the signature and compares it with the one the reply carries, so a row only passes if the shell
+ * hashed what this file says -- and, as the comparison is against the reply's own key, nothing here
+ * pins that key to the one the request asked for.
+ *
+ * A row without a digest never reaches the card: the parser faulted first, and the shell shows an
+ * error where the QR would have been.
+ */
+
+#include <stdint.h>
+
+/* TEST-ONLY KEY: the private key EIP-155's worked example uses, guarding nothing real. The card model
+ * exports it and signs with it, so every reply is a signature the exported key made -- which is what
+ * the shell checks, and the reason one key serves every row. */
+static const uint8_t CORE_ETH_SIGN_PRIV[] = {{
+{c_array(priv.to_bytes(32, 'big'), 12)}
+}};
+
+/* m/44'/60'/0' in the card's byte order, which is what the SIGN command carries after the digest. */
+static const uint8_t CORE_ETH_PATH[] = {{
+{c_array(path_be, 12)}
+}};
+
+static const uint8_t CORE_ETH_REQUEST_ID[] = {{
+{c_array(request_id, 12)}
+}};
+
+typedef struct {{
+  const char* name;
+  /* One of the sign_data_type_* enumerators of ur_types.h, which is what the request's type choice
+   * holds -- named rather than numbered so the row says which. */
+  uint8_t data_type;
+  uint8_t has_request_id;
+  uint8_t has_chain_id;
+  uint32_t chain_id;
+  const uint8_t* sign_data;
+  uint16_t sign_data_len;
+  const uint8_t* digest;
+  uint16_t digest_len;
+  const uint8_t* card_reply;
+  uint16_t card_reply_len;
+  const uint8_t* expect_cbor;
+  uint16_t expect_cbor_len;
+  const uint8_t* expect_usb;
+  uint16_t expect_usb_len;
+  const char* note;
+}} core_eth_case_t;
+
+{chr(10).join(arrays)}
+static const core_eth_case_t CORE_ETH_CASES[] = {{
+{chr(10).join(case_rows)}
+}};
+
+#endif /* VECTORS_CORE_ETH_H */
+"""
+
+
 def ur_decode_spec_checks() -> tuple[str, str]:
     """The documents the rows below are read from, checked while generating so a header cannot be
     regenerated against a spec that stopped saying what these rows assume."""
@@ -13808,6 +14031,7 @@ def main() -> None:
         "vectors_ur.h": ur_vectors(),
         "vectors_ur_decode.h": ur_decode_vectors(),
         "vectors_ur_encode.h": ur_encode_vectors(),
+        "vectors_core_eth.h": core_eth_vectors(),
     "vectors_openpgp.h": openpgp_vectors(),
         "vectors_hal_aes.h": aes_vectors(),
         "vectors_keys.h": keys_vectors(),

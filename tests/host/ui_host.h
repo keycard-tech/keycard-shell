@@ -19,6 +19,11 @@
 
 void host_ui_reset(void);
 
+/* The last UR the shell put on screen. Unlike the other screens this one's argument is the protocol
+ * itself -- the bytes a wallet scans -- so the seam keeps them, copied because the caller hands over a
+ * pool it reuses for the next item. NULL when nothing has been shown since the reset. */
+const uint8_t* host_ui_ur_qr(uint32_t* len, ur_type_t* type);
+
 void host_ui_answer_menu(core_evt_t answer, i18n_str_id_t chosen);
 void host_ui_answer_prompt(core_evt_t answer);
 void host_ui_answer_brightness(core_evt_t answer, uint8_t value);
@@ -69,6 +74,8 @@ void host_ui_keycard_reset(void);
  * test reads back with `host_ui_progress_at`, oldest first. */
 void host_ui_record(const char* name);
 void host_ui_record_progress(const char* name, uint8_t progress);
+/* The payload of ui_display_ur_qr, which the accessor above hands back. */
+void host_ui_record_ur_qr(const uint8_t* data, uint32_t len, ur_type_t type);
 unsigned host_ui_calls(void);
 uint8_t host_ui_progress_at(unsigned i);
 
