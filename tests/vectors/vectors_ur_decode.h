@@ -22,16 +22,22 @@
  *
  * btc-sign-request and dev-auth have no document outside this repository, so their rows are read
  * from cddl/ur.cddl, whose sha256 is above: for those two families a schema change moves the
- * vectors, and the constraint column says which clause of the CDDL each refusal comes from. Two rows
+ * vectors, and the constraint column says which clause of the CDDL each refusal comes from.
  * A handful of rows record behaviour rather than a defect, so that a change to it shows up as a
  * failing test. The schema puts no size on a uuid, so a tag 37 around three bytes is accepted as a
- * three byte request id. `child-index = uint31 = uint32 .lt 2^31` is not enforced by the generated
- * decoder, and core.c's core_set_derivation_path() ORs the hardened bit in without bounding the
- * index, so an index of 2^31 spells the same BIP32 path as 0'. Neither is a zcbor quirk to argue
- * with: the generated decoders do enforce .size (a uint32 field checks <= UINT32_MAX, a challenge
- * checks .len <= 32) but emit a plain zcbor_uint32_decode for .gt and .lt, so every bound written
- * that way in cddl/ur.cddl is documentation only, while the bounds written with .size are checked:
- * the row asking for depth 256 is refused, the two above are not. And zcbor reports success once one
+ * three byte request id.
+ *
+ * `child-index = uint31 = uint32 .lt 2^31` and `source-fingerprint: uint32 .gt 0` are not enforced
+ * here or by anything like it: the generated decoders check bounds written with .size (a uint32 field
+ * checks <= UINT32_MAX, a challenge checks .len <= 32) and emit a plain zcbor_uint32_decode for .gt
+ * and .lt, so both values reach the caller -- the depth 256 row, refused by .size, is the contrast.
+ * What the decoder lets through, core.c's core_set_derivation_path() refuses: it bounds the index
+ * below 2^31 before ORing in the hardened bit, requires a component to carry an index rather than
+ * leaving it to whatever the reused decode buffer holds, and reads a fingerprint of 0 as the "none"
+ * the schema means by it. tests/test_core_derivation.c pushes these same payloads through that
+ * function, so the two suites together cover camera bytes to derivation bytes.
+ *
+ * zcbor reports success once one whole item has been read, so a psbt with a byte appended decodes and reports the shorter count;
  * whole item has been read, so a psbt with a byte appended decodes and reports the shorter count;
  * for the same reason a btc-sign-request truncated inside its optional tail decodes with those
  * fields absent, which is why core_btc.c requires the derivation paths rather than relying on the
@@ -710,12 +716,12 @@ static const ur_decode_eth_case_t UR_DECODE_ETH_CASES[] = {
   {"address is 20 bytes, so 21 is refused", eth_29, 60, 0, "eth-address-bytes = bstr .size 20", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {"eleven components is one past the bound", eth_30, 59, 0, "components: [0*10 path-component]", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {"a request-id that is a bare bstr, not tag 37", eth_31, 55, 0, "uuid = #6.37(bstr)", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  {"child index at 2^31: the schema bounds it below, nothing enforces it", eth_32, 43, 1, "child-index = uint31 = uint32 .lt 2^31, and the index is handed to the caller anyway", b_33, 24, 1, 0, 0, path_8, hard_9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  {"child index at 2^31 passes the decoder and is refused for the derivation", eth_32, 43, 1, "child-index = uint31 = uint32 .lt 2^31 is not emitted; core_set_derivation_path() refuses it", b_33, 24, 1, 0, 0, path_8, hard_9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {"a negative child index", eth_34, 39, 0, "child-index is a uint31", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {"is-hardened as an integer rather than a bool", eth_35, 39, 0, "is-hardened = bool", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {"the keypath tag the type paper uses now, 40304, is not the one this schema declares", eth_36, 37, 0, "cddl/ur.cddl tags crypto-keypath 304; BCR-2020-007 has since moved it to 40304", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {"keypath depth 256 is past uint8", eth_37, 41, 0, "depth: uint8 = uint .size 1", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  {"source-fingerprint 0: .gt 0 is not enforced either", eth_38, 39, 1, "source-fingerprint: uint32 .gt 0, dropped by the generator like the .lt on child-index", b_39, 24, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0},
+  {"source-fingerprint 0: .gt 0 is not enforced either", eth_38, 39, 1, "source-fingerprint: uint32 .gt 0 is not emitted; core_set_derivation_path() refuses it", b_39, 24, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0},
   {"sign-data as text rather than bstr", eth_40, 16, 0, "sign-data-bytes = bstr", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {"the whole request as an array instead of a map", eth_41, 34, 0, "eth-sign-request is a map", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
   {"an empty map", eth_42, 1, 0, "sign-data, data-type and derivation-path are required", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},

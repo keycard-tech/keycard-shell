@@ -72,7 +72,10 @@ void device_auth_run() {
   auth.dev_auth_auth_sig.dev_auth_auth_sig.value = g_core.data.sig.plain_sig;
   auth.dev_auth_auth_sig.dev_auth_auth_sig.len = AUTH_SIG_LEN;
 
-  cbor_encode_dev_auth(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &auth, &g_core.data.sig.cbor_len);
+  if (cbor_encode_dev_auth(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &auth, &g_core.data.sig.cbor_len) != ZCBOR_SUCCESS) {
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
+    return;
+  }
 
   if (ui_display_ur_qr(NULL, g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, DEV_AUTH) != CORE_EVT_UI_OK) {
     return;

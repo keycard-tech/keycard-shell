@@ -207,7 +207,10 @@ void core_multisig_export() {
   size_t out_len;
 
   uint8_t *out_buf = &g_mem_heap[qr_out.len];
-  cbor_encode_psbt(out_buf, MEM_HEAP_SIZE - qr_out.len, &qr_out, &out_len);
+  if (cbor_encode_psbt(out_buf, MEM_HEAP_SIZE - qr_out.len, &qr_out, &out_len) != ZCBOR_SUCCESS) {
+    multisig_crypto_wipe(&m);
+    return;
+  }
 
   ui_display_ur_qr(LSTR(MULTISIG_ADDR_TITLE), out_buf, out_len, BYTES);
 

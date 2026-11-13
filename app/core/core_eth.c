@@ -433,6 +433,10 @@ void core_eth_eip4527_run(struct eth_sign_request* qr_request) {
     sig.eth_signature_signature.len += 4;
   }
 
-  cbor_encode_eth_signature(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &sig, &g_core.data.sig.cbor_len);
+  if (cbor_encode_eth_signature(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &sig, &g_core.data.sig.cbor_len) != ZCBOR_SUCCESS) {
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
+    return;
+  }
+
   ui_display_ur_qr(NULL, g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, ETH_SIGNATURE);
 }

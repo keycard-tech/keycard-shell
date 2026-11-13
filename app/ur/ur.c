@@ -397,7 +397,11 @@ app_err_t ur_encode_next(ur_out_t* ur, char* out, size_t max_len) {
   }
 
   size_t part_cbor_len;
-  cbor_encode_ur_part(part_cbor, (ur->part.ur_part_data.len + MAX_CBOR_HEADER_LEN), &ur->part, &part_cbor_len);
+
+  if (cbor_encode_ur_part(part_cbor, (ur->part.ur_part_data.len + MAX_CBOR_HEADER_LEN), &ur->part, &part_cbor_len) != ZCBOR_SUCCESS) {
+    return ERR_DATA;
+  }
+
   return ur_encode_part(ur, part_cbor, part_cbor_len, out, max_len);
 }
 

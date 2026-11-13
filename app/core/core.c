@@ -189,16 +189,32 @@ app_err_t core_export_public(uint8_t* pub, uint8_t* chain, uint32_t* fingerprint
 }
 
 app_err_t core_set_derivation_path(struct crypto_keypath* derivation_path) {
-  g_core.bip44_path_len = derivation_path->crypto_keypath_components_path_component_m_count * 4;
+  size_t count = derivation_path->crypto_keypath_components_path_component_m_count;
 
-  if (g_core.bip44_path_len > BIP44_MAX_PATH_LEN) {
-    g_core.bip44_path_len = 0;
+  g_core.bip44_path_len = 0;
+
+  if (count * 4 > BIP44_MAX_PATH_LEN) {
     return ERR_DATA;
   }
 
-  for (int i = 0; i < derivation_path->crypto_keypath_components_path_component_m_count; i++) {
-    uint32_t idx = derivation_path->crypto_keypath_components_path_component_m[i].path_component_child_index_m;
-    if (derivation_path->crypto_keypath_components_path_component_m[i].path_component_is_hardened_m) {
+  if (derivation_path->crypto_keypath_source_fingerprint_present && derivation_path->crypto_keypath_source_fingerprint.crypto_keypath_source_fingerprint == 0) {
+    return ERR_DATA;
+  }
+
+  for (size_t i = 0; i < count; i++) {
+    const struct path_component* component = &derivation_path->crypto_keypath_components_path_component_m[i];
+
+    if (!component->path_component_child_index_m_present) {
+      return ERR_DATA;
+    }
+
+    uint32_t idx = component->path_component_child_index_m;
+
+    if (idx & 0x80000000) {
+      return ERR_DATA;
+    }
+
+    if (component->path_component_is_hardened_m) {
       idx |= 0x80000000;
     }
 
@@ -207,6 +223,8 @@ app_err_t core_set_derivation_path(struct crypto_keypath* derivation_path) {
     g_core.bip44_path[(i * 4) + 2] = (idx >> 8) & 0xff;
     g_core.bip44_path[(i * 4) + 3] = idx & 0xff;
   }
+
+  g_core.bip44_path_len = count * 4;
 
   return ERR_OK;
 }

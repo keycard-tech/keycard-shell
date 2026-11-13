@@ -295,7 +295,11 @@ void core_btc_psbt_qr_run(struct zcbor_string* qr_request) {
   qr_out.value = psbt_out;
   qr_out.len = out_len;
 
-  cbor_encode_psbt(g_mem_heap, MEM_HEAP_SIZE, &qr_out, &out_len);
+  if (cbor_encode_psbt(g_mem_heap, MEM_HEAP_SIZE, &qr_out, &out_len) != ZCBOR_SUCCESS) {
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
+    return;
+  }
+
   ui_display_ur_qr(NULL, g_mem_heap, out_len, CRYPTO_PSBT);
 }
 
@@ -370,7 +374,11 @@ void core_btc_sign_msg_qr_run(struct btc_sign_request* qr_request) {
   cbor_sig.btc_signature_public_key.value = pubkey;
   cbor_sig.btc_signature_public_key.len = PUBKEY_COMPRESSED_LEN;
 
-  cbor_encode_btc_signature(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &cbor_sig, &g_core.data.sig.cbor_len);
+  if (cbor_encode_btc_signature(g_core.data.sig.cbor_sig, CBOR_SIG_MAX_LEN, &cbor_sig, &g_core.data.sig.cbor_len) != ZCBOR_SUCCESS) {
+    ui_info(ICON_INFO_ERROR, LSTR(INFO_MALFORMED_DATA_MSG), LSTR(INFO_MALFORMED_DATA_SUB), 0);
+    return;
+  }
+
   ui_display_ur_qr(NULL, g_core.data.sig.cbor_sig, g_core.data.sig.cbor_len, BTC_SIGNATURE);
 }
 

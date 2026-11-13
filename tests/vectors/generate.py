@@ -7965,6 +7965,10 @@ def cbor_text(text: str) -> bytes:
     return cbor_head(3, len(raw)) + raw
 
 
+def cbor_bool(value: bool) -> bytes:
+    return b"\xf5" if value else b"\xf4"
+
+
 def cbor_tag(tag: int, inner: bytes) -> bytes:
     return cbor_head(6, tag) + inner
 
@@ -8008,6 +8012,419 @@ def cbor_keypath(components: list[tuple[int | None, bool]], fingerprint: int | N
     if depth is not None:
         pairs.append((3, cbor_uint(depth)))
     return cbor_tag(304, cbor_map(pairs))
+
+
+def ur_encode_spec_checks() -> tuple[str, str]:
+    """The documents the expected bytes below are read from, checked while generating so this header
+    cannot be regenerated against a spec that stopped saying what these rows assume."""
+    erc = fetch("erc-4527.md")
+    for label, num in (("request-id", 1), ("signature", 2), ("origin", 3)):
+        assert re.search(rf"^{label} = {num}\b", erc, re.M), \
+            f"ERC-4527 no longer labels the {label} of eth-signature as {num}, so the expected bytes " \
+            f"here would describe a map no wallet is sent"
+    assert "eth-signature-bytes = bytes .size 65" in erc, \
+        "ERC-4527 no longer fixes eth-signature-bytes at 65, so the row about a 66 byte signature " \
+        "and the note about the divergence need rewriting"
+
+    iana = fetch("cbor_tags.xhtml")
+    assert re.search(r"<td>37</td>\s*<td>byte string</td>\s*<td>Binary UUID", iana), \
+        "tag 37 is no longer a byte string holding a Binary UUID in the IANA registry"
+
+    cddl = (HERE.parent.parent / "cddl" / "ur.cddl").read_text()
+    for line in ("ur-part = [", "seqNum: uint32,", "seqLen: uint,", "messageLen: uint,",
+                 "checksum: uint32,", "data: bstr",
+                 "request-id = 1", "signature = 2", "signature-origin = 3", "public-key = 3",
+                 "dev-auth-step = 1", "dev-id = 2", "first-auth = 3", "auth-time = 4",
+                 "auth-count = 5", "challenge = 6", "auth-sig = 7",
+                 "is-private = 2", "key-data = 3", "chain-code = 4", "use-info = 5", "origin = 6",
+                 "children = 7", "parent-fingerprint = 8", "name = 9", "source = 10",
+                 "key-data-bytes = bstr .size 33", "chain-code-bytes = bstr .size 32",
+                 "challenge: bstr .size 32", "auth-sig: bstr .size 64",
+                 "tagged-psbt = #6.310(psbt)", "psbt = bstr"):
+        assert line in cddl, f"cddl/ur.cddl no longer carries {line!r}"
+    assert ";? is-master: bool," in cddl, \
+        "hd-key's is-master is no longer commented out; if it came back the map gains a field 1 and " \
+        "every expected byte string in this header moves"
+    return erc, iana
+
+
+def ur_encode_vectors() -> str:
+    """The bytes the shell hands back to the wallet, built by generate.py's own CBOR encoders and
+    compared byte for byte against what cbor_encode_* produces. Canonical form -- minimal length
+    heads, map keys ascending -- is exactly what zcbor cannot assert about itself."""
+    erc, iana = ur_encode_spec_checks()
+    cddl = (HERE.parent.parent / "cddl" / "ur.cddl").read_text()
+
+    uid = bytes(range(16))
+    short_uid = b"\x01\x02\x03"
+    r = bytes(range(32))
+    sv = bytes([(0xff - i) & 0xff for i in range(32)])
+    sig65 = r + sv + b"\x1b"               # v = 27, the legacy form
+    sig66 = r + sv + b"\x01\x35"           # v = 309, chain id 137
+    pub33 = b"\x02" + bytes(range(32))
+    cc32 = bytes(range(32, 64))
+    psbt46 = b"psbt\xff" + bytes(40)
+    chal32 = bytes(range(32))
+    auth64 = bytes(range(64))
+    part_data = bytes(range(44))
+
+    blobs: list[tuple[str, bytes]] = []
+    tables: list[tuple[str, list[int], str]] = []
+
+    def blob(prefix: str, data: bytes) -> str:
+        name = f"{prefix}_{len(blobs)}"
+        blobs.append((name, data))
+        return name
+
+    def uint_table(values: list[int]) -> str:
+        name = f"path_{len(tables)}"
+        tables.append((name, values, "uint32_t"))
+        return name
+
+    def bool_table(values: list[int]) -> str:
+        name = f"hard_{len(tables)}"
+        tables.append((name, values, "uint8_t"))
+        return name
+
+    def opt(data, prefix: str = "b") -> str:
+        if data is None:
+            return "0, 0"
+        if isinstance(data, str):
+            data = data.encode()
+        return f"{blob(prefix, data)}, {len(data)}"
+
+    def text_ptr(value) -> str:
+        return f'"{value}"' if value is not None else "0"
+
+    # --- eth-signature ---------------------------------------------------------------------
+    eth_sig = []
+    for name, rid, sig, origin, constraint in [
+        ("signature only: r, s and v = 27", None, sig65, None, ""),
+        ("request-id and signature, what a paired request answers with", uid, sig65, None, ""),
+        ("all three fields, origin naming where the request came from", uid, sig65, "Sparrow", ""),
+        ("a 66 byte signature, because v for chain id 137 is 309", None, sig66, None,
+         "ERC-4527 says bytes .size 65; cddl/ur.cddl says bstr and the shell writes v in as many "
+         "bytes as it needs"),
+        ("an empty signature still encodes", None, b"", None, "eth-signature-bytes = bstr"),
+    ]:
+        pairs = []
+        if rid is not None:
+            pairs.append((1, cbor_uuid(rid)))
+        pairs.append((2, cbor_bytes(sig)))
+        if origin is not None:
+            pairs.append((3, cbor_text(origin)))
+        eth_sig.append((name, cbor_map(pairs), rid, sig, origin, constraint))
+
+    # --- btc-signature ---------------------------------------------------------------------
+    btc_sig = []
+    for name, rid, sig, pub, constraint in [
+        ("all three, as core_btc.c fills them", uid, sig65, pub33, ""),
+        ("a three byte request-id: the schema puts no size on a uuid", short_uid, sig65, pub33,
+         "uuid = #6.37(bstr), with no .size"),
+        ("an empty signature and public key", uid, b"", b"", "signature and public-key are bstr"),
+    ]:
+        btc_sig.append((name, cbor_map([(1, cbor_uuid(rid)), (2, cbor_bytes(sig)),
+                                       (3, cbor_bytes(pub))]), rid, sig, pub, constraint))
+
+    # --- ur-part ---------------------------------------------------------------------------
+    ur_part = []
+    for name, seq_num, seq_len, msg_len, checksum, data in [
+        ("first and only part", 0, 1, len(part_data), 0xC0FFEE, part_data),
+        ("no data", 0, 0, 0, 0, b""),
+        ("sequence numbers at 255 and 256, so the heads differ in width", 255, 256, 1000,
+         0xFFFFFFFF, part_data),
+        ("the top of uint32 in every number", 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+         part_data),
+        ("a part of 200 bytes, one byte string past the 1-byte head", 1, 2, 3, 4, bytes(200)),
+    ]:
+        ur_part.append((name, cbor_array([cbor_uint(seq_num), cbor_uint(seq_len),
+                                         cbor_uint(msg_len), cbor_uint(checksum),
+                                         cbor_bytes(data)]),
+                        seq_num, seq_len, msg_len, checksum, data))
+
+    # --- dev-auth --------------------------------------------------------------------------
+    dev = []
+    dev.append(("init step, nothing else", cbor_map([(1, cbor_uint(1))]), 1, None,
+                0, 0, 0, 0, 0, 0, None, None, 1, ""))
+    dev.append(("device step with a challenge",
+                cbor_map([(1, cbor_uint(2)), (6, cbor_bytes(chal32))]), 2, None,
+                0, 0, 0, 0, 0, 0, chal32, None, 1, ""))
+    dev.append(("server step, every field",
+                cbor_map([(1, cbor_uint(3)), (2, cbor_uuid(uid)), (3, cbor_uint(1700000000)),
+                          (4, cbor_uint(1700000600)), (5, cbor_uint(7)),
+                          (6, cbor_bytes(chal32)), (7, cbor_bytes(auth64))]), 3, uid,
+                1700000000, 1700000600, 7, 1, 1, 1, chal32, auth64, 1, ""))
+    dev.append(("a 31 byte challenge is refused on the way out as well as in", b"", 2, None,
+                0, 0, 0, 0, 0, 0, chal32[:31], None, 0,
+                "challenge: bstr .size 32 becomes len >= 32 && len <= 32 in the generated encoder"))
+    dev.append(("a 33 byte challenge is refused", b"", 2, None,
+                0, 0, 0, 0, 0, 0, chal32 + b"\x00", None, 0,
+                "challenge: bstr .size 32"))
+    dev.append(("a step outside the choice is refused", b"", 0, None,
+                0, 0, 0, 0, 0, 0, None, None, 0, "dev-auth-step-type = 1 / 2 / 3"))
+
+    # --- psbt ------------------------------------------------------------------------------
+    psbt = [("a plain bstr", 0, psbt46, ""), ("an empty bstr", 0, b"", ""),
+            ("tagged as #6.310", 1, psbt46, ""), ("tagged and empty", 1, b"", "")]
+
+    # --- hd-key ----------------------------------------------------------------------------
+    priv33 = b"\x00" + bytes(range(32))
+    path_m = [(44, True), (60, True), (0, True)]
+    hd = []
+    for (name, is_private, key_data, chain_code, origin, origin_fp, origin_depth, parent_fp, nm,
+         source, children, constraint, accept) in [
+        ("an exported account key, the way the eth display builds it", False, pub33, cc32,
+         path_m, 0x12345678, 3, 0x9abcdef0, "m/44'/60'/0'", "Keycard", None, "", 1),
+        ("the required fields only, with an empty origin", False, pub33, cc32,
+         [], None, None, 0x9abcdef0, "", None, None, "", 1),
+        ("a private key: the encoder does not care which it is handed", True, priv33, cc32,
+         path_m, None, None, 0x9abcdef0, "m/44'", None, None,
+         "is-private is a fact about the bytes, not a permission", 1),
+        ("with children, whose single component carries no index", False, pub33, cc32,
+         path_m, 0x12345678, None, 0x9abcdef0, "m/44'/60'/0'", "Keycard", [(None, False)],
+         "core.c builds exactly this shape for the children keypath of an account", 1),
+        ("a 32 byte key-data is refused: .size 33 is exact on the way out", False, cc32, cc32,
+         path_m, None, None, 0x9abcdef0, "m/44'", None, None,
+         "key-data-bytes = bstr .size 33", 0),
+    ]:
+        pairs = [(2, cbor_bool(is_private)), (3, cbor_bytes(key_data)),
+                 (4, cbor_bytes(chain_code)),
+                 (6, cbor_keypath(origin, fingerprint=origin_fp, depth=origin_depth)),
+                 (8, cbor_uint(parent_fp)), (9, cbor_text(nm))]
+        if children is not None:
+            pairs.append((7, cbor_keypath(children)))
+        if source is not None:
+            pairs.append((10, cbor_text(source)))
+        if not accept:
+            pairs = []
+        hd.append((name, cbor_map(sorted(pairs)), is_private, key_data, chain_code, origin,
+                   origin_fp, origin_depth, parent_fp, nm, source, children, constraint, accept))
+
+    # --- emit ------------------------------------------------------------------------------
+    def digest(text: str) -> str:
+        return hashlib.sha256(text.encode()).hexdigest()
+
+    sig_rows = []
+    for name, expect, rid, sig, third, constraint in eth_sig + btc_sig:
+        sig_rows.append("  {" + ", ".join(
+            [f'"{name}"', blob('x', expect), str(len(expect)), opt(rid, 'i'), opt(sig, 's'),
+             opt(third, 't'), f'"{constraint}"']) + "},")
+    # eth rows carry an optional origin (text) where btc carry a required public key (bstr); the
+    # origin rows are the first len(eth_sig).
+    eth_sig_rows, btc_sig_rows = sig_rows[:len(eth_sig)], sig_rows[len(eth_sig):]
+
+    part_rows = []
+    for name, expect, seq_num, seq_len, msg_len, checksum, data in ur_part:
+        part_rows.append("  {" + ", ".join(
+            [f'"{name}"', blob('p', expect), str(len(expect)), str(seq_num), str(seq_len),
+             str(msg_len), str(checksum), opt(data, 'd')]) + "},")
+
+    dev_rows = []
+    for (name, expect, step, dev_id, first_auth, auth_time, auth_count, has_first, has_time,
+         has_count, challenge, auth_sig, accept, constraint) in dev:
+        dev_rows.append("  {" + ", ".join(
+            [f'"{name}"', blob('dv', expect), str(len(expect)), str(step), opt(dev_id, 'i'),
+             str(first_auth), str(auth_time), str(auth_count), str(has_first), str(has_time),
+             str(has_count), opt(challenge, 'c'), opt(auth_sig, 'g'), str(accept),
+             f'"{constraint}"']) + "},")
+
+    ps_rows = []
+    for name, tagged, payload, constraint in psbt:
+        expect = cbor_tag(310, cbor_bytes(payload)) if tagged else cbor_bytes(payload)
+        ps_rows.append("  {" + ", ".join(
+            [f'"{name}"', blob('ps', expect), str(len(expect)), str(tagged),
+             opt(payload, 'b')]) + "},")
+
+    hd_rows = []
+    for (name, expect, is_private, key_data, chain_code, origin, origin_fp, origin_depth,
+         parent_fp, nm, source, children, constraint, accept) in hd:
+        if origin:
+            o_idx, o_hard = uint_table([i for i, _ in origin]), bool_table([1 if h else 0 for _, h in origin])
+        else:
+            o_idx, o_hard = "0", "0"
+        if children:
+            c_idx = uint_table([0xFFFFFFFF if i is None else i for i, _ in children])
+            c_hard = bool_table([1 if h else 0 for _, h in children])
+        else:
+            c_idx, c_hard = "0", "0"
+        hd_rows.append("  {" + ", ".join(
+            [f'"{name}"', blob('h', expect), str(len(expect)), str(1 if is_private else 0),
+             opt(key_data, 'k'), opt(chain_code, 'c'), o_idx, o_hard, str(len(origin)),
+             str(origin_fp or 0), str(1 if origin_fp is not None else 0),
+             str(origin_depth or 0), str(1 if origin_depth is not None else 0),
+             str(parent_fp), text_ptr(nm), text_ptr(source), c_idx, c_hard,
+             str(len(children) if children is not None else 0),
+             str(1 if children is not None else 0), f'"{constraint}"', str(accept)]) + "},")
+
+    blob_defs = []
+    for name, data in blobs:
+        if data:
+            blob_defs.append(f"static const uint8_t {name}[] = {{\n{c_array(data, 16)}\n}};\n")
+        else:
+            blob_defs.append(f"static const uint8_t {name}[] = {{0}};\n")
+    for name, values, ctype in tables:
+        blob_defs.append(f"static const {ctype} {name}[] = {{{', '.join(str(v) for v in values)}}};\n")
+
+    return f"""#ifndef VECTORS_UR_ENCODE_H
+#define VECTORS_UR_ENCODE_H
+
+/* spec: https://raw.githubusercontent.com/ethereum/ercs/master/ERCS/erc-4527.md
+ * sha256 {digest(erc)}
+ *     https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml
+ * sha256 {digest(iana)}
+ *     cddl/ur.cddl in this repository
+ * sha256 {digest(cddl)}
+ *
+ * The bytes the shell shows the wallet. Nine of the eleven generated encoders are reachable --
+ * eth-signature and btc-signature out of the signing flows, hd-key and crypto-account out of the
+ * export paths, dev-auth out of the two-step verification, psbt out of three places, ur_part out of
+ * the QR animator in ur.c -- and every one of them produces a QR code that something else has to
+ * parse. A byte that is merely different is enough to break that, which is why the expectation here
+ * is the whole encoded item rather than a property of it.
+ *
+ * The expected bytes come from generate.py's own encoders, the same ones that build the decode
+ * vectors, and share nothing with the code under test. Canonical form is the assertion zcbor cannot
+ * make about itself: minimal length heads, map keys in ascending order, an absent optional field
+ * missing rather than null. The generator refuses to write this header unless ERC-4527 still labels
+ * the signature fields 1..3 and still says bytes .size 65, unless the IANA registry still gives tag
+ * 37 to a Binary UUID, and unless cddl/ur.cddl still carries the field numbers, the .size constraints
+ * and hd-key's commented-out is-master.
+ *
+ * One row records a divergence rather than a defect, and the constraint column says which:
+ * ERC-4527 fixes eth-signature-bytes at 65 bytes, this repository's schema says bstr, and core_eth.c
+ * writes v in as few bytes as it needs, so a signature for a chain id at 110 or above comes out 66
+ * bytes or longer. Whether a given wallet enforces the 65 is not settled by anything here.
+ *
+ * The rows that are refused pin the other half of the story, and it is not the half to be assumed.
+ * A .size constraint survives into the encoder as `len >= n && len <= n`, so a caller that handed
+ * over a 32 byte key-data or a 31 byte challenge is refused -- but a refusal is not a rollback. A map
+ * header is written with the field count at the top of the range and patched only when the map
+ * closes, so an item that failed halfway leaves `a7` for dev-auth's seven fields, or `a9` for hd-key's
+ * nine, with whatever it managed to write behind it, and the length out-parameter is left exactly as
+ * it was passed in. core_eth.c, core_btc.c and auth.c all discard the return value and then display
+ * `g_core.data.sig.cbor_sig` at `g_core.data.sig.cbor_len`, which on a failure is the previous
+ * signature's length against a buffer holding part of this one. Nothing reaches that today -- the
+ * fields are fixed-size and CBOR_SIG_MAX_LEN is 192 -- which is precisely why the shape of a refusal
+ * belongs in a test rather than in a comment.
+ *
+ * hd-key's children keypath row is the shape core.c itself builds -- one component carrying no
+ * child index at all -- recorded so that a change to it, in either direction, is a decision rather
+ * than a surprise.
+ */
+
+#include <stdint.h>
+
+{"".join(blob_defs)}
+/* eth-signature and btc-signature have the same three slots: a request-id (optional for eth,
+ * required for btc), a signature and a third field -- origin text for eth, public-key bstr for btc. */
+typedef struct {{
+  const char* name;
+  const uint8_t* expect;
+  uint16_t expect_len;
+  const uint8_t* request_id;
+  uint16_t request_id_len;
+  const uint8_t* signature;
+  uint16_t signature_len;
+  const uint8_t* third;
+  uint16_t third_len;
+  const char* constraint;
+}} ur_encode_sig_case_t;
+
+static const ur_encode_sig_case_t UR_ENCODE_ETH_SIG_CASES[] = {{
+{chr(10).join(eth_sig_rows)}
+}};
+
+static const ur_encode_sig_case_t UR_ENCODE_BTC_SIG_CASES[] = {{
+{chr(10).join(btc_sig_rows)}
+}};
+
+typedef struct {{
+  const char* name;
+  const uint8_t* expect;
+  uint16_t expect_len;
+  uint32_t seq_num;
+  uint32_t seq_len;
+  uint32_t message_len;
+  uint32_t checksum;
+  const uint8_t* data;
+  uint16_t data_len;
+}} ur_encode_part_case_t;
+
+static const ur_encode_part_case_t UR_ENCODE_PART_CASES[] = {{
+{chr(10).join(part_rows)}
+}};
+
+typedef struct {{
+  const char* name;
+  const uint8_t* expect;
+  uint16_t expect_len;
+  uint8_t step;
+  const uint8_t* dev_id;
+  uint16_t dev_id_len;
+  uint32_t first_auth;
+  uint32_t auth_time;
+  uint32_t auth_count;
+  uint8_t has_first_auth;
+  uint8_t has_auth_time;
+  uint8_t has_auth_count;
+  const uint8_t* challenge;
+  uint16_t challenge_len;
+  const uint8_t* auth_sig;
+  uint16_t auth_sig_len;
+  int accept;
+  const char* constraint;
+}} ur_encode_dev_case_t;
+
+static const ur_encode_dev_case_t UR_ENCODE_DEV_CASES[] = {{
+{chr(10).join(dev_rows)}
+}};
+
+typedef struct {{
+  const char* name;
+  const uint8_t* expect;
+  uint16_t expect_len;
+  int tagged;
+  const uint8_t* payload;
+  uint16_t payload_len;
+}} ur_encode_psbt_case_t;
+
+static const ur_encode_psbt_case_t UR_ENCODE_PSBT_CASES[] = {{
+{chr(10).join(ps_rows)}
+}};
+
+typedef struct {{
+  const char* name;
+  const uint8_t* expect;
+  uint16_t expect_len;
+  uint8_t is_private;
+  const uint8_t* key_data;
+  uint16_t key_data_len;
+  const uint8_t* chain_code;
+  uint16_t chain_code_len;
+  const uint32_t* origin_index;
+  const uint8_t* origin_hardened;
+  uint8_t origin_count;
+  uint32_t source_fingerprint;
+  uint8_t has_fingerprint;
+  uint32_t depth;
+  uint8_t has_depth;
+  uint32_t parent_fingerprint;
+  const char* key_name;
+  const char* source;
+  const uint32_t* child_index;
+  const uint8_t* child_hardened;
+  uint8_t child_count;
+  uint8_t has_children;
+  const char* constraint;
+  int accept;
+}} ur_encode_hdkey_case_t;
+
+static const ur_encode_hdkey_case_t UR_ENCODE_HDKEY_CASES[] = {{
+{chr(10).join(hd_rows)}
+}};
+
+#endif /* VECTORS_UR_ENCODE_H */
+"""
 
 
 def ur_decode_spec_checks() -> tuple[str, str]:
@@ -8134,10 +8551,10 @@ def ur_decode_vectors() -> str:
     eth_row("a request-id that is a bare bstr, not tag 37",
             cbor_map([(1, cbor_bytes(uid)), (2, cbor_bytes(tx_data)), (3, cbor_uint(1)),
                       (5, cbor_keypath([]))]), 0, "uuid = #6.37(bstr)")
-    eth_row("child index at 2^31: the schema bounds it below, nothing enforces it",
+    eth_row("child index at 2^31 passes the decoder and is refused for the derivation",
             cbor_map([(2, cbor_bytes(tx_data)), (3, cbor_uint(1)),
                       (5, cbor_keypath([(2**31, False)]))]), 1,
-            "child-index = uint31 = uint32 .lt 2^31, and the index is handed to the caller anyway",
+            "child-index = uint31 = uint32 .lt 2^31 is not emitted; core_set_derivation_path() refuses it",
             sign_data=tx_data, data_type=1, path_index=[2**31], path_hardened=[0])
     eth_row("a negative child index",
             cbor_map([(2, cbor_bytes(tx_data)), (3, cbor_uint(1)),
@@ -8158,7 +8575,7 @@ def ur_decode_vectors() -> str:
     eth_row("source-fingerprint 0: .gt 0 is not enforced either",
             cbor_map([(2, cbor_bytes(tx_data)), (3, cbor_uint(1)),
                       (5, cbor_keypath([], fingerprint=0))]), 1,
-            "source-fingerprint: uint32 .gt 0, dropped by the generator like the .lt on child-index",
+            "source-fingerprint: uint32 .gt 0 is not emitted; core_set_derivation_path() refuses it",
             sign_data=tx_data, data_type=1, path_count=0, source_fingerprint=0)
     eth_row("sign-data as text rather than bstr",
             cbor_map([(2, cbor_text("nope")), (3, cbor_uint(1)), (5, cbor_keypath([]))]), 0,
@@ -8392,16 +8809,22 @@ def ur_decode_vectors() -> str:
  *
  * btc-sign-request and dev-auth have no document outside this repository, so their rows are read
  * from cddl/ur.cddl, whose sha256 is above: for those two families a schema change moves the
- * vectors, and the constraint column says which clause of the CDDL each refusal comes from. Two rows
+ * vectors, and the constraint column says which clause of the CDDL each refusal comes from.
  * A handful of rows record behaviour rather than a defect, so that a change to it shows up as a
  * failing test. The schema puts no size on a uuid, so a tag 37 around three bytes is accepted as a
- * three byte request id. `child-index = uint31 = uint32 .lt 2^31` is not enforced by the generated
- * decoder, and core.c's core_set_derivation_path() ORs the hardened bit in without bounding the
- * index, so an index of 2^31 spells the same BIP32 path as 0'. Neither is a zcbor quirk to argue
- * with: the generated decoders do enforce .size (a uint32 field checks <= UINT32_MAX, a challenge
- * checks .len <= 32) but emit a plain zcbor_uint32_decode for .gt and .lt, so every bound written
- * that way in cddl/ur.cddl is documentation only, while the bounds written with .size are checked:
- * the row asking for depth 256 is refused, the two above are not. And zcbor reports success once one
+ * three byte request id.
+ *
+ * `child-index = uint31 = uint32 .lt 2^31` and `source-fingerprint: uint32 .gt 0` are not enforced
+ * here or by anything like it: the generated decoders check bounds written with .size (a uint32 field
+ * checks <= UINT32_MAX, a challenge checks .len <= 32) and emit a plain zcbor_uint32_decode for .gt
+ * and .lt, so both values reach the caller -- the depth 256 row, refused by .size, is the contrast.
+ * What the decoder lets through, core.c's core_set_derivation_path() refuses: it bounds the index
+ * below 2^31 before ORing in the hardened bit, requires a component to carry an index rather than
+ * leaving it to whatever the reused decode buffer holds, and reads a fingerprint of 0 as the "none"
+ * the schema means by it. tests/test_core_derivation.c pushes these same payloads through that
+ * function, so the two suites together cover camera bytes to derivation bytes.
+ *
+ * zcbor reports success once one whole item has been read, so a psbt with a byte appended decodes and reports the shorter count;
  * whole item has been read, so a psbt with a byte appended decodes and reports the shorter count;
  * for the same reason a btc-sign-request truncated inside its optional tail decodes with those
  * fields absent, which is why core_btc.c requires the derivation paths rather than relying on the
@@ -13118,6 +13541,7 @@ def main() -> None:
         "vectors_eip712.h": eip712_vectors(),
         "vectors_ur.h": ur_vectors(),
         "vectors_ur_decode.h": ur_decode_vectors(),
+        "vectors_ur_encode.h": ur_encode_vectors(),
     "vectors_openpgp.h": openpgp_vectors(),
         "vectors_hal_aes.h": aes_vectors(),
         "vectors_keys.h": keys_vectors(),
