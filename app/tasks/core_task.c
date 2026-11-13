@@ -2,12 +2,14 @@
 #include "core/core.h"
 #include "core/core_multisig.h"
 #include "core/core_openpgp.h"
+#include "core/core_railgun_diagnostics.h"
 #include "core/card.h"
 #include "core/settings.h"
 #include "keycard/keycard.h"
 #include "pwr.h"
 #include "usb/usb.h"
 #include "crypto/util.h"
+#include "ui/dialog.h"
 
 static inline void core_action_run(i18n_str_id_t menu) {
   switch(menu) {
@@ -18,6 +20,15 @@ static inline void core_action_run(i18n_str_id_t menu) {
   case MENU_OPENPGP:
     core_openpgp_run();
     break;
+#ifndef BITCOIN_ONLY
+  case MENU_RAILGUN_DIAGNOSTICS:
+    if (ui_prompt(LSTR(MENU_RAILGUN_DIAGNOSTICS),
+                  LSTR(RAILGUN_DIAGNOSTICS_INFO),
+                  UI_INFO_CANCELLABLE) == CORE_EVT_UI_OK) {
+      core_railgun_diagnostics_run();
+    }
+    break;
+#endif
   case MENU_CONNECT:
     core_connect_wallet();
     break;

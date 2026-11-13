@@ -351,4 +351,9 @@ const char *const i18n_english_strings[] = {
     "Signature time",
     "Sign OpenPGP message",
     "GapPGP",
+
+    // Experimental Kohaku research
+    "Kohaku Research",
+    "RAILGUN Diagnostics",
+    "Run public RAILGUN test vectors on Shell. No keys, signing, or transactions.",
 };

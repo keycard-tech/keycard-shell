@@ -98,9 +98,23 @@ const menu_t menu_settings = {
   }
 };
 
+#ifndef BITCOIN_ONLY
+const menu_t menu_kohaku_research = {
+  1, {
+    {MENU_RAILGUN_DIAGNOSTICS, NULL},
+  }
+};
+#endif
+
 const menu_t menu_extras = {
+#ifndef BITCOIN_ONLY
+  2, {
+    {MENU_OPENPGP, NULL},
+    {MENU_KOHAKU_RESEARCH, &menu_kohaku_research},
+#else
   1, {
     {MENU_OPENPGP, NULL},
+#endif
   }
 };
 

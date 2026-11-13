@@ -363,8 +363,13 @@ function(shellos_test name)
   # direction -- hal_pka_host.c computes with bignum.c out of app_crypto, and app_crypto's curve
   # code calls back into it -- which a single left-to-right scan of static archives cannot
   # resolve, hence the group.
-  target_link_libraries(test_${name} PRIVATE
-      -Wl,--start-group ${TEST_LIBS} test_framework -Wl,--end-group)
+  if(APPLE)
+    target_link_libraries(test_${name} PRIVATE
+        ${TEST_LIBS} test_framework ${TEST_LIBS} test_framework)
+  else()
+    target_link_libraries(test_${name} PRIVATE
+        -Wl,--start-group ${TEST_LIBS} test_framework -Wl,--end-group)
+  endif()
   add_test(NAME ${name} COMMAND test_${name})
   # The exit code is the verdict, but a test whose main() forgets to return UNITY_END() exits 0
   # whatever it found, so the summary line is checked as well.
@@ -400,6 +405,17 @@ shellos_test(fuzz LIBS app_btc_sig app_keycard app_bitcoin app_ethereum app_cryp
 # mutated count fails the suite instead of the CI runner.
 set_tests_properties(fuzz PROPERTIES TIMEOUT 120)
 shellos_test(bignum LIBS app_crypto)
+shellos_test(railgun_babyjubjub LIBS app_crypto)
+target_sources(test_railgun_babyjubjub PRIVATE
+    ${SHELLOS_ROOT}/app/crypto/railgun_babyjubjub.c
+    ${SHELLOS_ROOT}/app/crypto/railgun_blake512.c
+    ${SHELLOS_ROOT}/app/crypto/railgun_poseidon_t6.c)
+shellos_test(railgun_poseidon LIBS app_crypto)
+target_sources(test_railgun_poseidon PRIVATE
+    ${SHELLOS_ROOT}/app/crypto/railgun_poseidon_t6.c)
+shellos_test(railgun_blake512 LIBS app_crypto)
+target_sources(test_railgun_blake512 PRIVATE
+    ${SHELLOS_ROOT}/app/crypto/railgun_blake512.c)
 shellos_test(ethereum LIBS app_ethereum app_crypto)
 shellos_test(eip712 LIBS app_ethereum app_crypto)
 shellos_test(compactsize LIBS app_bitcoin)

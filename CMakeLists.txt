@@ -100,6 +100,19 @@ set(BOOTLOADER_SOURCES
 )
 
 # Source files - App
+execute_process(
+    COMMAND git rev-parse --short=7 HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE RAILGUN_GIT_REV
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+set_source_files_properties(
+    app/core/core_railgun_diagnostics.c
+    PROPERTIES COMPILE_DEFINITIONS
+    "RAILGUN_GIT_REV=\"${RAILGUN_GIT_REV}\""
+)
+
 set(APP_SOURCES
     app/util/fmath.c
     app/util/tlv.c
@@ -177,6 +190,10 @@ set(APP_SOURCES
     app/crypto/memzero.c
     app/crypto/nist256p1.c
     app/crypto/pbkdf2.c
+    app/crypto/railgun_babyjubjub.c
+    app/crypto/railgun_blake512.c
+    app/crypto/railgun_poseidon_t6.c
+    app/core/core_railgun_diagnostics.c
     app/crypto/rand.c
     app/crypto/rfc6979.c
     app/crypto/ripemd160.c

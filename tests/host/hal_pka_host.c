@@ -469,8 +469,146 @@ int hal_bn_cmp(const uint8_t a[BN_SIZE], const uint8_t b[BN_SIZE]) {
   return 0;
 }
 
+
+/*
+ * Host-only BN254 Fr reference arithmetic for the PKA test stand-in.
+ *
+ * The existing bignum256 modular routines require near-256-bit primes.
+ * BN254 Fr violates that precondition. These byte-based functions are
+ * deliberately simple, independent of bignum256 reduction, and are NOT
+ * suitable for secret-key operations or firmware signing.
+ */
+static const uint8_t host_fr_modulus[BN_SIZE] = { 0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d, 0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01 };
+
+static bool host_is_fr(const uint8_t mod[BN_SIZE]) {
+  return memcmp(mod, host_fr_modulus, BN_SIZE) == 0;
+}
+
+static bool host_fr_valid(const uint8_t a[BN_SIZE]) {
+  return memcmp(a, host_fr_modulus, BN_SIZE) < 0;
+}
+
+static bool host_fr_zero(const uint8_t a[BN_SIZE]) {
+  uint8_t nonzero = 0;
+  for (size_t i = 0; i < BN_SIZE; i++) {
+    nonzero |= a[i];
+  }
+  return nonzero == 0;
+}
+
+/* x >= y, both 32-byte unsigned big-endian integers. */
+static void host_fr_sub_raw(
+    const uint8_t x[BN_SIZE], const uint8_t y[BN_SIZE],
+    uint8_t out[BN_SIZE]) {
+  unsigned borrow = 0;
+  for (int i = BN_SIZE - 1; i >= 0; i--) {
+    unsigned rhs = (unsigned)y[i] + borrow;
+    unsigned lhs = x[i];
+    out[i] = (uint8_t)(lhs - rhs);
+    borrow = lhs < rhs;
+  }
+}
+
+/* x,y < Fr. Their sum is less than 2^255, so no 256-bit overflow. */
+static void host_fr_add_mod(
+    const uint8_t x[BN_SIZE], const uint8_t y[BN_SIZE],
+    uint8_t out[BN_SIZE]) {
+  uint8_t sum[BN_SIZE];
+  unsigned carry = 0;
+
+  for (int i = BN_SIZE - 1; i >= 0; i--) {
+    unsigned value = (unsigned)x[i] + y[i] + carry;
+    sum[i] = (uint8_t)value;
+    carry = value >> 8;
+  }
+
+  if (carry != 0) {
+    memset(out, 0, BN_SIZE);
+    return;
+  }
+
+  if (memcmp(sum, host_fr_modulus, BN_SIZE) >= 0) {
+    host_fr_sub_raw(sum, host_fr_modulus, out);
+  } else {
+    memcpy(out, sum, BN_SIZE);
+  }
+}
+
+static void host_fr_sub_mod(
+    const uint8_t x[BN_SIZE], const uint8_t y[BN_SIZE],
+    uint8_t out[BN_SIZE]) {
+  if (memcmp(x, y, BN_SIZE) >= 0) {
+    host_fr_sub_raw(x, y, out);
+  } else {
+    uint8_t difference[BN_SIZE];
+    host_fr_sub_raw(y, x, difference);
+    host_fr_sub_raw(host_fr_modulus, difference, out);
+  }
+}
+
+/* Public-only binary multiplication, intentionally not constant-time. */
+static void host_fr_mul_mod(
+    const uint8_t x[BN_SIZE], const uint8_t y[BN_SIZE],
+    uint8_t out[BN_SIZE]) {
+  uint8_t accumulator[BN_SIZE] = {0};
+  uint8_t next[BN_SIZE];
+
+  for (size_t i = 0; i < BN_SIZE; i++) {
+    for (int bit = 7; bit >= 0; bit--) {
+      host_fr_add_mod(accumulator, accumulator, next);
+      memcpy(accumulator, next, BN_SIZE);
+
+      if ((x[i] >> bit) & 1) {
+        host_fr_add_mod(accumulator, y, next);
+        memcpy(accumulator, next, BN_SIZE);
+      }
+    }
+  }
+
+  memcpy(out, accumulator, BN_SIZE);
+}
+
+/* Fr is prime; compute x^(Fr-2) for nonzero x. Test-only reference. */
+static void host_fr_inv_mod(
+    const uint8_t x[BN_SIZE], uint8_t out[BN_SIZE]) {
+  uint8_t exponent[BN_SIZE];
+  uint8_t accumulator[BN_SIZE] = {0};
+  uint8_t next[BN_SIZE];
+
+  memcpy(exponent, host_fr_modulus, BN_SIZE);
+
+  unsigned borrow = 2;
+  for (int i = BN_SIZE - 1; i >= 0 && borrow; i--) {
+    unsigned value = exponent[i];
+    exponent[i] = (uint8_t)(value - borrow);
+    borrow = value < borrow;
+  }
+
+  accumulator[BN_SIZE - 1] = 1;
+
+  for (size_t i = 0; i < BN_SIZE; i++) {
+    for (int bit = 7; bit >= 0; bit--) {
+      host_fr_mul_mod(accumulator, accumulator, next);
+      memcpy(accumulator, next, BN_SIZE);
+
+      if ((exponent[i] >> bit) & 1) {
+        host_fr_mul_mod(accumulator, x, next);
+        memcpy(accumulator, next, BN_SIZE);
+      }
+    }
+  }
+
+  memcpy(out, accumulator, BN_SIZE);
+}
+
 hal_err_t hal_bn_add_mod(const uint8_t a[BN_SIZE], const uint8_t b[BN_SIZE],
                          const uint8_t mod[BN_SIZE], uint8_t r[BN_SIZE]) {
+  if (host_is_fr(mod)) {
+    if (!host_fr_valid(a) || !host_fr_valid(b)) return HAL_FAIL;
+    host_fr_add_mod(a, b, r);
+    return HAL_SUCCESS;
+  }
+
   bignum256 m, x, y;
   bn_read_be(mod, &m);
   bn_read_be(a, &x);
@@ -484,6 +622,12 @@ hal_err_t hal_bn_add_mod(const uint8_t a[BN_SIZE], const uint8_t b[BN_SIZE],
 
 hal_err_t hal_bn_sub_mod(const uint8_t a[BN_SIZE], const uint8_t b[BN_SIZE],
                          const uint8_t mod[BN_SIZE], uint8_t r[BN_SIZE]) {
+  if (host_is_fr(mod)) {
+    if (!host_fr_valid(a) || !host_fr_valid(b)) return HAL_FAIL;
+    host_fr_sub_mod(a, b, r);
+    return HAL_SUCCESS;
+  }
+
   bignum256 m, x, y;
   bn_read_be(mod, &m);
   bn_read_be(a, &x);
@@ -497,6 +641,12 @@ hal_err_t hal_bn_sub_mod(const uint8_t a[BN_SIZE], const uint8_t b[BN_SIZE],
 
 hal_err_t hal_bn_mul_mod(const uint8_t a[BN_SIZE], const uint8_t b[BN_SIZE],
                          const uint8_t mod[BN_SIZE], uint8_t r[BN_SIZE]) {
+  if (host_is_fr(mod)) {
+    if (!host_fr_valid(a) || !host_fr_valid(b)) return HAL_FAIL;
+    host_fr_mul_mod(a, b, r);
+    return HAL_SUCCESS;
+  }
+
   bignum256 m, x, y;
   bn_read_be(mod, &m);
   bn_read_be(a, &x);
@@ -523,6 +673,12 @@ hal_err_t hal_bn_exp_mod(const uint8_t a[BN_SIZE], const uint8_t e[BN_SIZE],
 
 /* Zero in, zero out: bn_inverse reaches the answer through Fermat, and 0^(p-2) is 0. */
 hal_err_t hal_bn_inv_mod(const uint8_t a[BN_SIZE], const uint8_t mod[BN_SIZE], uint8_t r[BN_SIZE]) {
+  if (host_is_fr(mod)) {
+    if (!host_fr_valid(a) || host_fr_zero(a)) return HAL_FAIL;
+    host_fr_inv_mod(a, r);
+    return HAL_SUCCESS;
+  }
+
   bignum256 m, x;
   bn_read_be(mod, &m);
   bn_read_be(a, &x);
