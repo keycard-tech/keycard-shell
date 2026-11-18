@@ -6,6 +6,8 @@
 #include "error.h"
 
 #define FS_ABI_MAGIC 0x4142
+/* Native currency precision assumed by Ethereum transaction review. */
+#define ETH_NATIVE_DECIMALS 18
 
 typedef struct {
   uint32_t chain_id;

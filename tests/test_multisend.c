@@ -60,6 +60,10 @@ static void invalid(void) {
   TEST_ASSERT_EQUAL(ETH_MULTISEND_COMPLETE, eth_multisend_init(&b, data, len));
   data[53] = 1; /* Full-width uint256 length cannot fit. */
   TEST_ASSERT_EQUAL(ETH_MULTISEND_MALFORMED, eth_multisend_init(&b, data, len));
+  word(data + 53, UINT16_MAX); /* Existing reader's error sentinel. */
+  TEST_ASSERT_EQUAL(ETH_MULTISEND_MALFORMED, eth_multisend_init(&b, data, len));
+  word(data + 53, (size_t)UINT16_MAX + 1);
+  TEST_ASSERT_EQUAL(ETH_MULTISEND_MALFORMED, eth_multisend_init(&b, data, len));
   fixture(1, 0);
   TEST_ASSERT_EQUAL(ETH_MULTISEND_MALFORMED, eth_multisend_init(&b, data, 86));
 }
@@ -112,6 +116,7 @@ static void formatting(void) {
   memcpy(encoded, "\x8d\x80\xff\x0a", 4);
   word(encoded + 4, 32);
   word(encoded + 36, length);
+  word(data + 21, 1000000000);
   memcpy(encoded + 68, data, length);
   size_t encoded_len = 68 + ((length + 31) / 32) * 32;
   TEST_ASSERT_NULL(eth_data_recognize(encoded, encoded_len, false));
@@ -121,15 +126,38 @@ static void formatting(void) {
   TEST_ASSERT_EQUAL(ERR_OK, fs_write(&abi.entry, sizeof(abi)));
   const eth_abi_function_t* found = eth_data_recognize(encoded, encoded_len, false);
   TEST_ASSERT_NOT_NULL(found);
+  static struct __attribute__((packed)) {
+    fs_entry_t entry;
+    uint32_t chain_id;
+    char strings[30];
+  } chain = {
+    .entry = {.magic = 0x4348, .len = sizeof(chain) - sizeof(fs_entry_t)},
+    .chain_id = 137,
+    .strings = "POL\0Polygon\0Polygon",
+  };
+  TEST_ASSERT_EQUAL(ERR_OK, fs_write(&chain.entry, sizeof(chain)));
+  eth_data_context_t context = {.chain_id = 137};
   eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len);
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 1000000000 wei\n"));
+  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/2"));
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 2/2"));
   TEST_ASSERT_EQUAL_HEX8('b', out[out_len - 1]); /* No trailing blank pages. */
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 POL\n"));
+  context.chain_id = 1;
+  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 1000000000 wei\n"));
+  context.chain_id = 137;
+  /* Payable recognition must also allow the batch expansion. */
+  found = eth_data_recognize(encoded, encoded_len, true);
+  TEST_ASSERT_NOT_NULL(found);
+  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/2"));
   /* A malformed last record must discard the valid first call's expansion. */
   encoded[68 + 86] = 2;
-  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len);
+  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_NULL(strstr((char*)out, "Call 1/2"));
-  eth_data_format(found, encoded, encoded_len, out, 4, &out_len);
+  eth_data_format_with_context(found, encoded, encoded_len, out, 4, &out_len, &context);
   TEST_ASSERT_EQUAL(0, out_len);
 }
 

@@ -354,5 +354,5 @@ const char *const i18n_english_strings[] = {
     "Call ",
     "Warning: nested delegatecall",
     "To: 0x",
-    "Value (wei): ",
+    "Value: ",
 };
