@@ -12,10 +12,14 @@
 #define ETH_MULTISEND_HEADER_LEN (ETH_MULTISEND_DATA_LEN_OFFSET + ETH_ABI_WORD_LEN)
 
 int eth_multisend_next(eth_multisend_t* b, eth_multisend_call_t* c) {
-  if (b->offset > b->length || b->length - b->offset < ETH_MULTISEND_HEADER_LEN) return 0;
+  if (b->offset > b->length || b->length - b->offset < ETH_MULTISEND_HEADER_LEN) {
+    return 0;
+  }
   const uint8_t* p = b->payload + b->offset;
   uint16_t data_len = eth_data_read_short(p + ETH_MULTISEND_DATA_LEN_OFFSET);
-  if (data_len == UINT16_MAX || data_len > b->length - b->offset - ETH_MULTISEND_HEADER_LEN) return 0;
+  if (data_len == UINT16_MAX || data_len > b->length - b->offset - ETH_MULTISEND_HEADER_LEN) {
+    return 0;
+  }
   c->operation = p[ETH_MULTISEND_OPERATION_OFFSET];
   c->to = p + ETH_MULTISEND_TO_OFFSET;
   c->value = p + ETH_MULTISEND_VALUE_OFFSET;
@@ -29,10 +33,14 @@ eth_multisend_result_t eth_multisend_init(eth_multisend_t* out, const uint8_t* p
   eth_multisend_t b = {.payload = payload, .length = length};
   while (b.offset < b.length) {
     eth_multisend_call_t c;
-    if (!eth_multisend_next(&b, &c) || c.operation > 1) return ETH_MULTISEND_MALFORMED;
+    if (!eth_multisend_next(&b, &c) || c.operation > 1) {
+      return ETH_MULTISEND_MALFORMED;
+    }
     b.count++;
   }
-  if (!b.count) return ETH_MULTISEND_EMPTY;
+  if (!b.count) {
+    return ETH_MULTISEND_EMPTY;
+  }
   b.offset = 0;
   *out = b;
   return ETH_MULTISEND_COMPLETE;

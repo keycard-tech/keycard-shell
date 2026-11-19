@@ -42,7 +42,9 @@ static void valid(void) {
         TEST_ASSERT_EQUAL(0x80, c.value[0]);
         TEST_ASSERT_EQUAL(i, c.value[31]);
         TEST_ASSERT_EQUAL(child_len, c.data_len);
-        if (child_len) TEST_ASSERT_EQUAL(0xab, c.data[child_len - 1]);
+        if (child_len) {
+          TEST_ASSERT_EQUAL(0xab, c.data[child_len - 1]);
+        }
       }
       eth_multisend_call_t c;
       TEST_ASSERT_FALSE(eth_multisend_next(&b, &c));
@@ -117,6 +119,7 @@ static void formatting(void) {
   word(encoded + 4, 32);
   word(encoded + 36, length);
   word(data + 21, 1000000000);
+  data[86] = 1; /* The second record uses DELEGATECALL. */
   memcpy(encoded + 68, data, length);
   size_t encoded_len = 68 + ((length + 31) / 32) * 32;
   TEST_ASSERT_NULL(eth_data_recognize(encoded, encoded_len, false));
@@ -140,8 +143,8 @@ static void formatting(void) {
   eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len);
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 1000000000 wei\n"));
   eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/2"));
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 2/2"));
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/2\nTo: 0x0101010101010101010101010101010101010101\n"));
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 2/2\nWarning: nested delegatecall\nTo: 0x0202020202020202020202020202020202020202\n"));
   TEST_ASSERT_EQUAL_HEX8('b', out[out_len - 1]); /* No trailing blank pages. */
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 POL\n"));
   context.chain_id = 1;

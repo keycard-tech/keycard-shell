@@ -998,8 +998,7 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
     eth_data_context_t context = {
       .chain_id = info->chain.chain_id
     };
-    eth_data_format_with_context(abi, info->data, info->data_len,
-        data_str, CAMERA_FB_SIZE, &data_str_len, &context);
+    eth_data_format_with_context(abi, info->data, info->data_len, data_str, CAMERA_FB_SIZE, &data_str_len, &context);
     dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 3, data_str, data_str_len);
   }
 

@@ -353,6 +353,6 @@ const char *const i18n_english_strings[] = {
     "GapPGP",
     "Call ",
     "Warning: nested delegatecall",
-    "To: 0x",
+    "To: ",
     "Value: ",
 };
