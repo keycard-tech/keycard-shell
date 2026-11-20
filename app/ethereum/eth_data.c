@@ -663,13 +663,13 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
     bn_read_be(call.value, &value);
     bool has_value = !bn_is_zero(&value);
     if (has_value) {
-      size_t ticker_len = strlen(ticker);
-      char amount[BIGNUM_STRING_LEN + TICKER_MAX_LEN + 2];
-      size_t amount_len = bn_format(&value, NULL, ticker, ETH_NATIVE_DECIMALS, 0, 0, 0, amount, sizeof(amount));
-      if (!amount_len) {
+      if (strlen(ticker) > TICKER_MAX_LEN) {
         return ERR_DATA;
       }
-      ui_amount_adapt(amount, amount_len, ticker, ticker_len);
+
+      char amount[UI_AMOUNT_FIELD_LEN + 1];
+      ui_amount_format(&value, ticker, ETH_NATIVE_DECIMALS, amount);
+
       if (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_VALUE)) != ERR_OK ||
           eth_data_batch_append(out, out_cap, out_len, amount) != ERR_OK ||
           eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK) {

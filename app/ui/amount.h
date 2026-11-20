@@ -3,15 +3,15 @@
 
 #include <stddef.h>
 
-#define BIGNUM_STRING_LEN 100
+#include "crypto/bignum.h"
 
-/* Database tickers are bounded so the amount buffers can be fixed size. Longer than this and bn_format
- * refuses the whole string rather than overflowing. */
+/* A dialog_data value field: SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN measured from TH_LABEL_WIDTH at
+ * shell_16px's mean advance. */
+#define UI_AMOUNT_FIELD_LEN 23
+
 #define TICKER_MAX_LEN 16
 
-/* Callers must reserve BIGNUM_STRING_LEN + TICKER_MAX_LEN + 2 bytes.
- * TODO: Verify the maximum formatted value, localized label, and ticker
- * lengths at build time so this bound can be reduced. */
-void ui_amount_adapt(char* amount, size_t amount_len, const char* ticker, size_t ticker_len);
+/* out must hold UI_AMOUNT_FIELD_LEN + 1 bytes. */
+void ui_amount_format(const bignum256* value, const char* ticker, unsigned int decimals, char* out);
 
 #endif
