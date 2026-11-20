@@ -2,6 +2,7 @@
 #define __ETH_DATA__
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "crypto/bignum.h"
 #include "crypto/sha3.h"
@@ -33,7 +34,7 @@
 #define ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) (__SIZED_TYPE__ & 0xff)
 #define ETH_ABI_TUPLE_SIZE(__SIZED_TYPE__) (ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) * ETH_ABI_WORD_LEN)
 
-#define ETH_ABI_DEREF(__TYPE__, __STRUCT__, __FIELD__) ((__STRUCT__->__FIELD__) == 0 ? NULL : (__TYPE__)(((uint32_t) __STRUCT__) + (__STRUCT__->__FIELD__)))
+#define ETH_ABI_DEREF(__TYPE__, __STRUCT__, __FIELD__) ((__STRUCT__->__FIELD__) == 0 ? NULL : (__TYPE__)(((uintptr_t) __STRUCT__) + (__STRUCT__->__FIELD__)))
 
 #define ETH_DATA_ERC20_TRANFER_EXT_SELECTOR 0x2432e06e
 #define ETH_DATA_ERC20_APPROVE_EXT_SELECTOR 0x502291f4
@@ -43,6 +44,7 @@
 
 #define ETH_DATA_MULTISEND_SELECTOR 0x0aff808d
 #define ETH_DATA_MULTISEND_EXT_SELECTOR 0x7854d8f8
+#define ETH_DATA_MULTISEND_MAX_CALLS 64
 
 #define ETH_DATA_EXECUTE_SELECTOR 0xc36b8524
 #define ETH_DATA_EXECUTE_EXT_SELECTOR 0xdb20e9a6
@@ -159,13 +161,16 @@ typedef struct {
   bignum256 nonce;
 } eth_safe_tx_t;
 
-const eth_abi_function_t* eth_data_recognize(const uint8_t* data, uint32_t data_len, bool has_value);
 typedef struct {
-  uint32_t chain_id;
+  const chain_desc_t* chain;
+  bool nested;
 } eth_data_context_t;
 
-void eth_data_format_with_context(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len, const eth_data_context_t* context);
-void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len);
+const eth_abi_function_t* eth_data_recognize(const uint8_t* data, uint32_t data_len, bool has_value);
+
+void eth_lookup_chain(uint32_t chain_id, chain_desc_t* chain, uint8_t* chain_num);
+
+void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len, const eth_data_context_t* context);
 void eth_data_hash(const uint8_t* data, size_t data_len, uint8_t out[SHA3_256_DIGEST_LENGTH]);
 eip712_data_type_t eip712_recognize(const eip712_ctx_t* ctx);
 

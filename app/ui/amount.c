@@ -1,54 +1,49 @@
 #include "amount.h"
 #include "i18n.h"
-#include <stdbool.h>
 #include <string.h>
 
-#define DATA_FIELD_MAX_LEN 23
+static void append_label(char* out, const char* label, const char* ticker) {
+  size_t len = strlen(label);
+  memcpy(out, label, len);
 
-void ui_amount_adapt(char* amount, size_t amount_len, const char* ticker, size_t ticker_len) {
-  if (amount_len <= DATA_FIELD_MAX_LEN) {
+  if (!*ticker) {
+    out[len] = '\0';
     return;
   }
 
-  int i = 0;
-  int ticker_off = (DATA_FIELD_MAX_LEN - ticker_len - 1);
-  bool all_zero = true;
+  out[len++] = ' ';
 
-  while(amount[i] != '.') {
-    if (amount[i] != '0') {
-      all_zero = false;
-    }
-
-    if (i >= ticker_off) {
-      const char* label = LSTR(TX_UNLIMITED);
-      ticker_off = strlen(label);
-      memcpy(amount, label, ticker_off);
-      goto add_ticker;
-    }
-
-    i++;
+  size_t keep = strlen(ticker);
+  if (keep > UI_AMOUNT_FIELD_LEN - len) {
+    keep = UI_AMOUNT_FIELD_LEN - len;
   }
 
-  while(i < ticker_off) {
-    if (amount[i] >= '1' && amount[i] <= '9') {
-      all_zero = false;
-    }
+  memcpy(out + len, ticker, keep);
+  out[len + keep] = '\0';
+}
 
-    i++;
+void ui_amount_format(const bignum256* value, const char* ticker, unsigned int decimals, char* out) {
+  const size_t whole_len = bn_format(value, NULL, NULL, 0, -(int)decimals, false, ',', out, UI_AMOUNT_FIELD_LEN + 1);
+  const size_t ticker_len = strlen(ticker);
+
+  if (!whole_len || whole_len + 1 + ticker_len > UI_AMOUNT_FIELD_LEN) {
+    append_label(out, LSTR(TX_UNLIMITED), ticker);
+    return;
   }
 
-  if (all_zero) {
-    const char* label = LSTR(TX_TOOLITTLE);
-    ticker_off = strlen(label);
-    memcpy(amount, label, ticker_off);
-    goto add_ticker;
+  int fraction = UI_AMOUNT_FIELD_LEN - whole_len - ticker_len - 2;
+  if (fraction < 0) {
+    fraction = 0;
+  } else if (fraction > (int)decimals) {
+    fraction = decimals;
   }
 
-  if (amount[ticker_off - 1] == '.') {
-    ticker_off--;
+  if (!bn_format(value, NULL, ticker, fraction, -(int)(decimals - fraction), false, ',', out, UI_AMOUNT_FIELD_LEN + 1)) {
+    append_label(out, LSTR(TX_UNLIMITED), ticker);
+    return;
   }
 
-add_ticker:
-  amount[ticker_off++] = ' ';
-  memcpy(&amount[ticker_off], ticker, ticker_len + 1);
+  if (whole_len == 1 && out[0] == '0' && out[1] != '.' && !bn_is_zero(value)) {
+    append_label(out, LSTR(TX_TOOLITTLE), ticker);
+  }
 }

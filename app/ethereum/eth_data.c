@@ -239,7 +239,7 @@ static void eth_calculate_fees(const txContent_t* tx, bignum256* fees) {
   bn_multiply(&gas_amount, fees, &prime);
 }
 
-static void eth_lookup_chain(uint32_t chain_id, chain_desc_t* chain, uint8_t* chain_num) {
+void eth_lookup_chain(uint32_t chain_id, chain_desc_t* chain, uint8_t* chain_num) {
   chain->chain_id = chain_id;
 
   if (eth_db_lookup_chain(chain) != ERR_OK) {
@@ -351,7 +351,7 @@ static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint
       return ERR_DATA;
     }
 
-    size_t buf_len = (((uint32_t) args) + args_len) - ((uint32_t) elem_data);
+    size_t buf_len = (args + args_len) - elem_data;
 
     if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_cap, out_len) != ERR_OK) {
       return ERR_DATA;
@@ -390,7 +390,7 @@ static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint
       return ERR_DATA;
     }
 
-    size_t buf_len = (((uint32_t) args) + args_len) - ((uint32_t) elem_data);
+    size_t buf_len = (args + args_len) - elem_data;
 
     if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_cap, out_len) != ERR_OK) {
       return ERR_DATA;
@@ -608,31 +608,36 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
   if (abi->selector != ETH_DATA_MULTISEND_SELECTOR || abi->ext_selector != ETH_DATA_MULTISEND_EXT_SELECTOR) {
     return ERR_UNSUPPORTED;
   }
+
+  if (context->nested) {
+    return ERR_UNSUPPORTED;
+  }
+
   const uint8_t* transactions;
   size_t transactions_len;
   if (eth_data_tuple_get_elem(ETH_ABI_VARBYTES, 0, args, args_len, &transactions, &transactions_len) != ERR_OK) {
     return ERR_DATA;
   }
+
   eth_multisend_t batch;
   if (eth_multisend_init(&batch, transactions, transactions_len) != ETH_MULTISEND_COMPLETE) {
     return ERR_DATA;
   }
 
-  chain_desc_t chain;
-  bool known_chain = false;
-  if (context) {
-    chain.chain_id = context->chain_id;
-    known_chain = eth_db_lookup_chain(&chain) == ERR_OK;
+  if (batch.count > ETH_DATA_MULTISEND_MAX_CALLS) {
+    return ERR_UNSUPPORTED;
   }
-  const char* ticker = known_chain ? chain.ticker : "wei";
-  int decimals = known_chain ? ETH_NATIVE_DECIMALS : 0;
+
+  const char* ticker = context->chain->ticker;
 
   *out_len = 0;
   for (size_t index = 0; index < batch.count; index++) {
     eth_multisend_call_t call;
+
     if (!eth_multisend_next(&batch, &call)) {
       return ERR_DATA;
     }
+
     if (eth_data_batch_append(out, out_cap, out_len, index ? "\n\n" : "") != ERR_OK ||
         eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_CALL)) != ERR_OK ||
         eth_data_batch_number(out, out_cap, out_len, index + 1) != ERR_OK ||
@@ -641,8 +646,9 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
         eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK) {
       return ERR_DATA;
     }
+
     if (call.operation == 1 &&
-        (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_DELEGATE)) != ERR_OK ||
+        (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_SAFE_OP_DELEGATE)) != ERR_OK ||
          eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK)) {
       return ERR_DATA;
     }
@@ -657,29 +663,33 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
     bn_read_be(call.value, &value);
     bool has_value = !bn_is_zero(&value);
     if (has_value) {
-      size_t ticker_len = strlen(ticker);
-      char amount[BIGNUM_STRING_LEN + ticker_len + 2];
-      size_t amount_len = bn_format(&value, NULL, ticker, decimals, 0, 0, 0, amount, sizeof(amount));
-      if (!amount_len) {
+      if (strlen(ticker) > TICKER_MAX_LEN) {
         return ERR_DATA;
       }
-      ui_amount_adapt(amount, amount_len, ticker, ticker_len);
+
+      char amount[UI_AMOUNT_FIELD_LEN + 1];
+      ui_amount_format(&value, ticker, ETH_NATIVE_DECIMALS, amount);
+
       if (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_VALUE)) != ERR_OK ||
           eth_data_batch_append(out, out_cap, out_len, amount) != ERR_OK ||
           eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK) {
         return ERR_DATA;
       }
     }
-    /* One batch level. Nested multiSend calls remain opaque. */
+
     const eth_abi_function_t* child = eth_data_recognize(call.data, call.data_len, has_value);
-    if (child && child->selector == ETH_DATA_MULTISEND_SELECTOR && child->ext_selector == ETH_DATA_MULTISEND_EXT_SELECTOR) {
-      child = NULL;
-    }
+    eth_data_context_t child_context = {
+      .chain = context->chain,
+      .nested = true
+    };
+
     size_t len = 0;
-    eth_data_format(child, call.data, call.data_len, out + *out_len, out_cap - *out_len, &len);
+    eth_data_format(child, call.data, call.data_len, out + *out_len, out_cap - *out_len, &len, &child_context);
+ 
     if (call.data_len && !len) {
       return ERR_DATA;
     }
+
     *out_len += len;
   }
   if (!eth_data_fmt_room(out_cap, *out_len, 1)) {
@@ -689,7 +699,7 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
   return ERR_OK;
 }
 
-void eth_data_format_with_context(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len, const eth_data_context_t* context) {
+void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len, const eth_data_context_t* context) {
   if (data_len) {
     const uint8_t* args = &data[sizeof(uint32_t)];
     size_t args_len = data_len - sizeof(uint32_t);
@@ -702,16 +712,13 @@ void eth_data_format_with_context(const eth_abi_function_t* abi, const uint8_t* 
         *out_len = 0;
         return;
       }
+      
       base16_encode(data, (char *) out, data_len);
       *out_len = data_len * 2;
     }
   } else {
     *out_len = 0;
   }
-}
-
-void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len) {
-  eth_data_format_with_context(abi, data, data_len, out, out_cap, out_len, NULL);
 }
 
 void eth_data_hash(const uint8_t* data, size_t data_len, uint8_t out[SHA3_256_DIGEST_LENGTH]) {
@@ -764,9 +771,9 @@ fallback:
     info->to = tx->destination;
 
     eth_data_context_t context = {
-      .chain_id = info->chain.chain_id
+      .chain = &info->chain
     };
-    eth_data_format_with_context(abi, tx->data, tx->dataLength, info->data_str, info->data_str_cap, &info->data_str_len, &context);
+    eth_data_format(abi, tx->data, tx->dataLength, info->data_str, info->data_str_cap, &info->data_str_len, &context);
   }
 
   bn_read_compact_be(value, value_len, &info->value);

@@ -408,20 +408,18 @@ static void dialog_sha3(screen_text_ctx_t *ctx, i18n_str_id_t label, const uint8
 }
 
 static void dialog_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, const bignum256* amount, int decimals, const char* ticker) {
-  size_t ticker_len = strlen(ticker);
-  char tmp[BIGNUM_STRING_LEN+ticker_len+2];
-  size_t amount_len = bn_format(amount, NULL, ticker, decimals, 0, 0, ',', tmp, sizeof(tmp));
-  ui_amount_adapt(tmp, amount_len, ticker, ticker_len);
+  char field[UI_AMOUNT_FIELD_LEN + 1];
+  ui_amount_format(amount, ticker, decimals, field);
 
   dialog_label(ctx, LSTR(prompt));
-  dialog_data(ctx, tmp);
+  dialog_data(ctx, field);
 }
 
 static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint64_t amount) {
   const char* ticker = LSTR(TX_SATOSHI);
-  size_t ticker_len = strlen(ticker);
+  size_t ticker_len = APP_MIN(strlen(ticker), (size_t)TICKER_MAX_LEN);
 
-  uint8_t tmp[UINT64_STRING_LEN + ticker_len + 2];
+  uint8_t tmp[UINT64_STRING_LEN + TICKER_MAX_LEN + 2];
   char* p = (char*) u64toa(amount, tmp, UINT64_STRING_LEN);
   size_t off = strlen(p);
   p[off++] = ' ';
@@ -444,17 +442,20 @@ static void dialog_measure_string_in_pages(screen_text_ctx_t* ctx, pager_ctx_t* 
       ctx->y = start_y_off;
     }
 
-    uint16_t offset = pager->pages[pager->last_page];
-    uint16_t to_display = str_len - offset;
-    uint16_t remaining = screen_draw_text(ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &str[offset], to_display, true, false);
+    size_t offset = pager->pages[pager->last_page];
+    size_t remaining = screen_draw_text(ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &str[offset], str_len - offset, true, false);
 
-    /* TODO: report page/offset exhaustion to callers instead of truncating.
-     * Expanded calldata can exceed the pager's existing limits. */
+    /* TODO: report exhaustion to the caller: text past the last page is unreachable and nothing says so. */
     if (!remaining || pager->last_page == (MAX_PAGE_COUNT - 1)) {
       break;
     }
 
-    pager->pages[++pager->last_page] = offset + (to_display - remaining);
+    size_t next = str_len - remaining;
+    if (next > UINT16_MAX) {
+      break;
+    }
+
+    pager->pages[++pager->last_page] = next;
   }
 }
 
@@ -626,7 +627,7 @@ void dialog_confirm_btc_summary(const btc_tx_ctx_t* tx) {
     ctx.x = TH_TEXT_HORIZONTAL_MARGIN;
     screen_draw_text(&ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, (const uint8_t*) LSTR(TX_SIGHASH_WARNING), strlen(LSTR(TX_SIGHASH_WARNING)), false, false);
   } else {
-    char buf[BIGNUM_STRING_LEN];
+    char buf[MAX_ADDR_LEN];
 
     if (dest_idx >= 0) {
       dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
@@ -677,11 +678,11 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
   ctx.y = TH_TITLE_HEIGHT;
   size_t i = page * BTC_DIALOG_PAGE_ITEMS;
   size_t displayed = 0;
-  char buf[BIGNUM_STRING_LEN];
+  char buf[MAX_ADDR_LEN];
 
   while((i < tx->input_count) && (displayed < BTC_DIALOG_PAGE_ITEMS)) {
     dialog_label(&ctx, LSTR(TX_INPUT));
-    char* idx = (char *) u32toa(i, (uint8_t *) buf, BIGNUM_STRING_LEN);
+    char* idx = (char *) u32toa(i, (uint8_t *) buf, MAX_ADDR_LEN);
     dialog_data(&ctx, idx);
 
     uint64_t t;
@@ -709,7 +710,7 @@ void dialog_confirm_btc_inouts(const btc_tx_ctx_t* tx, size_t page) {
 
   while ((i < tx->output_count) && (displayed < BTC_DIALOG_PAGE_ITEMS)) {
     dialog_label(&ctx, LSTR(TX_OUTPUT));
-    char* idx = (char *) u32toa(i, (uint8_t *) buf, BIGNUM_STRING_LEN);
+    char* idx = (char *) u32toa(i, (uint8_t *) buf, MAX_ADDR_LEN);
     dialog_data(&ctx, idx);
 
     uint64_t t;
@@ -736,7 +737,7 @@ app_err_t dialog_confirm_bip322(const btc_tx_ctx_t* tx) {
 
   screen_text_ctx_t ctx;
   ctx.y = TH_TITLE_HEIGHT;
-  char buf[BIGNUM_STRING_LEN];
+  char buf[MAX_ADDR_LEN];
 
   dialog_label_2lines(&ctx, LSTR(TX_ADDRESS));
   if (!script_output_to_address(tx->input_data[0].script_pubkey, tx->input_data[0].script_pubkey_len, buf)) {
@@ -818,13 +819,8 @@ app_err_t dialog_confirm_raw_eip712(const uint8_t* data, size_t len, eip712_doma
 
       if (eip712->chainID != UINT32_MAX) {
         chain_desc_t chain;
-        chain.chain_id = eip712->chainID;
-
         uint8_t num[11];
-        if (eth_db_lookup_chain(&chain) != ERR_OK) {
-          chain.name = (char*) u32toa(chain.chain_id, num, 11);
-        }
-
+        eth_lookup_chain(eip712->chainID, &chain, num);
         dialog_data(&ctx, chain.name);
       } else {
         dialog_data(&ctx, LSTR(EIP712_UNSPECIFIED));
@@ -947,9 +943,9 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
   if (info->data_len > 0) {
     const eth_abi_function_t* abi = eth_data_recognize(info->data, info->data_len, !bn_is_zero(&info->value));
     eth_data_context_t context = {
-      .chain_id = info->chain.chain_id
+      .chain = &info->chain
     };
-    eth_data_format_with_context(abi, info->data, info->data_len, data_str, CAMERA_FB_SIZE, &data_str_len, &context);
+    eth_data_format(abi, info->data, info->data_len, data_str, CAMERA_FB_SIZE, &data_str_len, &context);
     dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 3, data_str, data_str_len);
   }
 

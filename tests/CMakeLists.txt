@@ -152,7 +152,6 @@ add_library(app_ethereum STATIC
     # The token database reader, which is the store's heaviest consumer: one blob of ~1650 entries
     # installed by a single fs_write().
     ${SHELLOS_ROOT}/app/ethereum/eth_db.c
-    ${SHELLOS_ROOT}/app/ethereum/eth_multisend.c
 )
 target_include_directories(app_ethereum PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_ethereum PRIVATE ${SHELLOS_COMMON_FLAGS})
@@ -279,16 +278,30 @@ target_include_directories(app_storage PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURREN
 # address it reads back out of a pointer is the one it wrote.
 target_compile_options(app_storage PRIVATE ${SHELLOS_COMMON_FLAGS})
 
-# Settings: the store half is the point of the test, and the four menus it hangs off are scripted in
-# host/ui_host.c and host/ui_keycard_host.c. i18n.c and english.c compile as they are, so the string table is the device's own --
-# menu.c is the one that cannot, needing FreeRTOS for data the seam only takes the address of.
-add_library(app_settings STATIC
-    ${SHELLOS_ROOT}/app/core/settings.c
+# The string table as the device has it, without the screens that draw it.
+add_library(app_i18n STATIC
     ${SHELLOS_ROOT}/app/ui/i18n.c
     ${SHELLOS_ROOT}/app/ui/english.c
 )
+target_include_directories(app_i18n PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_i18n PRIVATE ${SHELLOS_COMMON_FLAGS})
+
+# Settings: the store half is the point of the test, and the four menus it hangs off are scripted in
+# host/ui_host.c and host/ui_keycard_host.c. menu.c is the one that cannot compile, needing FreeRTOS for
+# data the seam only takes the address of.
+add_library(app_settings STATIC
+    ${SHELLOS_ROOT}/app/core/settings.c
+)
 target_include_directories(app_settings PUBLIC ${SHELLOS_ROOT}/app ${SHELLOS_ROOT}/zcbor ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_settings PRIVATE ${SHELLOS_COMMON_FLAGS})
+target_link_libraries(app_settings PUBLIC app_i18n)
+
+add_library(app_amount STATIC
+    ${SHELLOS_ROOT}/app/ui/amount.c
+)
+target_include_directories(app_amount PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
+target_compile_options(app_amount PRIVATE ${SHELLOS_COMMON_FLAGS})
+target_link_libraries(app_amount PUBLIC app_i18n app_crypto)
 
 # The dispatcher. A USB command arrives as an APDU header and a length and leaves as segments, and
 # everything between is routing: which handler an instruction selects, what a refusal costs, how a reply
@@ -451,11 +464,9 @@ shellos_test(atr LIBS app_iso7816)
 shellos_test(pps LIBS app_iso7816)
 shellos_test(t1 LIBS app_iso7816)
 
-shellos_test(multisend LIBS app_ethereum app_storage app_crypto)
+shellos_test(multisend LIBS app_ethereum app_storage app_crypto app_amount)
 target_sources(test_multisend PRIVATE
     ${SHELLOS_ROOT}/app/ethereum/eth_data.c
-    ${SHELLOS_ROOT}/app/ui/amount.c
-    ${SHELLOS_ROOT}/app/ui/i18n.c
-    ${SHELLOS_ROOT}/app/ui/english.c)
-# TODO: Use uintptr_t in ETH_ABI_DEREF and FS_ENTRY_DATA so host fixtures can live above 4GB.
-target_link_options(test_multisend PRIVATE -no-pie)
+    ${SHELLOS_ROOT}/app/ethereum/eth_multisend.c)
+
+shellos_test(amount LIBS app_amount)
