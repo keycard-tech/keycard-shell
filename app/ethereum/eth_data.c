@@ -608,14 +608,24 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
   if (abi->selector != ETH_DATA_MULTISEND_SELECTOR || abi->ext_selector != ETH_DATA_MULTISEND_EXT_SELECTOR) {
     return ERR_UNSUPPORTED;
   }
+
+  if (context->nested) {
+    return ERR_UNSUPPORTED;
+  }
+
   const uint8_t* transactions;
   size_t transactions_len;
   if (eth_data_tuple_get_elem(ETH_ABI_VARBYTES, 0, args, args_len, &transactions, &transactions_len) != ERR_OK) {
     return ERR_DATA;
   }
+
   eth_multisend_t batch;
   if (eth_multisend_init(&batch, transactions, transactions_len) != ETH_MULTISEND_COMPLETE) {
     return ERR_DATA;
+  }
+
+  if (batch.count > ETH_DATA_MULTISEND_MAX_CALLS) {
+    return ERR_UNSUPPORTED;
   }
 
   const char* ticker = context->chain->ticker;
@@ -623,9 +633,11 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
   *out_len = 0;
   for (size_t index = 0; index < batch.count; index++) {
     eth_multisend_call_t call;
+
     if (!eth_multisend_next(&batch, &call)) {
       return ERR_DATA;
     }
+
     if (eth_data_batch_append(out, out_cap, out_len, index ? "\n\n" : "") != ERR_OK ||
         eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_CALL)) != ERR_OK ||
         eth_data_batch_number(out, out_cap, out_len, index + 1) != ERR_OK ||
@@ -634,8 +646,9 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
         eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK) {
       return ERR_DATA;
     }
+
     if (call.operation == 1 &&
-        (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_DELEGATE)) != ERR_OK ||
+        (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_SAFE_OP_DELEGATE)) != ERR_OK ||
          eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK)) {
       return ERR_DATA;
     }
@@ -651,7 +664,7 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
     bool has_value = !bn_is_zero(&value);
     if (has_value) {
       size_t ticker_len = strlen(ticker);
-      char amount[BIGNUM_STRING_LEN + ticker_len + 2];
+      char amount[BIGNUM_STRING_LEN + TICKER_MAX_LEN + 2];
       size_t amount_len = bn_format(&value, NULL, ticker, ETH_NATIVE_DECIMALS, 0, 0, 0, amount, sizeof(amount));
       if (!amount_len) {
         return ERR_DATA;
@@ -663,16 +676,20 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
         return ERR_DATA;
       }
     }
-    /* One batch level. Nested multiSend calls remain opaque. */
+
     const eth_abi_function_t* child = eth_data_recognize(call.data, call.data_len, has_value);
-    if (child && child->selector == ETH_DATA_MULTISEND_SELECTOR && child->ext_selector == ETH_DATA_MULTISEND_EXT_SELECTOR) {
-      child = NULL;
-    }
+    eth_data_context_t child_context = {
+      .chain = context->chain,
+      .nested = true
+    };
+
     size_t len = 0;
-    eth_data_format(child, call.data, call.data_len, out + *out_len, out_cap - *out_len, &len, context);
+    eth_data_format(child, call.data, call.data_len, out + *out_len, out_cap - *out_len, &len, &child_context);
+ 
     if (call.data_len && !len) {
       return ERR_DATA;
     }
+
     *out_len += len;
   }
   if (!eth_data_fmt_room(out_cap, *out_len, 1)) {
@@ -695,6 +712,7 @@ void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t 
         *out_len = 0;
         return;
       }
+      
       base16_encode(data, (char *) out, data_len);
       *out_len = data_len * 2;
     }

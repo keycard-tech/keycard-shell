@@ -152,7 +152,6 @@ add_library(app_ethereum STATIC
     # The token database reader, which is the store's heaviest consumer: one blob of ~1650 entries
     # installed by a single fs_write().
     ${SHELLOS_ROOT}/app/ethereum/eth_db.c
-    ${SHELLOS_ROOT}/app/ethereum/eth_multisend.c
 )
 target_include_directories(app_ethereum PUBLIC ${SHELLOS_ROOT}/app ${CMAKE_CURRENT_SOURCE_DIR}/host)
 target_compile_options(app_ethereum PRIVATE ${SHELLOS_COMMON_FLAGS})
@@ -454,6 +453,7 @@ shellos_test(t1 LIBS app_iso7816)
 shellos_test(multisend LIBS app_ethereum app_storage app_crypto)
 target_sources(test_multisend PRIVATE
     ${SHELLOS_ROOT}/app/ethereum/eth_data.c
+    ${SHELLOS_ROOT}/app/ethereum/eth_multisend.c
     ${SHELLOS_ROOT}/app/ui/amount.c
     ${SHELLOS_ROOT}/app/ui/i18n.c
     ${SHELLOS_ROOT}/app/ui/english.c)

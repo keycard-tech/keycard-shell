@@ -409,7 +409,7 @@ static void dialog_sha3(screen_text_ctx_t *ctx, i18n_str_id_t label, const uint8
 
 static void dialog_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, const bignum256* amount, int decimals, const char* ticker) {
   size_t ticker_len = strlen(ticker);
-  char tmp[BIGNUM_STRING_LEN+ticker_len+2];
+  char tmp[BIGNUM_STRING_LEN + TICKER_MAX_LEN + 2];
   size_t amount_len = bn_format(amount, NULL, ticker, decimals, 0, 0, ',', tmp, sizeof(tmp));
   ui_amount_adapt(tmp, amount_len, ticker, ticker_len);
 
@@ -419,9 +419,9 @@ static void dialog_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, const bi
 
 static void dialog_btc_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, uint64_t amount) {
   const char* ticker = LSTR(TX_SATOSHI);
-  size_t ticker_len = strlen(ticker);
+  size_t ticker_len = APP_MIN(strlen(ticker), (size_t)TICKER_MAX_LEN);
 
-  uint8_t tmp[UINT64_STRING_LEN + ticker_len + 2];
+  uint8_t tmp[UINT64_STRING_LEN + TICKER_MAX_LEN + 2];
   char* p = (char*) u64toa(amount, tmp, UINT64_STRING_LEN);
   size_t off = strlen(p);
   p[off++] = ' ';
@@ -444,17 +444,20 @@ static void dialog_measure_string_in_pages(screen_text_ctx_t* ctx, pager_ctx_t* 
       ctx->y = start_y_off;
     }
 
-    uint16_t offset = pager->pages[pager->last_page];
-    uint16_t to_display = str_len - offset;
-    uint16_t remaining = screen_draw_text(ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &str[offset], to_display, true, false);
+    size_t offset = pager->pages[pager->last_page];
+    size_t remaining = screen_draw_text(ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &str[offset], str_len - offset, true, false);
 
-    /* TODO: report page/offset exhaustion to callers instead of truncating.
-     * Expanded calldata can exceed the pager's existing limits. */
+    /* TODO: report exhaustion to the caller: text past the last page is unreachable and nothing says so. */
     if (!remaining || pager->last_page == (MAX_PAGE_COUNT - 1)) {
       break;
     }
 
-    pager->pages[++pager->last_page] = offset + (to_display - remaining);
+    size_t next = str_len - remaining;
+    if (next > UINT16_MAX) {
+      break;
+    }
+
+    pager->pages[++pager->last_page] = next;
   }
 }
 

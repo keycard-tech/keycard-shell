@@ -1,9 +1,11 @@
 #include "unity.h"
+#include <stdio.h>
 #include "ethereum/eth_multisend.h"
 #include "ethereum/eth_data.h"
 #include "crypto/util.h"
 #include "storage/fs.h"
 #include "hal_host.h"
+#include "ui/amount.h"
 #include "ui/i18n.h"
 #include <string.h>
 
@@ -101,7 +103,9 @@ static size_t record(uint8_t* p, uint8_t operation, uint8_t to, const uint8_t* c
   p[0] = operation;
   memset(p + 1, to, 20);
   word(p + 53, child_len);
-  memcpy(p + 85, child, child_len);
+  if (child_len) {
+    memcpy(p + 85, child, child_len);
+  }
   return 85 + child_len;
 }
 
@@ -199,7 +203,14 @@ static void formatting(void) {
   context.chain = &polygon;
   eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/2\nTo: 0x0101010101010101010101010101010101010101\n"));
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 2/2\nWarning: nested delegatecall\nTo: 0x0202020202020202020202020202020202020202\n"));
+  /* A delegatecall record names the operation and claims nothing about it. */
+  const char* call2 = strstr((char*)out, "Call 2/2\n");
+  TEST_ASSERT_NOT_NULL(call2);
+  const char* op = call2 + sizeof("Call 2/2\n") - 1;
+  size_t op_len = strlen(LSTR(TX_SAFE_OP_DELEGATE));
+  TEST_ASSERT_EQUAL_STRING_LEN(LSTR(TX_SAFE_OP_DELEGATE), op, op_len);
+  TEST_ASSERT_EQUAL_HEX8('\n', op[op_len]);
+  TEST_ASSERT_NOT_NULL(strstr(op, "To: 0x0202020202020202020202020202020202020202\n"));
   TEST_ASSERT_EQUAL_HEX8('b', out[out_len - 1]); /* No trailing blank pages. */
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 POL\n"));
   word(encoded + 68 + 21, 1);
@@ -265,22 +276,145 @@ static void child_call(void) {
   size_t out_len;
   eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
 
-  char transfer_hex[9], nested_hex[9];
+  char transfer_hex[9];
   selector_hex(transfer_selector, transfer_hex);
-  selector_hex(ETH_DATA_MULTISEND_SELECTOR, nested_hex);
   /* The recognized child is named with its arguments, not dumped. */
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "transfer(0x"));
   TEST_ASSERT_NOT_NULL(strstr((char*)out, ", 12345)"));
   TEST_ASSERT_NULL(strstr((char*)out, transfer_hex));
-  /* A nested batch keeps the depth limit: named by its calldata, not expanded again. */
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, nested_hex));
+  /* A nested batch is named and its payload left opaque: one level, and nothing of the inner batch is
+   * interpreted. */
+  const char* nested_out = strstr((char*)out, "multiSend(");
+  TEST_ASSERT_NOT_NULL(nested_out);
+  char nested_head[17];
+  base16_encode(inner, nested_head, 8);
+  TEST_ASSERT_EQUAL_STRING_LEN(nested_head, nested_out + strlen("multiSend("), strlen(nested_head));
   TEST_ASSERT_NULL(strstr((char*)out, "Call 1/1"));
   TEST_ASSERT_NULL(strstr((char*)out, "To: 0x0909090909090909090909090909090909090909"));
+}
+
+/* A batch too large to page through is refused outright, never shown cut off. */
+static void oversized_batch(void) {
+  install_multisend_abi();
+
+  static uint8_t batch[(ETH_DATA_MULTISEND_MAX_CALLS + 1) * 85];
+  static uint8_t encoded[8192];
+  static uint8_t out[16384];
+
+  size_t batch_len = 0;
+  for (unsigned i = 0; i <= ETH_DATA_MULTISEND_MAX_CALLS; i++) {
+    batch_len += record(batch + batch_len, 0, i + 1, NULL, 0);
+  }
+
+  chain_desc_t chain;
+  uint8_t num[11];
+  eth_lookup_chain(1, &chain, num);
+  eth_data_context_t context = {.chain = &chain};
+  size_t encoded_len, out_len;
+
+  encoded_len = multi_send(encoded, batch, batch_len);
+  const eth_abi_function_t* found = eth_data_recognize(encoded, encoded_len, false);
+  TEST_ASSERT_NOT_NULL(found);
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  TEST_ASSERT_EQUAL_STRING_LEN("multiSend(", (char*)out, strlen("multiSend("));
+  TEST_ASSERT_NULL(strstr((char*)out, "Call 1/"));
+
+  encoded_len = multi_send(encoded, batch, batch_len - 85);
+  found = eth_data_recognize(encoded, encoded_len, false);
+  TEST_ASSERT_NOT_NULL(found);
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  char last[16];
+  TEST_ASSERT_TRUE(snprintf(last, sizeof(last), "Call %u/%u", (unsigned)ETH_DATA_MULTISEND_MAX_CALLS,
+                            (unsigned)ETH_DATA_MULTISEND_MAX_CALLS) < (int)sizeof(last));
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, last));
+}
+
+/* Mutated batches through the formatter, which is where bn_format, the amount buffer and the append
+ * bounds meet. */
+static void random_format(void) {
+  install_multisend_abi();
+  install_transfer_abi();
+
+  uint8_t inner[85];
+  memset(inner, 0, sizeof(inner));
+  memset(inner + 1, 0x09, 20);
+  uint8_t nested[68 + 96];
+  size_t nested_len = multi_send(nested, inner, sizeof(inner));
+
+  uint8_t batch[3 * (85 + sizeof(nested))];
+  size_t batch_len = record(batch, 0, 1, nested, nested_len);
+  batch_len += record(batch + batch_len, 1, 2, NULL, 0);
+  batch_len += record(batch + batch_len, 0, 3, nested, nested_len);
+
+  static uint8_t encoded[1024], mutated[1024], out[2048];
+  size_t encoded_len = multi_send(encoded, batch, batch_len);
+
+  chain_desc_t chain;
+  uint8_t num[11];
+  eth_lookup_chain(1, &chain, num);
+  eth_data_context_t context = {.chain = &chain};
+
+  uint32_t seed = 987654321;
+  for (unsigned i = 0; i < 5000; i++) {
+    memcpy(mutated, encoded, encoded_len);
+    for (int m = 0; m < 4; m++) {
+      seed = seed * 1664525 + 1013904223;
+      mutated[seed % encoded_len] = seed >> 24;
+    }
+    size_t out_len = 0;
+    out[0] = 0;
+    eth_data_format(eth_data_recognize(mutated, encoded_len, false), mutated, encoded_len, out, sizeof(out),
+                    &out_len, &context);
+    TEST_ASSERT_TRUE(out_len < sizeof(out));
+    TEST_ASSERT_EQUAL_HEX8('\0', out[out_len]);
+  }
+}
+
+/* A ticker past the buffer bound takes the expansion down with it, instead of overflowing the buffer. */
+static void oversized_ticker(void) {
+  install_multisend_abi();
+
+  static struct __attribute__((packed)) {
+    fs_entry_t entry;
+    uint32_t chain_id;
+    char strings[48 + 1 + 5 + 1 + 6 + 1];
+  } chain_entry = {
+    .entry = {.magic = 0x4348, .len = sizeof(chain_entry) - sizeof(fs_entry_t)},
+    .chain_id = 10,
+    .strings = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\0chain\0short\0",
+  };
+  TEST_ASSERT_EQUAL(ERR_OK, fs_write(&chain_entry.entry, sizeof(chain_entry)));
+
+  chain_desc_t chain;
+  uint8_t num[11];
+  eth_lookup_chain(10, &chain, num);
+  TEST_ASSERT_EQUAL_STRING("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", chain.ticker);
+  TEST_ASSERT_TRUE(strlen(chain.ticker) > TICKER_MAX_LEN);
+
+  uint8_t batch[85];
+  record(batch, 0, 1, NULL, 0);
+  memset(batch + 21, 0xff, 32); /* The widest value there is. */
+
+  uint8_t encoded[512], out[1024];
+  size_t encoded_len = multi_send(encoded, batch, sizeof(batch));
+  const eth_abi_function_t* found = eth_data_recognize(encoded, encoded_len, false);
+  TEST_ASSERT_NOT_NULL(found);
+  eth_data_context_t context = {.chain = &chain};
+  size_t out_len;
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  TEST_ASSERT_NULL(strstr((char*)out, "Call 1/"));
+  TEST_ASSERT_EQUAL_STRING_LEN("multiSend(", (char*)out, strlen("multiSend("));
+
+  /* The same value under a ticker within the bound does expand, so the refusal above is the bound. */
+  eth_lookup_chain(1, &chain, num);
+  context.chain = &chain;
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/1\n"));
 }
 
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(valid); RUN_TEST(invalid); RUN_TEST(limits); RUN_TEST(random_inputs); RUN_TEST(formatting);
-  RUN_TEST(child_call);
+  RUN_TEST(child_call); RUN_TEST(oversized_batch); RUN_TEST(oversized_ticker); RUN_TEST(random_format);
   return UNITY_END();
 }
