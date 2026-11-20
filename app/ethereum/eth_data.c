@@ -239,7 +239,7 @@ static void eth_calculate_fees(const txContent_t* tx, bignum256* fees) {
   bn_multiply(&gas_amount, fees, &prime);
 }
 
-static void eth_lookup_chain(uint32_t chain_id, chain_desc_t* chain, uint8_t* chain_num) {
+void eth_lookup_chain(uint32_t chain_id, chain_desc_t* chain, uint8_t* chain_num) {
   chain->chain_id = chain_id;
 
   if (eth_db_lookup_chain(chain) != ERR_OK) {
@@ -618,14 +618,7 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
     return ERR_DATA;
   }
 
-  chain_desc_t chain;
-  bool known_chain = false;
-  if (context) {
-    chain.chain_id = context->chain_id;
-    known_chain = eth_db_lookup_chain(&chain) == ERR_OK;
-  }
-  const char* ticker = known_chain ? chain.ticker : "wei";
-  int decimals = known_chain ? ETH_NATIVE_DECIMALS : 0;
+  const char* ticker = context->chain->ticker;
 
   *out_len = 0;
   for (size_t index = 0; index < batch.count; index++) {
@@ -659,7 +652,7 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
     if (has_value) {
       size_t ticker_len = strlen(ticker);
       char amount[BIGNUM_STRING_LEN + ticker_len + 2];
-      size_t amount_len = bn_format(&value, NULL, ticker, decimals, 0, 0, 0, amount, sizeof(amount));
+      size_t amount_len = bn_format(&value, NULL, ticker, ETH_NATIVE_DECIMALS, 0, 0, 0, amount, sizeof(amount));
       if (!amount_len) {
         return ERR_DATA;
       }
@@ -676,7 +669,7 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
       child = NULL;
     }
     size_t len = 0;
-    eth_data_format(child, call.data, call.data_len, out + *out_len, out_cap - *out_len, &len);
+    eth_data_format(child, call.data, call.data_len, out + *out_len, out_cap - *out_len, &len, context);
     if (call.data_len && !len) {
       return ERR_DATA;
     }
@@ -689,7 +682,7 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
   return ERR_OK;
 }
 
-void eth_data_format_with_context(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len, const eth_data_context_t* context) {
+void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len, const eth_data_context_t* context) {
   if (data_len) {
     const uint8_t* args = &data[sizeof(uint32_t)];
     size_t args_len = data_len - sizeof(uint32_t);
@@ -708,10 +701,6 @@ void eth_data_format_with_context(const eth_abi_function_t* abi, const uint8_t* 
   } else {
     *out_len = 0;
   }
-}
-
-void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len) {
-  eth_data_format_with_context(abi, data, data_len, out, out_cap, out_len, NULL);
 }
 
 void eth_data_hash(const uint8_t* data, size_t data_len, uint8_t out[SHA3_256_DIGEST_LENGTH]) {
@@ -764,9 +753,9 @@ fallback:
     info->to = tx->destination;
 
     eth_data_context_t context = {
-      .chain_id = info->chain.chain_id
+      .chain = &info->chain
     };
-    eth_data_format_with_context(abi, tx->data, tx->dataLength, info->data_str, info->data_str_cap, &info->data_str_len, &context);
+    eth_data_format(abi, tx->data, tx->dataLength, info->data_str, info->data_str_cap, &info->data_str_len, &context);
   }
 
   bn_read_compact_be(value, value_len, &info->value);

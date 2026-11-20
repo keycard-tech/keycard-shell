@@ -124,7 +124,13 @@ static void formatting(void) {
   size_t encoded_len = 68 + ((length + 31) / 32) * 32;
   TEST_ASSERT_NULL(eth_data_recognize(encoded, encoded_len, false));
   size_t out_len;
-  eth_data_format(NULL, encoded, encoded_len, out, sizeof(out), &out_len);
+  uint8_t num[11];
+  chain_desc_t unknown, polygon;
+  eth_lookup_chain(1, &unknown, num);
+  TEST_ASSERT_EQUAL_STRING("???", unknown.ticker);
+  TEST_ASSERT_EQUAL_STRING("1", unknown.name);
+  eth_data_context_t context = {.chain = &unknown};
+  eth_data_format(NULL, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_EQUAL_HEX8('8', out[0]); /* No ABI: raw calldata. */
   TEST_ASSERT_EQUAL(ERR_OK, fs_write(&abi.entry, sizeof(abi)));
   const eth_abi_function_t* found = eth_data_recognize(encoded, encoded_len, false);
@@ -139,32 +145,36 @@ static void formatting(void) {
     .strings = "POL\0Polygon\0Polygon",
   };
   TEST_ASSERT_EQUAL(ERR_OK, fs_write(&chain.entry, sizeof(chain)));
-  eth_data_context_t context = {.chain_id = 137};
-  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len);
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 1000000000 wei\n"));
-  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  eth_lookup_chain(137, &polygon, num);
+  TEST_ASSERT_EQUAL_STRING("POL", polygon.ticker);
+  TEST_ASSERT_EQUAL_STRING("Polygon", polygon.name);
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 ???\n"));
+  context.chain = &polygon;
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/2\nTo: 0x0101010101010101010101010101010101010101\n"));
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 2/2\nWarning: nested delegatecall\nTo: 0x0202020202020202020202020202020202020202\n"));
   TEST_ASSERT_EQUAL_HEX8('b', out[out_len - 1]); /* No trailing blank pages. */
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 POL\n"));
   word(encoded + 68 + 21, 1);
-  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: A bit of POL\n"));
   word(encoded + 68 + 21, 1000000000);
-  context.chain_id = 1;
-  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 1000000000 wei\n"));
-  context.chain_id = 137;
+  /* The unit is the chain under review's, not a property of the payload. */
+  context.chain = &unknown;
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 ???\n"));
+  context.chain = &polygon;
   /* Payable recognition must also allow the batch expansion. */
   found = eth_data_recognize(encoded, encoded_len, true);
   TEST_ASSERT_NOT_NULL(found);
-  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/2"));
   /* A malformed last record must discard the valid first call's expansion. */
   encoded[68 + 86] = 2;
-  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_NULL(strstr((char*)out, "Call 1/2"));
-  eth_data_format_with_context(found, encoded, encoded_len, out, 4, &out_len, &context);
+  eth_data_format(found, encoded, encoded_len, out, 4, &out_len, &context);
   TEST_ASSERT_EQUAL(0, out_len);
 }
 

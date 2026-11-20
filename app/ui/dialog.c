@@ -818,13 +818,8 @@ app_err_t dialog_confirm_raw_eip712(const uint8_t* data, size_t len, eip712_doma
 
       if (eip712->chainID != UINT32_MAX) {
         chain_desc_t chain;
-        chain.chain_id = eip712->chainID;
-
         uint8_t num[11];
-        if (eth_db_lookup_chain(&chain) != ERR_OK) {
-          chain.name = (char*) u32toa(chain.chain_id, num, 11);
-        }
-
+        eth_lookup_chain(eip712->chainID, &chain, num);
         dialog_data(&ctx, chain.name);
       } else {
         dialog_data(&ctx, LSTR(EIP712_UNSPECIFIED));
@@ -947,9 +942,9 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
   if (info->data_len > 0) {
     const eth_abi_function_t* abi = eth_data_recognize(info->data, info->data_len, !bn_is_zero(&info->value));
     eth_data_context_t context = {
-      .chain_id = info->chain.chain_id
+      .chain = &info->chain
     };
-    eth_data_format_with_context(abi, info->data, info->data_len, data_str, CAMERA_FB_SIZE, &data_str_len, &context);
+    eth_data_format(abi, info->data, info->data_len, data_str, CAMERA_FB_SIZE, &data_str_len, &context);
     dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 3, data_str, data_str_len);
   }
 
