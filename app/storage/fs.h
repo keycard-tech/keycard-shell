@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include "error.h"
 
-#define FS_ENTRY_DATA(__TYPE__, __ENTRY__) (__TYPE__)(((uint32_t) __ENTRY__) + sizeof(fs_entry_t))
+#define FS_ENTRY_DATA(__TYPE__, __ENTRY__) (__TYPE__)(((uintptr_t) __ENTRY__) + sizeof(fs_entry_t))
 
 typedef struct __attribute__((packed)) {
   uint16_t magic;

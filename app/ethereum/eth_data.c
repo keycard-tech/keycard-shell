@@ -351,7 +351,7 @@ static app_err_t eth_data_format_array(const eth_abi_argument_t* abi, const uint
       return ERR_DATA;
     }
 
-    size_t buf_len = (((uint32_t) args) + args_len) - ((uint32_t) elem_data);
+    size_t buf_len = (args + args_len) - elem_data;
 
     if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_cap, out_len) != ERR_OK) {
       return ERR_DATA;
@@ -390,7 +390,7 @@ static app_err_t eth_data_format_tuple(const eth_abi_argument_t* abi, const uint
       return ERR_DATA;
     }
 
-    size_t buf_len = (((uint32_t) args) + args_len) - ((uint32_t) elem_data);
+    size_t buf_len = (args + args_len) - elem_data;
 
     if (eth_data_format_type(abi, elem_data, elem_len, buf_len, out, out_cap, out_len) != ERR_OK) {
       return ERR_DATA;

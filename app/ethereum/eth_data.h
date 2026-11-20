@@ -2,6 +2,7 @@
 #define __ETH_DATA__
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "crypto/bignum.h"
 #include "crypto/sha3.h"
@@ -33,7 +34,7 @@
 #define ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) (__SIZED_TYPE__ & 0xff)
 #define ETH_ABI_TUPLE_SIZE(__SIZED_TYPE__) (ETH_ABI_TYPE_SIZE(__SIZED_TYPE__) * ETH_ABI_WORD_LEN)
 
-#define ETH_ABI_DEREF(__TYPE__, __STRUCT__, __FIELD__) ((__STRUCT__->__FIELD__) == 0 ? NULL : (__TYPE__)(((uint32_t) __STRUCT__) + (__STRUCT__->__FIELD__)))
+#define ETH_ABI_DEREF(__TYPE__, __STRUCT__, __FIELD__) ((__STRUCT__->__FIELD__) == 0 ? NULL : (__TYPE__)(((uintptr_t) __STRUCT__) + (__STRUCT__->__FIELD__)))
 
 #define ETH_DATA_ERC20_TRANFER_EXT_SELECTOR 0x2432e06e
 #define ETH_DATA_ERC20_APPROVE_EXT_SELECTOR 0x502291f4

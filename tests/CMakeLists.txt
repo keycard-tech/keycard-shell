@@ -457,5 +457,3 @@ target_sources(test_multisend PRIVATE
     ${SHELLOS_ROOT}/app/ui/amount.c
     ${SHELLOS_ROOT}/app/ui/i18n.c
     ${SHELLOS_ROOT}/app/ui/english.c)
-# TODO: Use uintptr_t in ETH_ABI_DEREF and FS_ENTRY_DATA so host fixtures can live above 4GB.
-target_link_options(test_multisend PRIVATE -no-pie)

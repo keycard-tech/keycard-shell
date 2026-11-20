@@ -1,6 +1,7 @@
 #include "unity.h"
 #include "ethereum/eth_multisend.h"
 #include "ethereum/eth_data.h"
+#include "crypto/util.h"
 #include "storage/fs.h"
 #include "hal_host.h"
 #include "ui/i18n.h"
@@ -94,24 +95,69 @@ static void random_inputs(void) {
   }
 }
 
-static void formatting(void) {
-  /* Same relative-offset ABI representation as the installed database. */
+/* One packed record as it appears inside multiSend(bytes). */
+static size_t record(uint8_t* p, uint8_t operation, uint8_t to, const uint8_t* child, size_t child_len) {
+  memset(p, 0, 85 + child_len);
+  p[0] = operation;
+  memset(p + 1, to, 20);
+  word(p + 53, child_len);
+  memcpy(p + 85, child, child_len);
+  return 85 + child_len;
+}
+
+/* multiSend(bytes) calldata carrying a batch. */
+static size_t multi_send(uint8_t* out, const uint8_t* batch, size_t batch_len) {
+  const uint32_t selector = ETH_DATA_MULTISEND_SELECTOR;
+  memcpy(out, &selector, 4);
+  word(out + 4, 32);
+  word(out + 36, batch_len);
+  memcpy(out + 68, batch, batch_len);
+  return 68 + ((batch_len + 31) / 32) * 32;
+}
+
+/* Installed ABI records, in the relative-offset representation of the real database. */
+static void install_multisend_abi(void) {
   static struct {
     fs_entry_t entry;
     eth_abi_function_t function;
-    eth_abi_argument_t argument;
+    eth_abi_argument_t arg;
     char name[10];
-  } abi;
-  memset(&abi, 0, sizeof(abi));
-  abi.entry.magic = FS_ABI_MAGIC;
-  abi.entry.len = sizeof(abi) - sizeof(fs_entry_t);
-  abi.function.selector = ETH_DATA_MULTISEND_SELECTOR;
-  abi.function.ext_selector = ETH_DATA_MULTISEND_EXT_SELECTOR;
-  abi.function.attrs = ETH_FUNC_PAYABLE;
-  abi.function.first_arg = (uint8_t*)&abi.argument - (uint8_t*)&abi.function;
-  abi.function.name = (uint8_t*)abi.name - (uint8_t*)&abi.function;
-  abi.argument.type = ETH_ABI_VARBYTES;
-  strcpy(abi.name, "multiSend");
+  } multisend;
+  memset(&multisend, 0, sizeof(multisend));
+  multisend.entry.magic = FS_ABI_MAGIC;
+  multisend.entry.len = sizeof(multisend) - sizeof(fs_entry_t);
+  multisend.function.selector = ETH_DATA_MULTISEND_SELECTOR;
+  multisend.function.ext_selector = ETH_DATA_MULTISEND_EXT_SELECTOR;
+  multisend.function.attrs = ETH_FUNC_PAYABLE;
+  multisend.function.first_arg = (uint8_t*)&multisend.arg - (uint8_t*)&multisend.function;
+  multisend.function.name = (uint8_t*)multisend.name - (uint8_t*)&multisend.function;
+  multisend.arg.type = ETH_ABI_VARBYTES;
+  strcpy(multisend.name, "multiSend");
+  TEST_ASSERT_EQUAL(ERR_OK, fs_write(&multisend.entry, sizeof(multisend)));
+}
+
+static void install_transfer_abi(void) {
+  static struct {
+    fs_entry_t entry;
+    eth_abi_function_t function;
+    eth_abi_argument_t args[2];
+    char name[9];
+  } transfer;
+  memset(&transfer, 0, sizeof(transfer));
+  transfer.entry.magic = FS_ABI_MAGIC;
+  transfer.entry.len = sizeof(transfer) - sizeof(fs_entry_t);
+  transfer.function.selector = ETH_DATA_ERC20_TRANSFER;
+  transfer.function.ext_selector = ETH_DATA_ERC20_TRANFER_EXT_SELECTOR;
+  transfer.function.first_arg = (uint8_t*)&transfer.args - (uint8_t*)&transfer.function;
+  transfer.function.name = (uint8_t*)transfer.name - (uint8_t*)&transfer.function;
+  transfer.args[0].type = ETH_ABI_BITSIZED_TYPE(ETH_ABI_ADDRESS, 160);
+  transfer.args[0].next = (uint8_t*)&transfer.args[1] - (uint8_t*)&transfer.args[0];
+  transfer.args[1].type = ETH_ABI_BITSIZED_TYPE(ETH_ABI_UINT, 256);
+  strcpy(transfer.name, "transfer");
+  TEST_ASSERT_EQUAL(ERR_OK, fs_write(&transfer.entry, sizeof(transfer)));
+}
+
+static void formatting(void) {
   static uint8_t encoded[512], out[1024];
   memset(encoded, 0, sizeof(encoded));
   size_t length = fixture(2, 1);
@@ -132,7 +178,7 @@ static void formatting(void) {
   eth_data_context_t context = {.chain = &unknown};
   eth_data_format(NULL, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_EQUAL_HEX8('8', out[0]); /* No ABI: raw calldata. */
-  TEST_ASSERT_EQUAL(ERR_OK, fs_write(&abi.entry, sizeof(abi)));
+  install_multisend_abi();
   const eth_abi_function_t* found = eth_data_recognize(encoded, encoded_len, false);
   TEST_ASSERT_NOT_NULL(found);
   static struct __attribute__((packed)) {
@@ -178,8 +224,63 @@ static void formatting(void) {
   TEST_ASSERT_EQUAL(0, out_len);
 }
 
+/* A child call is decoded with the same machinery as a top-level calldata. */
+/* How a stored selector looks once base16_encode has run over it, as the formatter does. */
+static const char* selector_hex(uint32_t stored, char out[9]) {
+  base16_encode((const uint8_t*)&stored, out, 4);
+  return out;
+}
+
+static void child_call(void) {
+  install_multisend_abi();
+  install_transfer_abi();
+
+  const uint32_t transfer_selector = ETH_DATA_ERC20_TRANSFER;
+  uint8_t transfer_call[68];
+  memset(transfer_call, 0, sizeof(transfer_call));
+  memcpy(transfer_call, &transfer_selector, 4);
+  memset(transfer_call + 16, 0xab, 20);
+  word(transfer_call + 36, 12345);
+
+  uint8_t inner[85];
+  memset(inner, 0, sizeof(inner));
+  memset(inner + 1, 0x09, 20);
+  uint8_t nested[68 + 96];
+  size_t nested_len = multi_send(nested, inner, sizeof(inner));
+
+  uint8_t batch[2 * (85 + sizeof(nested))];
+  size_t batch_len = record(batch, 0, 1, transfer_call, sizeof(transfer_call));
+  batch_len += record(batch + batch_len, 0, 2, nested, nested_len);
+
+  uint8_t encoded[1024];
+  size_t encoded_len = multi_send(encoded, batch, batch_len);
+  const eth_abi_function_t* found = eth_data_recognize(encoded, encoded_len, false);
+  TEST_ASSERT_NOT_NULL(found);
+
+  chain_desc_t chain;
+  uint8_t num[11];
+  eth_lookup_chain(1, &chain, num);
+  eth_data_context_t context = {.chain = &chain};
+  uint8_t out[2048];
+  size_t out_len;
+  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+
+  char transfer_hex[9], nested_hex[9];
+  selector_hex(transfer_selector, transfer_hex);
+  selector_hex(ETH_DATA_MULTISEND_SELECTOR, nested_hex);
+  /* The recognized child is named with its arguments, not dumped. */
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "transfer(0x"));
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, ", 12345)"));
+  TEST_ASSERT_NULL(strstr((char*)out, transfer_hex));
+  /* A nested batch keeps the depth limit: named by its calldata, not expanded again. */
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, nested_hex));
+  TEST_ASSERT_NULL(strstr((char*)out, "Call 1/1"));
+  TEST_ASSERT_NULL(strstr((char*)out, "To: 0x0909090909090909090909090909090909090909"));
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(valid); RUN_TEST(invalid); RUN_TEST(limits); RUN_TEST(random_inputs); RUN_TEST(formatting);
+  RUN_TEST(child_call);
   return UNITY_END();
 }
