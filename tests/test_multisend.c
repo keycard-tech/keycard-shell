@@ -161,78 +161,176 @@ static void install_transfer_abi(void) {
   TEST_ASSERT_EQUAL(ERR_OK, fs_write(&transfer.entry, sizeof(transfer)));
 }
 
-static void formatting(void) {
-  static uint8_t encoded[512], out[1024];
-  memset(encoded, 0, sizeof(encoded));
-  size_t length = fixture(2, 1);
-  memcpy(encoded, "\x8d\x80\xff\x0a", 4);
-  word(encoded + 4, 32);
-  word(encoded + 36, length);
+static uint8_t calldata[512];
+static uint8_t drawn[1024];
+
+/* multiSend(bytes) carrying two records: the first worth 1e9 of the chain's unit, the second a
+ * delegatecall. */
+static size_t multisend_call(void) {
+  memset(calldata, 0, sizeof(calldata));
+  const size_t length = fixture(2, 1);
+  memcpy(calldata, "\x8d\x80\xff\x0a", 4);
+  word(calldata + 4, 32);
+  word(calldata + 36, length);
   word(data + 21, 1000000000);
-  data[86] = 1; /* The second record uses DELEGATECALL. */
-  memcpy(encoded + 68, data, length);
-  size_t encoded_len = 68 + ((length + 31) / 32) * 32;
-  TEST_ASSERT_NULL(eth_data_recognize(encoded, encoded_len, false));
-  size_t out_len;
-  uint8_t num[11];
-  chain_desc_t unknown, polygon;
-  eth_lookup_chain(1, &unknown, num);
-  TEST_ASSERT_EQUAL_STRING("???", unknown.ticker);
-  TEST_ASSERT_EQUAL_STRING("1", unknown.name);
-  eth_data_context_t context = {.chain = &unknown};
-  eth_data_format(NULL, encoded, encoded_len, out, sizeof(out), &out_len, &context);
-  TEST_ASSERT_EQUAL_HEX8('8', out[0]); /* No ABI: raw calldata. */
+  data[86] = 1;
+  memcpy(calldata + 68, data, length);
+  return 68 + ((length + 31) / 32) * 32;
+}
+
+static const eth_abi_function_t* recognized(size_t calldata_len, bool payable) {
   install_multisend_abi();
-  const eth_abi_function_t* found = eth_data_recognize(encoded, encoded_len, false);
+  const eth_abi_function_t* found = eth_data_recognize(calldata, calldata_len, payable);
   TEST_ASSERT_NOT_NULL(found);
+  return found;
+}
+
+static void review(const eth_abi_function_t* found, size_t calldata_len, const chain_desc_t* chain) {
+  eth_data_context_t context = {.chain = chain};
+  size_t len = 0;
+  eth_data_format(found, calldata, calldata_len, drawn, sizeof(drawn), &len, &context);
+  TEST_ASSERT_TRUE(len > 0);
+}
+
+/* Chain 137 with a ticker of its own, so a line can be checked against a unit the device was told
+ * rather than against the one it invents. */
+static void install_polygon(chain_desc_t* chain) {
   static struct __attribute__((packed)) {
     fs_entry_t entry;
     uint32_t chain_id;
     char strings[30];
-  } chain = {
-    .entry = {.magic = 0x4348, .len = sizeof(chain) - sizeof(fs_entry_t)},
+  } entry = {
+    .entry = {.magic = 0x4348, .len = sizeof(entry) - sizeof(fs_entry_t)},
     .chain_id = 137,
     .strings = "POL\0Polygon\0Polygon",
   };
-  TEST_ASSERT_EQUAL(ERR_OK, fs_write(&chain.entry, sizeof(chain)));
-  eth_lookup_chain(137, &polygon, num);
-  TEST_ASSERT_EQUAL_STRING("POL", polygon.ticker);
-  TEST_ASSERT_EQUAL_STRING("Polygon", polygon.name);
-  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 ???\n"));
-  context.chain = &polygon;
-  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/2\nTo: 0x0101010101010101010101010101010101010101\n"));
-  /* A delegatecall record names the operation and claims nothing about it. */
-  const char* call2 = strstr((char*)out, "Call 2/2\n");
+  TEST_ASSERT_EQUAL(ERR_OK, fs_write(&entry.entry, sizeof(entry)));
+
+  uint8_t num[11];
+  eth_lookup_chain(137, chain, num);
+  TEST_ASSERT_EQUAL_STRING("POL", chain->ticker);
+  TEST_ASSERT_EQUAL_STRING("Polygon", chain->name);
+}
+
+static void no_abi_no_list(void) {
+  const size_t calldata_len = multisend_call();
+  TEST_ASSERT_NULL(eth_data_recognize(calldata, calldata_len, false));
+
+  chain_desc_t chain;
+  uint8_t num[11];
+  eth_lookup_chain(1, &chain, num);
+  eth_data_context_t context = {.chain = &chain};
+  size_t len = 0;
+  eth_data_format(NULL, calldata, calldata_len, drawn, sizeof(drawn), &len, &context);
+  TEST_ASSERT_EQUAL_HEX8('8', drawn[0]);
+}
+
+/* The unit is the chain under review's, not a property of the payload. */
+static void unit_follows_the_chain(void) {
+  const size_t calldata_len = multisend_call();
+  const eth_abi_function_t* found = recognized(calldata_len, false);
+
+  chain_desc_t unknown, polygon;
+  uint8_t num[11];
+  eth_lookup_chain(1, &unknown, num);
+  TEST_ASSERT_EQUAL_STRING("???", unknown.ticker);
+  TEST_ASSERT_EQUAL_STRING("1", unknown.name);
+  review(found, calldata_len, &unknown);
+  TEST_ASSERT_NOT_NULL(strstr((char*)drawn, "Value: 0.000000001 ???\n"));
+
+  install_polygon(&polygon);
+  review(found, calldata_len, &polygon);
+  TEST_ASSERT_NOT_NULL(strstr((char*)drawn, "Value: 0.000000001 POL\n"));
+
+  review(found, calldata_len, &unknown);
+  TEST_ASSERT_NOT_NULL(strstr((char*)drawn, "Value: 0.000000001 ???\n"));
+}
+
+/* The batch line and the dialog field format an amount the same way, separators included. */
+static void value_uses_separators(void) {
+  static const uint8_t THOUSAND_UNITS[32] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,54,53,201,173,197,222,160,0,0};
+  const size_t calldata_len = multisend_call();
+  const eth_abi_function_t* found = recognized(calldata_len, false);
+  chain_desc_t polygon;
+  install_polygon(&polygon);
+
+  memcpy(calldata + 68 + 21, THOUSAND_UNITS, 32);
+  review(found, calldata_len, &polygon);
+  TEST_ASSERT_NOT_NULL(strstr((char*)drawn, "Value: 1,000 POL\n"));
+}
+
+static void call_list_and_addresses(void) {
+  const size_t calldata_len = multisend_call();
+  const eth_abi_function_t* found = recognized(calldata_len, false);
+  chain_desc_t polygon;
+  install_polygon(&polygon);
+
+  size_t len = 0;
+  eth_data_context_t context = {.chain = &polygon};
+  eth_data_format(found, calldata, calldata_len, drawn, sizeof(drawn), &len, &context);
+  TEST_ASSERT_NOT_NULL(strstr((char*)drawn, "Call 1/2\nTo: 0x0101010101010101010101010101010101010101\n"));
+  TEST_ASSERT_EQUAL_HEX8('b', drawn[len - 1]);
+}
+
+static void delegatecall_names_the_operation(void) {
+  const size_t calldata_len = multisend_call();
+  const eth_abi_function_t* found = recognized(calldata_len, false);
+  chain_desc_t polygon;
+  install_polygon(&polygon);
+  review(found, calldata_len, &polygon);
+
+  const char* call2 = strstr((char*)drawn, "Call 2/2\n");
   TEST_ASSERT_NOT_NULL(call2);
   const char* op = call2 + sizeof("Call 2/2\n") - 1;
-  size_t op_len = strlen(LSTR(TX_SAFE_OP_DELEGATE));
+  const size_t op_len = strlen(LSTR(TX_SAFE_OP_DELEGATE));
   TEST_ASSERT_EQUAL_STRING_LEN(LSTR(TX_SAFE_OP_DELEGATE), op, op_len);
   TEST_ASSERT_EQUAL_HEX8('\n', op[op_len]);
   TEST_ASSERT_NOT_NULL(strstr(op, "To: 0x0202020202020202020202020202020202020202\n"));
-  TEST_ASSERT_EQUAL_HEX8('b', out[out_len - 1]); /* No trailing blank pages. */
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 POL\n"));
-  word(encoded + 68 + 21, 1);
-  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: A bit of POL\n"));
-  word(encoded + 68 + 21, 1000000000);
-  /* The unit is the chain under review's, not a property of the payload. */
-  context.chain = &unknown;
-  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 ???\n"));
-  context.chain = &polygon;
-  /* Payable recognition must also allow the batch expansion. */
-  found = eth_data_recognize(encoded, encoded_len, true);
-  TEST_ASSERT_NOT_NULL(found);
-  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
-  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 1/2"));
-  /* A malformed last record must discard the valid first call's expansion. */
-  encoded[68 + 86] = 2;
-  eth_data_format(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
-  TEST_ASSERT_NULL(strstr((char*)out, "Call 1/2"));
-  eth_data_format(found, encoded, encoded_len, out, 4, &out_len, &context);
-  TEST_ASSERT_EQUAL(0, out_len);
+}
+
+static void value_too_small_to_show(void) {
+  const size_t calldata_len = multisend_call();
+  const eth_abi_function_t* found = recognized(calldata_len, false);
+  chain_desc_t polygon;
+  install_polygon(&polygon);
+
+  word(calldata + 68 + 21, 1);
+  review(found, calldata_len, &polygon);
+  TEST_ASSERT_NOT_NULL(strstr((char*)drawn, "Value: A bit of POL\n"));
+}
+
+static void payable_batch_expands(void) {
+  const size_t calldata_len = multisend_call();
+  const eth_abi_function_t* found = recognized(calldata_len, true);
+  chain_desc_t polygon;
+  install_polygon(&polygon);
+
+  review(found, calldata_len, &polygon);
+  TEST_ASSERT_NOT_NULL(strstr((char*)drawn, "Call 1/2"));
+}
+
+static void malformed_tail_discards_expansion(void) {
+  const size_t calldata_len = multisend_call();
+  const eth_abi_function_t* found = recognized(calldata_len, false);
+  chain_desc_t polygon;
+  install_polygon(&polygon);
+
+  calldata[68 + 86] = 2;
+  review(found, calldata_len, &polygon);
+  TEST_ASSERT_NULL(strstr((char*)drawn, "Call 1/2"));
+}
+
+/* What does not fit is refused outright: a half-drawn list would be read as the whole one. */
+static void no_room_draws_nothing(void) {
+  const size_t calldata_len = multisend_call();
+  const eth_abi_function_t* found = recognized(calldata_len, false);
+  chain_desc_t polygon;
+  install_polygon(&polygon);
+
+  eth_data_context_t context = {.chain = &polygon};
+  size_t len = 1;
+  eth_data_format(found, calldata, calldata_len, drawn, 4, &len, &context);
+  TEST_ASSERT_EQUAL(0, len);
 }
 
 /* A child call is decoded with the same machinery as a top-level calldata. */
@@ -414,7 +512,11 @@ static void oversized_ticker(void) {
 
 int main(void) {
   UNITY_BEGIN();
-  RUN_TEST(valid); RUN_TEST(invalid); RUN_TEST(limits); RUN_TEST(random_inputs); RUN_TEST(formatting);
+  RUN_TEST(valid); RUN_TEST(invalid); RUN_TEST(limits); RUN_TEST(random_inputs);
+  RUN_TEST(no_abi_no_list); RUN_TEST(unit_follows_the_chain); RUN_TEST(call_list_and_addresses);
+  RUN_TEST(delegatecall_names_the_operation); RUN_TEST(value_too_small_to_show); RUN_TEST(payable_batch_expands);
+  RUN_TEST(value_uses_separators); RUN_TEST(malformed_tail_discards_expansion);
+  RUN_TEST(no_room_draws_nothing);
   RUN_TEST(child_call); RUN_TEST(oversized_batch); RUN_TEST(oversized_ticker); RUN_TEST(random_format);
   return UNITY_END();
 }
