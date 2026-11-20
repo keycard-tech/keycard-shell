@@ -1,4 +1,5 @@
 #include "dialog.h"
+#include "amount.h"
 #include "crypto/address.h"
 #include "crypto/bignum.h"
 #include "crypto/script.h"
@@ -13,11 +14,9 @@
 #include "ui/ui_internal.h"
 
 #define TX_CONFIRM_TIMEOUT 180000
-#define BIGNUM_STRING_LEN 100
 #define MAX_PAGE_COUNT 120
 #define MESSAGE_MAX_X (SCREEN_WIDTH - TH_TEXT_HORIZONTAL_MARGIN)
 #define MESSAGE_MAX_Y (SCREEN_HEIGHT - TH_NAV_HINT_HEIGHT - 16)
-#define DATA_FIELD_MAX_LEN 23
 
 #define BTC_DIALOG_PAGE_ITEMS 1
 
@@ -408,59 +407,11 @@ static void dialog_sha3(screen_text_ctx_t *ctx, i18n_str_id_t label, const uint8
   dialog_end_line(ctx);
 }
 
-static void dialog_amount_adapt(char* amount, size_t amount_len, const char* ticker, size_t ticker_len) {
-  if (amount_len <= DATA_FIELD_MAX_LEN) {
-    return;
-  }
-
-  int i = 0;
-  int ticker_off = (DATA_FIELD_MAX_LEN - ticker_len - 1);
-  bool all_zero = true;
-
-  while(amount[i] != '.') {
-    if (amount[i] != '0') {
-      all_zero = false;
-    }
-
-    if (i >= ticker_off) {
-      const char* label = LSTR(TX_UNLIMITED);
-      ticker_off = strlen(label);
-      memcpy(amount, label, ticker_off);
-      goto add_ticker;
-    }
-
-    i++;
-  }
-
-  while(i < ticker_off) {
-    if (amount[i] >= '1' && amount[i] <= '9') {
-      all_zero = false;
-    }
-
-    i++;
-  }
-
-  if (all_zero) {
-    const char* label = LSTR(TX_TOOLITTLE);
-    ticker_off = strlen(label);
-    memcpy(amount, label, ticker_off);
-    goto add_ticker;
-  }
-
-  if (amount[ticker_off - 1] == '.') {
-    ticker_off--;
-  }
-
-add_ticker:
-  amount[ticker_off++] = ' ';
-  memcpy(&amount[ticker_off], ticker, ticker_len + 1);
-}
-
 static void dialog_amount(screen_text_ctx_t* ctx, i18n_str_id_t prompt, const bignum256* amount, int decimals, const char* ticker) {
   size_t ticker_len = strlen(ticker);
   char tmp[BIGNUM_STRING_LEN+ticker_len+2];
   size_t amount_len = bn_format(amount, NULL, ticker, decimals, 0, 0, ',', tmp, sizeof(tmp));
-  dialog_amount_adapt(tmp, amount_len, ticker, ticker_len);
+  ui_amount_adapt(tmp, amount_len, ticker, ticker_len);
 
   dialog_label(ctx, LSTR(prompt));
   dialog_data(ctx, tmp);
@@ -497,6 +448,8 @@ static void dialog_measure_string_in_pages(screen_text_ctx_t* ctx, pager_ctx_t* 
     uint16_t to_display = str_len - offset;
     uint16_t remaining = screen_draw_text(ctx, MESSAGE_MAX_X, MESSAGE_MAX_Y, &str[offset], to_display, true, false);
 
+    /* TODO: report page/offset exhaustion to callers instead of truncating.
+     * Expanded calldata can exceed the pager's existing limits. */
     if (!remaining || pager->last_page == (MAX_PAGE_COUNT - 1)) {
       break;
     }
@@ -535,7 +488,7 @@ static app_err_t dialog_confirm_eth_transfer(const eth_abi_function_t* data_form
       dialog_chain(&ctx, tx_info.chain.name);
 
       dialog_amount(&ctx, TX_AMOUNT, &tx_info.value, tx_info.token.decimals, tx_info.token.ticker);
-      dialog_amount(&ctx, TX_FEE, &tx_info.fees, 18, tx_info.chain.ticker);
+      dialog_amount(&ctx, TX_FEE, &tx_info.fees, ETH_NATIVE_DECIMALS, tx_info.chain.ticker);
       dialog_blank(ctx.y);
     } else if (pager.page == 1) {
       uint8_t hash[SHA3_256_DIGEST_LENGTH];
@@ -584,7 +537,7 @@ static app_err_t dialog_confirm_approval(const eth_approve_info_t* info, const u
       dialog_amount(&ctx, TX_AMOUNT, &info->value, info->token.decimals, info->token.ticker);
 
       if (is_eth_tx) {
-        dialog_amount(&ctx, TX_FEE, &info->fees, 18, info->chain.ticker);
+        dialog_amount(&ctx, TX_FEE, &info->fees, ETH_NATIVE_DECIMALS, info->chain.ticker);
       }
     } else {
       dialog_address(&ctx, EIP712_CONTRACT, ADDR_ETH, info->token.addr);
@@ -993,7 +946,10 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
 
   if (info->data_len > 0) {
     const eth_abi_function_t* abi = eth_data_recognize(info->data, info->data_len, !bn_is_zero(&info->value));
-    eth_data_format(abi, info->data, info->data_len, data_str, CAMERA_FB_SIZE, &data_str_len);
+    eth_data_context_t context = {
+      .chain_id = info->chain.chain_id
+    };
+    eth_data_format_with_context(abi, info->data, info->data_len, data_str, CAMERA_FB_SIZE, &data_str_len, &context);
     dialog_measure_string_in_pages(&ctx, &pager, (TH_TITLE_HEIGHT + TH_LABEL_HEIGHT), 3, data_str, data_str_len);
   }
 
@@ -1012,7 +968,7 @@ static app_err_t dialog_confirm_safe_tx(eth_safe_tx_t* info, const uint8_t* addr
     } else if (pager.page == 1) {
       dialog_address(&ctx, TX_ADDRESS, ADDR_ETH, info->to);
       dialog_chain(&ctx, info->chain.name);
-      dialog_amount(&ctx, TX_AMOUNT, &info->value, 18, info->chain.ticker);
+      dialog_amount(&ctx, TX_AMOUNT, &info->value, ETH_NATIVE_DECIMALS, info->chain.ticker);
 
       dialog_label(&ctx, LSTR(TX_SAFE_OP));
       if (info->operation == 0) {

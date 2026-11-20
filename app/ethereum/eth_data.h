@@ -41,6 +41,9 @@
 #define ETH_DATA_EXECUTE_DEADLINE_SELECTOR 0x4c569335
 #define ETH_DATA_EXECUTE_DEADLINE_EXT_SELECTOR 0x45cef3fa
 
+#define ETH_DATA_MULTISEND_SELECTOR 0x0aff808d
+#define ETH_DATA_MULTISEND_EXT_SELECTOR 0x7854d8f8
+
 #define ETH_DATA_EXECUTE_SELECTOR 0xc36b8524
 #define ETH_DATA_EXECUTE_EXT_SELECTOR 0xdb20e9a6
 
@@ -157,6 +160,11 @@ typedef struct {
 } eth_safe_tx_t;
 
 const eth_abi_function_t* eth_data_recognize(const uint8_t* data, uint32_t data_len, bool has_value);
+typedef struct {
+  uint32_t chain_id;
+} eth_data_context_t;
+
+void eth_data_format_with_context(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len, const eth_data_context_t* context);
 void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len);
 void eth_data_hash(const uint8_t* data, size_t data_len, uint8_t out[SHA3_256_DIGEST_LENGTH]);
 eip712_data_type_t eip712_recognize(const eip712_ctx_t* ctx);
@@ -169,6 +177,8 @@ app_err_t eth_extract_approve_info(const txContent_t* tx, const eth_abi_function
 app_err_t eip712_extract_permit(const eip712_ctx_t* ctx, eth_approve_info_t* info);
 app_err_t eip712_extract_permit_single(const eip712_ctx_t* ctx, eth_approve_info_t* info);
 app_err_t eip712_extract_safe_tx(const eip712_ctx_t* ctx, eth_safe_tx_t* info);
+
+uint16_t eth_data_read_short(const uint8_t val[ETH_ABI_WORD_LEN]);
 
 app_err_t eth_data_tuple_get_elem(eth_abi_type_t type, uint8_t idx, const uint8_t* data, size_t data_len, const uint8_t** out, size_t* out_len);
 

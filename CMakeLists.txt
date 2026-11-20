@@ -109,6 +109,7 @@ set(APP_SOURCES
     app/ur/ur.c
     app/ur/ur_decode.c
     app/ur/ur_encode.c
+    app/ui/amount.c
     app/ui/dialog.c
     app/ui/english.c
     app/ui/i18n.c
@@ -157,6 +158,7 @@ set(APP_SOURCES
     app/ethereum/ethUstream.c
     app/ethereum/ethUtils.c
     app/ethereum/eth_data.c
+    app/ethereum/eth_multisend.c
     app/ethereum/eth_db.c
     app/crypto/address.c
     app/crypto/addr_uri.c
@@ -378,6 +380,7 @@ list(REMOVE_ITEM BITCOIN_MAIN_SOURCES
     app/ethereum/ethUstream.c
     app/ethereum/ethUtils.c
     app/ethereum/eth_data.c
+    app/ethereum/eth_multisend.c
     app/core/core_eth.c
 )
 

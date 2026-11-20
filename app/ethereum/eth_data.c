@@ -4,6 +4,9 @@
 #include "crypto/util.h"
 #include "crypto/address.h"
 #include "eth_data.h"
+#include "eth_multisend.h"
+#include "ui/amount.h"
+#include "ui/i18n.h"
 #include "mem.h"
 #include "storage/fs.h"
 
@@ -52,7 +55,7 @@ static bool eth_data_validate_bytes_size(const uint8_t word[ETH_ABI_WORD_LEN], u
   return eth_data_check_padding(word, 0, byte_size, ETH_ABI_WORD_LEN);
 }
 
-static uint16_t eth_data_read_short(const uint8_t val[ETH_ABI_WORD_LEN]) {
+uint16_t eth_data_read_short(const uint8_t val[ETH_ABI_WORD_LEN]) {
   if (!eth_data_validate_numeric_size(val, false, sizeof(uint16_t))) {
     return UINT16_MAX;
   }
@@ -586,13 +589,114 @@ static app_err_t eth_data_format_execute_call(const eth_abi_function_t* abi, con
   return ERR_OK;
 }
 
-void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len) {
+static app_err_t eth_data_batch_append(uint8_t* out, size_t out_cap, size_t* out_len, const char* str) {
+  size_t len = strlen(str);
+  if (!eth_data_fmt_room(out_cap, *out_len, len + 1)) {
+    return ERR_DATA;
+  }
+  memcpy(out + *out_len, str, len + 1);
+  *out_len += len;
+  return ERR_OK;
+}
+
+static app_err_t eth_data_batch_number(uint8_t* out, size_t out_cap, size_t* out_len, uint32_t number) {
+  uint8_t buf[11];
+  return eth_data_batch_append(out, out_cap, out_len, (const char*)u32toa(number, buf, sizeof(buf)));
+}
+
+static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, const uint8_t* args, size_t args_len, uint8_t* out, size_t out_cap, size_t* out_len, const eth_data_context_t* context) {
+  if (abi->selector != ETH_DATA_MULTISEND_SELECTOR || abi->ext_selector != ETH_DATA_MULTISEND_EXT_SELECTOR) {
+    return ERR_UNSUPPORTED;
+  }
+  const uint8_t* transactions;
+  size_t transactions_len;
+  if (eth_data_tuple_get_elem(ETH_ABI_VARBYTES, 0, args, args_len, &transactions, &transactions_len) != ERR_OK) {
+    return ERR_DATA;
+  }
+  eth_multisend_t batch;
+  if (eth_multisend_init(&batch, transactions, transactions_len) != ETH_MULTISEND_COMPLETE) {
+    return ERR_DATA;
+  }
+
+  chain_desc_t chain;
+  bool known_chain = false;
+  if (context) {
+    chain.chain_id = context->chain_id;
+    known_chain = eth_db_lookup_chain(&chain) == ERR_OK;
+  }
+  const char* ticker = known_chain ? chain.ticker : "wei";
+  int decimals = known_chain ? ETH_NATIVE_DECIMALS : 0;
+
+  *out_len = 0;
+  for (size_t index = 0; index < batch.count; index++) {
+    eth_multisend_call_t call;
+    if (!eth_multisend_next(&batch, &call)) {
+      return ERR_DATA;
+    }
+    if (eth_data_batch_append(out, out_cap, out_len, index ? "\n\n" : "") != ERR_OK ||
+        eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_CALL)) != ERR_OK ||
+        eth_data_batch_number(out, out_cap, out_len, index + 1) != ERR_OK ||
+        eth_data_batch_append(out, out_cap, out_len, "/") != ERR_OK ||
+        eth_data_batch_number(out, out_cap, out_len, batch.count) != ERR_OK ||
+        eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK) {
+      return ERR_DATA;
+    }
+    if (call.operation == 1 &&
+        (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_DELEGATE)) != ERR_OK ||
+         eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK)) {
+      return ERR_DATA;
+    }
+    char address[MAX_ADDR_LEN];
+    address_format(ADDR_ETH, call.to, address);
+    if (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_TO)) != ERR_OK ||
+        eth_data_batch_append(out, out_cap, out_len, address) != ERR_OK ||
+        eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK) {
+      return ERR_DATA;
+    }
+    bignum256 value;
+    bn_read_be(call.value, &value);
+    bool has_value = !bn_is_zero(&value);
+    if (has_value) {
+      size_t ticker_len = strlen(ticker);
+      char amount[BIGNUM_STRING_LEN + ticker_len + 2];
+      size_t amount_len = bn_format(&value, NULL, ticker, decimals, 0, 0, 0, amount, sizeof(amount));
+      if (!amount_len) {
+        return ERR_DATA;
+      }
+      ui_amount_adapt(amount, amount_len, ticker, ticker_len);
+      if (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_VALUE)) != ERR_OK ||
+          eth_data_batch_append(out, out_cap, out_len, amount) != ERR_OK ||
+          eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK) {
+        return ERR_DATA;
+      }
+    }
+    /* One batch level. Nested multiSend calls remain opaque. */
+    const eth_abi_function_t* child = eth_data_recognize(call.data, call.data_len, has_value);
+    if (child && child->selector == ETH_DATA_MULTISEND_SELECTOR && child->ext_selector == ETH_DATA_MULTISEND_EXT_SELECTOR) {
+      child = NULL;
+    }
+    size_t len = 0;
+    eth_data_format(child, call.data, call.data_len, out + *out_len, out_cap - *out_len, &len);
+    if (call.data_len && !len) {
+      return ERR_DATA;
+    }
+    *out_len += len;
+  }
+  if (!eth_data_fmt_room(out_cap, *out_len, 1)) {
+    return ERR_DATA;
+  }
+  out[*out_len] = 0;
+  return ERR_OK;
+}
+
+void eth_data_format_with_context(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len, const eth_data_context_t* context) {
   if (data_len) {
     const uint8_t* args = &data[sizeof(uint32_t)];
     size_t args_len = data_len - sizeof(uint32_t);
 
     if ((abi == NULL) ||
         ((eth_data_format_execute_call(abi, args, args_len, out, out_cap, out_len) != ERR_OK) &&
+        (eth_data_format_multisend_call(abi, args, args_len, out, out_cap, out_len, context) != ERR_OK) &&
         (eth_data_format_abi_call(abi, args, args_len, out, out_cap, out_len) != ERR_OK))) {
       if ((data_len * 2) + 1 > out_cap) {
         *out_len = 0;
@@ -604,6 +708,10 @@ void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t 
   } else {
     *out_len = 0;
   }
+}
+
+void eth_data_format(const eth_abi_function_t* abi, const uint8_t* data, size_t data_len, uint8_t* out, size_t out_cap, size_t* out_len) {
+  eth_data_format_with_context(abi, data, data_len, out, out_cap, out_len, NULL);
 }
 
 void eth_data_hash(const uint8_t* data, size_t data_len, uint8_t out[SHA3_256_DIGEST_LENGTH]) {
@@ -648,14 +756,17 @@ app_err_t eth_extract_transfer_info(const txContent_t* tx, const eth_abi_functio
   } else {
 fallback:
     info->token.ticker = info->chain.ticker;
-    info->token.decimals = 18;
+    info->token.decimals = ETH_NATIVE_DECIMALS;
 
     value = tx->value.value;
     value_len = tx->value.length;
 
     info->to = tx->destination;
 
-    eth_data_format(abi, tx->data, tx->dataLength, info->data_str, info->data_str_cap, &info->data_str_len);
+    eth_data_context_t context = {
+      .chain_id = info->chain.chain_id
+    };
+    eth_data_format_with_context(abi, tx->data, tx->dataLength, info->data_str, info->data_str_cap, &info->data_str_len, &context);
   }
 
   bn_read_compact_be(value, value_len, &info->value);
