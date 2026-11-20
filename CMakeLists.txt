@@ -109,6 +109,7 @@ set(APP_SOURCES
     app/ur/ur.c
     app/ur/ur_decode.c
     app/ur/ur_encode.c
+    app/ui/amount.c
     app/ui/dialog.c
     app/ui/english.c
     app/ui/i18n.c

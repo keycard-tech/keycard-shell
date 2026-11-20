@@ -454,6 +454,7 @@ shellos_test(t1 LIBS app_iso7816)
 shellos_test(multisend LIBS app_ethereum app_storage app_crypto)
 target_sources(test_multisend PRIVATE
     ${SHELLOS_ROOT}/app/ethereum/eth_data.c
+    ${SHELLOS_ROOT}/app/ui/amount.c
     ${SHELLOS_ROOT}/app/ui/i18n.c
     ${SHELLOS_ROOT}/app/ui/english.c)
 # TODO: Use uintptr_t in ETH_ABI_DEREF and FS_ENTRY_DATA so host fixtures can live above 4GB.

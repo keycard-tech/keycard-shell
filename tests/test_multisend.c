@@ -147,6 +147,10 @@ static void formatting(void) {
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Call 2/2\nWarning: nested delegatecall\nTo: 0x0202020202020202020202020202020202020202\n"));
   TEST_ASSERT_EQUAL_HEX8('b', out[out_len - 1]); /* No trailing blank pages. */
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 0.000000001 POL\n"));
+  word(encoded + 68 + 21, 1);
+  eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
+  TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: A bit of POL\n"));
+  word(encoded + 68 + 21, 1000000000);
   context.chain_id = 1;
   eth_data_format_with_context(found, encoded, encoded_len, out, sizeof(out), &out_len, &context);
   TEST_ASSERT_NOT_NULL(strstr((char*)out, "Value: 1000000000 wei\n"));

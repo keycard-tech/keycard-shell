@@ -5,6 +5,7 @@
 #include "crypto/address.h"
 #include "eth_data.h"
 #include "eth_multisend.h"
+#include "ui/amount.h"
 #include "ui/i18n.h"
 #include "mem.h"
 #include "storage/fs.h"
@@ -656,9 +657,14 @@ static app_err_t eth_data_format_multisend_call(const eth_abi_function_t* abi, c
     bn_read_be(call.value, &value);
     bool has_value = !bn_is_zero(&value);
     if (has_value) {
-      char amount[100];
-      if (!bn_format(&value, NULL, ticker, decimals, 0, 0, 0, amount, sizeof(amount)) ||
-          eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_VALUE)) != ERR_OK ||
+      size_t ticker_len = strlen(ticker);
+      char amount[BIGNUM_STRING_LEN + ticker_len + 2];
+      size_t amount_len = bn_format(&value, NULL, ticker, decimals, 0, 0, 0, amount, sizeof(amount));
+      if (!amount_len) {
+        return ERR_DATA;
+      }
+      ui_amount_adapt(amount, amount_len, ticker, ticker_len);
+      if (eth_data_batch_append(out, out_cap, out_len, LSTR(TX_BATCH_VALUE)) != ERR_OK ||
           eth_data_batch_append(out, out_cap, out_len, amount) != ERR_OK ||
           eth_data_batch_append(out, out_cap, out_len, "\n") != ERR_OK) {
         return ERR_DATA;
